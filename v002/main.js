@@ -14,7 +14,7 @@ const aspect = window.innerWidth / window.innerHeight;
 const cameraController = new window.IsometricCamera(aspect, 16);
 const camera = cameraController.getCamera();
 
-const grid = new window.TileGrid(100, 100, 2, 1);
+const grid = new window.TileGrid(224, 224, 2, 1);
 scene.add(grid.getGroup());
 
 const player = new window.Player(grid, Math.floor(grid.width / 2), Math.floor(grid.height / 2));
@@ -91,6 +91,10 @@ let lastHoveredInstanceId = null;
 let lastHoveredColor = new THREE.Color(0x6fcf97);
 let gridOverlayVisible = true;
 const wfc = new window.WaveFunctionCollapse(grid.width, grid.height);
+let cameraFocusTarget = null;
+let cameraFocusProgress = 1;
+const cameraFocusDuration = 0.6; // seconds
+
 function applyWFCLayer() {
     const layout = wfc.generate();
     grid.buildFromLayout(layout);
@@ -106,6 +110,27 @@ function applyWFCLayer() {
         }
     }
 }
+
+function focusCameraOnPlayer() {
+    const playerWorld = player.mesh.position.clone();
+    const cam = cameraController.camera;
+    // Compute the vector from camera to its current lookAt point
+    const camDir = new THREE.Vector3();
+    cam.getWorldDirection(camDir);
+    // Assume the camera is looking at (0,0,0) or use a stored lookAt if available
+    // We'll use the current distance from camera to lookAt
+    const lookAt = new THREE.Vector3();
+    cam.getWorldDirection(camDir);
+    // Find the current lookAt point by projecting from camera position along -camDir
+    // We'll use the distance from camera to the grid center (0,0,0) as the focus distance
+    const focusDistance = cam.position.distanceTo(new THREE.Vector3(0, 0, 0));
+    // The offset vector is along -camDir, with length focusDistance
+    const offset = camDir.clone().multiplyScalar(-focusDistance);
+    // Target camera position is player position plus offset
+    cameraFocusTarget = playerWorld.clone().add(offset);
+    cameraFocusProgress = 0;
+}
+
 document.addEventListener('keydown', (e) => {
     if (e.code === 'KeyG') {
         gridOverlayVisible = !gridOverlayVisible;
@@ -118,7 +143,10 @@ document.addEventListener('keydown', (e) => {
     if (e.code === 'ArrowRight' || e.code === 'KeyD') player.move(1, 0);
     // WFC regenerate
     if (e.code === 'KeyR') applyWFCLayer();
+    // Focus camera on player
+    if (e.code === 'KeyF') focusCameraOnPlayer();
 });
+
 const minimap = new window.Minimap(grid, cameraController);
 let lastFpsUpdate = 0;
 let frames = 0;
@@ -126,6 +154,13 @@ let fps = 0;
 function animate() {
     requestAnimationFrame(animate);
     const dt = clock.getDelta();
+    // Animate camera focus
+    if (cameraFocusTarget && cameraFocusProgress < 1) {
+        cameraFocusProgress += dt / cameraFocusDuration;
+        if (cameraFocusProgress > 1) cameraFocusProgress = 1;
+        cameraController.camera.position.lerp(cameraFocusTarget, cameraFocusProgress);
+        cameraController.camera.updateProjectionMatrix();
+    }
     controls.update(dt);
     renderer.render(scene, camera);
 
