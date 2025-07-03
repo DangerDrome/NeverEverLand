@@ -51,6 +51,7 @@ class TileGrid {
         gridGeometry.computeBoundingSphere();
         const gridLines = new THREE.LineSegments(gridGeometry, lineMaterial);
         gridLines.computeLineDistances();
+        gridLines.renderOrder = 0;
         this.group.add(gridLines);
         this.gridLines = gridLines;
     }
