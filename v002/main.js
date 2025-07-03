@@ -14,8 +14,12 @@ const aspect = window.innerWidth / window.innerHeight;
 const cameraController = new window.IsometricCamera(aspect, 16);
 const camera = cameraController.getCamera();
 
-const grid = new window.TileGrid(10, 10, 2, 1);
+const grid = new window.TileGrid(100, 100, 2, 1);
 scene.add(grid.getGroup());
+
+const player = new window.Player(grid, Math.floor(grid.width / 2), Math.floor(grid.height / 2));
+scene.add(player.mesh);
+player.mesh.renderOrder = 2;
 
 const controls = new window.CameraControls(cameraController, renderer.domElement);
 
@@ -33,6 +37,7 @@ function addThickAxis(start, end, color) {
     const geometry = new THREE.BufferGeometry().setFromPoints([start, end]);
     const material = new THREE.LineBasicMaterial({ color, linewidth: 6 });
     const line = new THREE.Line(geometry, material);
+    line.renderOrder = 100;
     scene.add(line);
 }
 addThickAxis(new THREE.Vector3(0, 0, 0), new THREE.Vector3(axisLength, 0, 0), 0x00b3a6); // X (dimmed cyan)
@@ -63,6 +68,7 @@ function createAxisLabel(text, color, position) {
     const sprite = new THREE.Sprite(material);
     sprite.position.copy(position);
     sprite.scale.set(1, 0.5, 1); // Smaller label
+    sprite.renderOrder = 100;
     return sprite;
 }
 scene.add(createAxisLabel('X', '#00b3a6', new THREE.Vector3(axisLength + 0.5, 0, 0)));
@@ -81,62 +87,71 @@ container.addEventListener('mousemove', (event) => {
 
 // Animation loop
 const clock = new THREE.Clock();
-let lastHoveredTile = null;
+let lastHoveredInstanceId = null;
+let lastHoveredColor = new THREE.Color(0x6fcf97);
 let gridOverlayVisible = true;
+const wfc = new window.WaveFunctionCollapse(grid.width, grid.height);
+function applyWFCLayer() {
+    const layout = wfc.generate();
+    grid.buildFromLayout(layout);
+    // Ensure player is above tiles
+    scene.remove(player.mesh);
+    scene.add(player.mesh);
+    // If player's tile is missing, move to first available tile
+    if (!layout[player.x] || !layout[player.x][player.y]) {
+        outer: for (let x = 0; x < grid.width; x++) {
+            for (let y = 0; y < grid.height; y++) {
+                if (layout[x][y]) { player.setPosition(x, y); break outer; }
+            }
+        }
+    }
+}
 document.addEventListener('keydown', (e) => {
     if (e.code === 'KeyG') {
         gridOverlayVisible = !gridOverlayVisible;
         if (grid.gridLines) grid.gridLines.visible = gridOverlayVisible;
     }
+    // Player movement
+    if (e.code === 'ArrowUp' || e.code === 'KeyW') player.move(0, -1);
+    if (e.code === 'ArrowDown' || e.code === 'KeyS') player.move(0, 1);
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') player.move(-1, 0);
+    if (e.code === 'ArrowRight' || e.code === 'KeyD') player.move(1, 0);
+    // WFC regenerate
+    if (e.code === 'KeyR') applyWFCLayer();
 });
 const minimap = new window.Minimap(grid, cameraController);
+let lastFpsUpdate = 0;
+let frames = 0;
+let fps = 0;
 function animate() {
     requestAnimationFrame(animate);
     const dt = clock.getDelta();
     controls.update(dt);
     renderer.render(scene, camera);
 
-    // Raycast for tile hover
+    // Instanced mesh hover highlight
     raycaster.setFromCamera(mouse, camera);
-    let hoveredTile = null;
-    for (let x = 0; x < grid.width; x++) {
-        for (let y = 0; y < grid.height; y++) {
-            const tile = grid.tiles[x][y];
-            if (!tile || !tile.mesh) continue;
-            const intersects = raycaster.intersectObject(tile.mesh, false);
-            if (intersects.length > 0) {
-                hoveredTile = tile;
-                break;
+    const intersects = raycaster.intersectObject(grid.instancedMesh, false);
+    if (lastHoveredInstanceId !== null) {
+        grid.instancedMesh.setColorAt(lastHoveredInstanceId, lastHoveredColor);
+        grid.instancedMesh.instanceColor.needsUpdate = true;
+        lastHoveredInstanceId = null;
+    }
+    if (intersects.length > 0 && intersects[0].instanceId !== undefined) {
+        const instanceId = intersects[0].instanceId;
+        // Save previous color
+        if (!grid.instancedMesh.instanceColor) {
+            const color = new THREE.Color(0x6fcf97);
+            const colors = [];
+            for (let i = 0; i < grid.instancedMesh.count; i++) {
+                colors.push(color.r, color.g, color.b);
             }
+            grid.instancedMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(colors), 3);
         }
-        if (hoveredTile) break;
-    }
-    // Remove overlay from last hovered tile if different
-    if (lastHoveredTile && lastHoveredTile !== hoveredTile) {
-        lastHoveredTile.mesh.material[2].color.set(0x6fcf97);
-    }
-    // Add overlay to currently hovered tile
-    if (hoveredTile) {
-        hoveredTile.mesh.material[2].color.set(0xaee9d1);
-    }
-    lastHoveredTile = hoveredTile;
-
-    // 2D viewport culling for tiles with threshold
-    const cullThreshold = -0.1; // margin in NDC
-    for (let x = 0; x < grid.width; x++) {
-        for (let y = 0; y < grid.height; y++) {
-            const tile = grid.tiles[x][y];
-            if (!tile || !tile.mesh) continue;
-            // Project tile center to NDC
-            const worldPos = tile.mesh.position.clone();
-            worldPos.project(camera);
-            // Cull if outside screen rectangle with threshold
-            if (worldPos.x < -1 - cullThreshold || worldPos.x > 1 + cullThreshold || worldPos.y < -1 - cullThreshold || worldPos.y > 1 + cullThreshold) {
-                tile.mesh.visible = false;
-            } else {
-                tile.mesh.visible = true;
-            }
-        }
+        grid.instancedMesh.getColorAt(instanceId, lastHoveredColor);
+        grid.instancedMesh.setColorAt(instanceId, new THREE.Color(0xaee9d1));
+        grid.instancedMesh.instanceColor.needsUpdate = true;
+        lastHoveredInstanceId = instanceId;
     }
 
     // Hide grid overlay if zoomed out too far
@@ -149,6 +164,17 @@ function animate() {
     }
 
     minimap.draw();
+
+    // FPS counter
+    frames++;
+    const now = performance.now();
+    if (now - lastFpsUpdate > 500) {
+        fps = Math.round((frames * 1000) / (now - lastFpsUpdate));
+        lastFpsUpdate = now;
+        frames = 0;
+        const fpsDiv = document.getElementById('fpsCounter');
+        if (fpsDiv) fpsDiv.textContent = `FPS: ${fps}`;
+    }
 }
 animate();
 
@@ -157,4 +183,9 @@ window.addEventListener('resize', () => {
     const w = window.innerWidth, h = window.innerHeight;
     renderer.setSize(w, h);
     cameraController.onWindowResize(w / h);
-}); 
+});
+
+// Run WFC once at start
+applyWFCLayer();
+
+window.player = player; 

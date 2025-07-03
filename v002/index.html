@@ -33,10 +33,12 @@
     <div id="gameContainer"></div>
     <div id="controls">
         <div><b>Controls:</b></div>
-        <div>WASD / Arrows: Pan camera</div>
+        <div>WASD / Arrows: Move player</div>
         <div>Mouse Wheel: Zoom</div>
         <div>P: Toggle post-processing (no effect)</div>
         <div>G: Toggle grid overlay</div>
+        <div>R: Regenerate WFC layout</div>
+        <div id="fpsCounter" style="margin-top:8px;"></div>
     </div>
     <!-- Classic script loading order: Three.js, engine files, then main.js -->
     <script src="https://unpkg.com/three@0.149.0/build/three.min.js"></script>
@@ -44,6 +46,8 @@
     <script src="TileGrid.js"></script>
     <script src="CameraControls.js"></script>
     <script src="Minimap.js"></script>
+    <script src="Player.js"></script>
+    <script src="WaveFunctionCollapse.js"></script>
     <script src="main.js"></script>
 </body>
 </html> 

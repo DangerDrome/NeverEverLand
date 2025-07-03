@@ -14,74 +14,19 @@ class TileGrid {
         this.tiles = [];
         this.group = new THREE.Group();
         this._addRepeatingGridLines();
-        this._createGrid();
+        this._createInstancedGrid();
     }
 
-    // Create the grid of tiles
-    _createGrid() {
-        // Materials: [right, left, top, bottom, front, back]
-        const sideMaterial = new THREE.MeshLambertMaterial({ color: 0x4a7c3c, side: THREE.FrontSide });
-        const topMaterial = new THREE.MeshLambertMaterial({ color: 0x6fcf97, side: THREE.FrontSide });
+    _createInstancedGrid() {
+        // Only one box geometry and material
         const geometry = new THREE.BoxGeometry(this.tileWidth, this.tileWidth / 3, this.tileWidth);
-        // Ensure geometry is centered so top face is at y=0
         geometry.translate(0, -this.tileWidth / 6, 0);
-        const offsetX = (this.width - 1) / 2;
-        const offsetZ = (this.height - 1) / 2;
-        for (let x = 0; x < this.width; x++) {
-            this.tiles[x] = [];
-            for (let y = 0; y < this.height; y++) {
-                // Clone materials for each tile to allow independent highlighting
-                const tileMaterials = [
-                    sideMaterial.clone(), // right
-                    sideMaterial.clone(), // left
-                    topMaterial.clone(),  // top
-                    sideMaterial.clone(), // bottom
-                    sideMaterial.clone(), // front
-                    sideMaterial.clone()  // back
-                ];
-                const mesh = new THREE.Mesh(geometry, tileMaterials);
-                mesh.position.set(
-                    (x - offsetX) * this.tileWidth,
-                    0,
-                    (y - offsetZ) * this.tileWidth
-                );
-                mesh.castShadow = true;
-                mesh.receiveShadow = true;
-                mesh.frustumCulled = false;
-                this.group.add(mesh);
-                this.tiles[x][y] = { mesh, x, y };
-                // Add edge faces (outlines) only for top, +X, and +Z faces
-                const edges = new THREE.EdgesGeometry(geometry);
-                const pos = edges.attributes.position;
-                const filtered = [];
-                const maxY = 0; // top face
-                const maxX = this.tileWidth / 2;
-                const maxZ = this.tileWidth / 2;
-                for (let i = 0; i < pos.count; i += 2) {
-                    const a = new THREE.Vector3().fromBufferAttribute(pos, i);
-                    const b = new THREE.Vector3().fromBufferAttribute(pos, i + 1);
-                    // Top face
-                    if (a.y === maxY && b.y === maxY) {
-                        filtered.push(a.x, a.y, a.z, b.x, b.y, b.z);
-                        continue;
-                    }
-                    // +X face (right)
-                    if (a.x === maxX && b.x === maxX) {
-                        filtered.push(a.x, a.y, a.z, b.x, b.y, b.z);
-                        continue;
-                    }
-                    // +Z face (front)
-                    if (a.z === maxZ && b.z === maxZ) {
-                        filtered.push(a.x, a.y, a.z, b.x, b.y, b.z);
-                        continue;
-                    }
-                }
-                const filteredGeometry = new THREE.BufferGeometry();
-                filteredGeometry.setAttribute('position', new THREE.Float32BufferAttribute(filtered, 3));
-                const edgeLines = new THREE.LineSegments(filteredGeometry, new THREE.LineBasicMaterial({ color: 0x222222, linewidth: 1 }));
-                mesh.add(edgeLines);
-            }
-        }
+        const material = new THREE.MeshLambertMaterial({ color: 0x4a7c3c });
+        const maxInstances = this.width * this.height;
+        this.instancedMesh = new THREE.InstancedMesh(geometry, material, maxInstances);
+        this.instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        this.group.add(this.instancedMesh);
+        this.tiles = [];
     }
 
     _addRepeatingGridLines() {
@@ -115,6 +60,69 @@ class TileGrid {
      */
     getGroup() {
         return this.group;
+    }
+
+    clearTiles() {
+        this.instancedMesh.count = 0;
+        this.tiles = [];
+    }
+
+    buildFromLayout(layout) {
+        // Update instanced mesh from WFC layout
+        let instanceId = 0;
+        const offsetX = (this.width - 1) / 2;
+        const offsetZ = (this.height - 1) / 2;
+        const dummy = new THREE.Object3D();
+        this.tiles = [];
+        // Prepare for edge lines
+        if (this.edgeLines) {
+            this.group.remove(this.edgeLines);
+            this.edgeLines.geometry.dispose();
+        }
+        const boxEdgeGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(this.tileWidth, this.tileWidth / 3, this.tileWidth));
+        boxEdgeGeo.translate(0, -this.tileWidth / 6, 0);
+        let edgePositions = [];
+        const maxY = 0;
+        const maxX = this.tileWidth / 2;
+        const maxZ = this.tileWidth / 2;
+        const EPS = 1e-4;
+        for (let x = 0; x < this.width; x++) {
+            this.tiles[x] = [];
+            for (let y = 0; y < this.height; y++) {
+                if (layout[x][y]) {
+                    dummy.position.set(
+                        (x - offsetX) * this.tileWidth,
+                        0,
+                        (y - offsetZ) * this.tileWidth
+                    );
+                    dummy.updateMatrix();
+                    this.instancedMesh.setMatrixAt(instanceId, dummy.matrix);
+                    this.tiles[x][y] = { instanceId, x, y };
+                    instanceId++;
+                    // Transform and collect edge positions (only top, +X, +Z faces)
+                    const posAttr = boxEdgeGeo.attributes.position;
+                    for (let i = 0; i < posAttr.count; i += 2) {
+                        let a = new THREE.Vector3().fromBufferAttribute(posAttr, i).applyMatrix4(dummy.matrix);
+                        let b = new THREE.Vector3().fromBufferAttribute(posAttr, i + 1).applyMatrix4(dummy.matrix);
+                        if ((Math.abs(a.y - maxY) < EPS && Math.abs(b.y - maxY) < EPS) ||
+                            (Math.abs(a.x - maxX) < EPS && Math.abs(b.x - maxX) < EPS) ||
+                            (Math.abs(a.z - maxZ) < EPS && Math.abs(b.z - maxZ) < EPS)) {
+                            edgePositions.push(a.x, a.y, a.z, b.x, b.y, b.z);
+                        }
+                    }
+                } else {
+                    this.tiles[x][y] = null;
+                }
+            }
+        }
+        this.instancedMesh.count = instanceId;
+        this.instancedMesh.instanceMatrix.needsUpdate = true;
+        // Build merged edge geometry
+        const edgeGeo = new THREE.BufferGeometry();
+        edgeGeo.setAttribute('position', new THREE.Float32BufferAttribute(edgePositions, 3));
+        this.edgeLines = new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({ color: 0x222222, linewidth: 1 }));
+        this.edgeLines.renderOrder = 1;
+        this.group.add(this.edgeLines);
     }
 }
 window.TileGrid = TileGrid; 
