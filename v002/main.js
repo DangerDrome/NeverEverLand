@@ -35,9 +35,9 @@ function addThickAxis(start, end, color) {
     const line = new THREE.Line(geometry, material);
     scene.add(line);
 }
-addThickAxis(new THREE.Vector3(0, 0, 0), new THREE.Vector3(axisLength, 0, 0), 0x883333); // X (dim red)
-addThickAxis(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, axisLength, 0), 0x338833); // Y (dim green)
-addThickAxis(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, axisLength), 0x333388); // Z (dim blue)
+addThickAxis(new THREE.Vector3(0, 0, 0), new THREE.Vector3(axisLength, 0, 0), 0x00b3a6); // X (dimmed cyan)
+addThickAxis(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, axisLength, 0), 0xb3b300); // Y (dimmed yellow)
+addThickAxis(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, axisLength), 0xb300a6); // Z (dimmed magenta)
 
 // Add 3D text labels for X, Y, Z axes
 function createAxisLabel(text, color, position) {
@@ -65,9 +65,9 @@ function createAxisLabel(text, color, position) {
     sprite.scale.set(1, 0.5, 1); // Smaller label
     return sprite;
 }
-scene.add(createAxisLabel('X', '#883333', new THREE.Vector3(axisLength + 0.5, 0, 0)));
-scene.add(createAxisLabel('Y', '#338833', new THREE.Vector3(0, axisLength + 0.5, 0)));
-scene.add(createAxisLabel('Z', '#333388', new THREE.Vector3(0, 0, axisLength + 0.5)));
+scene.add(createAxisLabel('X', '#00b3a6', new THREE.Vector3(axisLength + 0.5, 0, 0)));
+scene.add(createAxisLabel('Y', '#b3b300', new THREE.Vector3(0, axisLength + 0.5, 0)));
+scene.add(createAxisLabel('Z', '#b300a6', new THREE.Vector3(0, 0, axisLength + 0.5)));
 
 // Raycaster for mouse picking
 const raycaster = new THREE.Raycaster();
@@ -89,6 +89,7 @@ document.addEventListener('keydown', (e) => {
         if (grid.gridLines) grid.gridLines.visible = gridOverlayVisible;
     }
 });
+const minimap = new window.Minimap(grid, cameraController);
 function animate() {
     requestAnimationFrame(animate);
     const dt = clock.getDelta();
@@ -146,6 +147,8 @@ function animate() {
             grid.gridLines.visible = gridOverlayVisible;
         }
     }
+
+    minimap.draw();
 }
 animate();
 
