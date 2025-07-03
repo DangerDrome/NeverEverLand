@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Isometric Game Engine v002</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #181818;
+            font-family: Arial, sans-serif;
+        }
+        #gameContainer {
+            width: 100vw;
+            height: 100vh;
+        }
+        #controls {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            color: #fff;
+            font-size: 13px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px 14px;
+            border-radius: 6px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer"></div>
+    <div id="controls">
+        <div><b>Controls:</b></div>
+        <div>WASD / Arrows: Pan camera</div>
+        <div>Mouse Wheel: Zoom</div>
+        <div>P: Toggle post-processing (no effect)</div>
+        <div>G: Toggle grid overlay</div>
+    </div>
+    <!-- Classic script loading order: Three.js, engine files, then main.js -->
+    <script src="https://unpkg.com/three@0.149.0/build/three.min.js"></script>
+    <script src="IsometricCamera.js"></script>
+    <script src="TileGrid.js"></script>
+    <script src="CameraControls.js"></script>
+    <script src="main.js"></script>
+</body>
+</html> 

@@ -1,0 +1,1423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Isometric Farming Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            font-family: Arial, sans-serif;
+        }
+        
+        #gameContainer {
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #gameContainer canvas {
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 12px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer"></div>
+    <div id="controls">
+        <div>Controls:</div>
+        <div>WASD / Arrow Keys: Move player</div>
+        <div>Mouse Wheel: Zoom in/out</div>
+        <div>Q/E: Adjust virtual resolution</div>
+        <div>R/F: Adjust edge highlights</div>
+        <div>T/G: Adjust shadow intensity</div>
+        <div>U/J & I/K: Move sun position</div>
+        <div>Y/H: Adjust pixel grid intensity</div>
+        <div>O: Toggle pixel grid</div>
+        <div>P: Toggle post-processing</div>
+    </div>
+    
+    <!-- Import map for ES6 modules -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+        }
+    }
+    </script>
+    
+    <script type="module">
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+        import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+        
+        console.log('🎮 Starting Isometric Farming Game');
+        
+        // DimetricCamera Class (2:1 pixel ratio projection)
+        // Most "isometric" games actually use dimetric projection for perfect 2:1 pixel tiles
+        class IsometricCamera {
+            constructor(aspectRatio, viewSize = 16) { // Adjusted for dimetric projection
+                this.baseViewSize = 16; // Reference view size for dimetric 2:1 ratio
+                this.viewSize = viewSize;
+                this.aspectRatio = aspectRatio;
+                
+                this.camera = new THREE.OrthographicCamera(
+                    -this.viewSize * this.aspectRatio / 2,
+                    this.viewSize * this.aspectRatio / 2,
+                    this.viewSize / 2,
+                    -this.viewSize / 2,
+                    0.1,
+                    1000
+                );
+                
+                this.setupIsometricPosition();
+            }
+            
+            setupIsometricPosition() {
+                const distance = 25;
+                
+                // DIMETRIC projection angles for perfect 2:1 pixel ratio
+                // For 2:1 ratio: tan(elevation) = 0.5, so elevation = arctan(0.5) ≈ 26.57°
+                const elevation = Math.atan(0.5); // ~26.57° - creates 2:1 pixel ratio
+                const azimuth = Math.PI / 4;      // 45° - standard isometric azimuth
+                
+                this.camera.position.set(
+                    distance * Math.cos(elevation) * Math.cos(azimuth),
+                    distance * Math.sin(elevation),
+                    distance * Math.cos(elevation) * Math.sin(azimuth)
+                );
+                
+                this.camera.lookAt(0, 0, 0);
+                this.camera.up.set(0, 1, 0);
+                
+                console.log(`📐 DIMETRIC projection - Elevation: ${(elevation * 180 / Math.PI).toFixed(1)}° (2:1 ratio)`);
+                console.log(`📐 Camera position: (${this.camera.position.x.toFixed(1)}, ${this.camera.position.y.toFixed(1)}, ${this.camera.position.z.toFixed(1)})`);
+                console.log(`📐 Tangent of elevation: ${Math.tan(elevation).toFixed(3)} (should be 0.5 for 2:1 ratio)`);
+            }
+            
+            zoom(zoomFactor) {
+                // Normal camera zoom when pixelation is disabled
+                this.viewSize *= zoomFactor;
+                this.viewSize = Math.max(4, Math.min(64, this.viewSize));
+                this.updateProjection();
+                
+                console.log(`🔍 Camera zoom: ${this.viewSize.toFixed(1)} units`);
+            }
+            
+            pan(deltaX, deltaZ) {
+                // Check if pixelation is enabled
+                const pixelationEnabled = window.game?.pixelPostProcessing?.pixelationEnabled;
+                
+                if (pixelationEnabled) {
+                    // Pixel-aligned movement when pixelation is active
+                    const panStep = 0.5;
+                    const panVector = new THREE.Vector3(
+                        Math.sign(deltaX) * panStep, 
+                        0, 
+                        Math.sign(deltaZ) * panStep
+                    );
+                    this.camera.position.add(panVector);
+                    this.snapToPixelBoundary();
+                } else {
+                    // Smooth movement when pixelation is disabled
+                    const panSpeed = 0.5;
+                    const panVector = new THREE.Vector3(deltaX * panSpeed, 0, deltaZ * panSpeed);
+                    this.camera.position.add(panVector);
+                }
+            }
+            
+            snapToPixelBoundary() {
+                // Snap camera position to maintain perfect pixel alignment
+                const snapIncrement = 0.5; // Half world unit = 1 pixel
+                this.camera.position.x = Math.round(this.camera.position.x / snapIncrement) * snapIncrement;
+                this.camera.position.z = Math.round(this.camera.position.z / snapIncrement) * snapIncrement;
+            }
+            
+            updateProjection() {
+                this.camera.left = -this.viewSize * this.aspectRatio / 2;
+                this.camera.right = this.viewSize * this.aspectRatio / 2;
+                this.camera.top = this.viewSize / 2;
+                this.camera.bottom = -this.viewSize / 2;
+                this.camera.updateProjectionMatrix();
+            }
+            
+            onWindowResize(newAspectRatio) {
+                this.aspectRatio = newAspectRatio;
+                this.updateProjection();
+            }
+            
+            getCamera() {
+                return this.camera;
+            }
+        }
+        
+        // TileGrid Class
+        class TileGrid {
+            constructor(gridWidth = 10, gridHeight = 10, tileSize = 2.0) { // Adjusted for dimetric 2:1 ratio
+                this.gridWidth = gridWidth;
+                this.gridHeight = gridHeight;
+                this.tileSize = tileSize;
+                this.gridGroup = new THREE.Group();
+                
+                this.createGrid();
+            }
+            
+            createGrid() {
+                const grassMaterial = new THREE.MeshLambertMaterial({ 
+                    color: 0x4a7c3c,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                
+                const dirtMaterial = new THREE.MeshLambertMaterial({ 
+                    color: 0x8b4513,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                
+                const tileGeometry = new THREE.PlaneGeometry(
+                    this.tileSize * 0.95, 
+                    this.tileSize * 0.95
+                );
+                
+                const offsetX = -(this.gridWidth - 1) * this.tileSize / 2;
+                const offsetZ = -(this.gridHeight - 1) * this.tileSize / 2;
+                
+                for (let x = 0; x < this.gridWidth; x++) {
+                    for (let z = 0; z < this.gridHeight; z++) {
+                        const materialIndex = (x + z) % 2;
+                        const tileMesh = new THREE.Mesh(
+                            tileGeometry, 
+                            materialIndex === 0 ? grassMaterial : dirtMaterial
+                        );
+                        
+                        tileMesh.position.set(
+                            offsetX + x * this.tileSize,
+                            0,
+                            offsetZ + z * this.tileSize
+                        );
+                        
+                        tileMesh.rotation.x = -Math.PI / 2;
+                        tileMesh.receiveShadow = true;
+                        
+                        this.gridGroup.add(tileMesh);
+                    }
+                }
+                
+                // Add border
+                this.createGridBorder();
+            }
+            
+            createGridBorder() {
+                const borderMaterial = new THREE.LineBasicMaterial({ color: 0x666666 });
+                const borderPoints = [];
+                const halfWidth = this.gridWidth * this.tileSize / 2;
+                const halfHeight = this.gridHeight * this.tileSize / 2;
+                
+                borderPoints.push(new THREE.Vector3(-halfWidth, 0.01, -halfHeight));
+                borderPoints.push(new THREE.Vector3(halfWidth, 0.01, -halfHeight));
+                borderPoints.push(new THREE.Vector3(halfWidth, 0.01, halfHeight));
+                borderPoints.push(new THREE.Vector3(-halfWidth, 0.01, halfHeight));
+                borderPoints.push(new THREE.Vector3(-halfWidth, 0.01, -halfHeight));
+                
+                const borderGeometry = new THREE.BufferGeometry().setFromPoints(borderPoints);
+                const borderLine = new THREE.Line(borderGeometry, borderMaterial);
+                
+                this.gridGroup.add(borderLine);
+            }
+            
+            getGroup() {
+                return this.gridGroup;
+            }
+            
+            getDimensions() {
+                return {
+                    width: this.gridWidth,
+                    height: this.gridHeight,
+                    tileSize: this.tileSize
+                };
+            }
+        }
+        
+        // PlayerControls Class
+        class PlayerControls {
+            constructor(player, isometricCamera, domElement) {
+                this.player = player;
+                this.isometricCamera = isometricCamera;
+                this.domElement = domElement;
+                this.zoomSpeed = 0.1;
+                this.cameraSmoothing = 0.1;
+                this.cameraOffset = new THREE.Vector3(8, 12, 8);
+                
+                this.keys = {
+                    forward: false, backward: false, left: false, right: false
+                };
+                
+                this.setupEventListeners();
+                console.log('🎮 Player controls initialized - WASD/Arrows move player, mouse wheel zooms');
+            }
+            
+            setupEventListeners() {
+                document.addEventListener('keydown', this.onKeyDown.bind(this));
+                document.addEventListener('keyup', this.onKeyUp.bind(this));
+                this.domElement.addEventListener('wheel', this.onWheel.bind(this));
+                this.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+            }
+            
+            onKeyDown(event) {
+                switch (event.code) {
+                    case 'KeyW': case 'ArrowUp': this.keys.forward = true; break;
+                    case 'KeyS': case 'ArrowDown': this.keys.backward = true; break;
+                    case 'KeyA': case 'ArrowLeft': this.keys.left = true; break;
+                    case 'KeyD': case 'ArrowRight': this.keys.right = true; break;
+                }
+            }
+            
+            onKeyUp(event) {
+                switch (event.code) {
+                    case 'KeyW': case 'ArrowUp': this.keys.forward = false; break;
+                    case 'KeyS': case 'ArrowDown': this.keys.backward = false; break;
+                    case 'KeyA': case 'ArrowLeft': this.keys.left = false; break;
+                    case 'KeyD': case 'ArrowRight': this.keys.right = false; break;
+                }
+            }
+            
+            onWheel(event) {
+                event.preventDefault();
+                
+                // Check if pixelation is enabled
+                const pixelationEnabled = window.game?.pixelPostProcessing?.pixelationEnabled;
+                
+                if (pixelationEnabled) {
+                    // Adjust pixelation zoom when pixelation is active
+                    if (event.deltaY > 0) {
+                        this.adjustPixelZoom(-1); // Less pixelation
+                    } else {
+                        this.adjustPixelZoom(1); // More pixelation
+                    }
+                } else {
+                    // Normal camera zoom when pixelation is disabled
+                    const zoomFactor = event.deltaY > 0 ? 1 + this.zoomSpeed : 1 - this.zoomSpeed;
+                    this.isometricCamera.zoom(zoomFactor);
+                }
+            }
+            
+            adjustPixelZoom(direction) {
+                // Discrete zoom levels for pixelation effect
+                const zoomLevels = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0];
+                
+                if (!this.currentZoomIndex) {
+                    this.currentZoomIndex = zoomLevels.indexOf(1.0); // Start at 1x
+                }
+                
+                this.currentZoomIndex = Math.max(0, Math.min(zoomLevels.length - 1, this.currentZoomIndex + direction));
+                const zoomLevel = zoomLevels[this.currentZoomIndex];
+                
+                // Apply the new zoom via the post-processing system
+                if (window.game && window.game.pixelPostProcessing) {
+                    window.game.pixelPostProcessing.setPixelationZoom(zoomLevel);
+                }
+                
+                console.log(`🔍 Pixelation zoom: ${zoomLevel}x`);
+            }
+            
+            update(deltaTime) {
+                // Move player based on input
+                if (this.keys.forward) this.player.move('forward', deltaTime);
+                if (this.keys.backward) this.player.move('backward', deltaTime);
+                if (this.keys.left) this.player.move('left', deltaTime);
+                if (this.keys.right) this.player.move('right', deltaTime);
+                
+                // Update player
+                this.player.update(deltaTime);
+                
+                // Make camera follow player smoothly
+                this.updateCameraFollow();
+            }
+            
+            updateCameraFollow() {
+                // Get player position
+                const playerPos = this.player.getPosition();
+                
+                // Calculate desired camera position
+                const targetCameraPos = playerPos.clone().add(this.cameraOffset);
+                
+                // Smoothly move camera towards target position
+                this.isometricCamera.camera.position.lerp(targetCameraPos, this.cameraSmoothing);
+                
+                // Make camera look at player position
+                this.isometricCamera.camera.lookAt(playerPos);
+            }
+        }
+        
+        // Player Class
+        class Player {
+            constructor(scene, gridSize = 20) {
+                this.scene = scene;
+                this.gridSize = gridSize;
+                this.position = new THREE.Vector3(0, 0, 0);
+                this.targetPosition = new THREE.Vector3(0, 0, 0);
+                this.speed = 8.0;
+                this.smoothing = 0.15;
+                
+                this.createPlayerMesh();
+            }
+            
+            createPlayerMesh() {
+                // Create a simple player character - a colored capsule
+                const playerGeometry = new THREE.CapsuleGeometry(0.4, 1.6, 4, 8);
+                const playerMaterial = new THREE.MeshLambertMaterial({ 
+                    color: 0x4169E1 // Royal blue
+                });
+                
+                this.mesh = new THREE.Mesh(playerGeometry, playerMaterial);
+                this.mesh.position.copy(this.position);
+                this.mesh.position.y = 0.8; // Half the capsule height above ground
+                this.mesh.castShadow = true;
+                this.mesh.receiveShadow = true;
+                
+                // Add a simple "face" indicator (small sphere)
+                const faceGeometry = new THREE.SphereGeometry(0.15, 8, 6);
+                const faceMaterial = new THREE.MeshLambertMaterial({ 
+                    color: 0xFFFFFF // White face
+                });
+                
+                this.face = new THREE.Mesh(faceGeometry, faceMaterial);
+                this.face.position.set(0, 0.3, 0.35); // Front of the capsule
+                this.face.castShadow = true;
+                this.mesh.add(this.face);
+                
+                this.scene.add(this.mesh);
+                
+                console.log('👤 Player created at position:', this.position);
+            }
+            
+            move(direction, deltaTime) {
+                // Calculate movement vector
+                const moveVector = new THREE.Vector3();
+                
+                switch(direction) {
+                    case 'forward':
+                        moveVector.z = -1;
+                        break;
+                    case 'backward':
+                        moveVector.z = 1;
+                        break;
+                    case 'left':
+                        moveVector.x = -1;
+                        break;
+                    case 'right':
+                        moveVector.x = 1;
+                        break;
+                }
+                
+                // Apply movement with speed
+                const movement = moveVector.multiplyScalar(this.speed * deltaTime);
+                this.targetPosition.add(movement);
+                
+                // Clamp to grid bounds
+                const bounds = this.gridSize;
+                this.targetPosition.x = Math.max(-bounds, Math.min(bounds, this.targetPosition.x));
+                this.targetPosition.z = Math.max(-bounds, Math.min(bounds, this.targetPosition.z));
+            }
+            
+            update(deltaTime) {
+                // Smooth interpolation to target position
+                this.position.lerp(this.targetPosition, this.smoothing);
+                
+                // Update mesh position
+                this.mesh.position.x = this.position.x;
+                this.mesh.position.z = this.position.z;
+                
+                // Simple walking animation - bob up and down
+                const walkSpeed = 10;
+                const bobAmount = 0.1;
+                const moving = this.position.distanceTo(this.targetPosition) > 0.01;
+                
+                if (moving) {
+                    const time = performance.now() * 0.001;
+                    this.mesh.position.y = 0.8 + Math.sin(time * walkSpeed) * bobAmount;
+                    
+                    // Slight rotation for walking effect
+                    this.mesh.rotation.z = Math.sin(time * walkSpeed * 0.5) * 0.05;
+                } else {
+                    // Return to rest position
+                    this.mesh.position.y = 0.8;
+                    this.mesh.rotation.z = 0;
+                }
+            }
+            
+            getPosition() {
+                return this.position.clone();
+            }
+            
+            setPosition(x, z) {
+                this.position.set(x, 0, z);
+                this.targetPosition.set(x, 0, z);
+                this.mesh.position.set(x, 0.8, z);
+            }
+        }
+        
+        // Enhanced Pixel Shader with Edge Highlights and Directional Shadows
+        const PixelShader = {
+            name: 'PixelShader',
+            uniforms: {
+                'tDiffuse': { value: null },
+                'tDepth': { value: null },
+                'resolution': { value: new THREE.Vector2() },
+                'pixelSize': { value: 6.0 },
+                'edgeThreshold': { value: 0.1 },
+                'edgeColor': { value: new THREE.Color(0.2, 0.2, 0.2) },
+                'shadowIntensity': { value: 0.3 },
+                'cameraNear': { value: 0.1 },
+                'cameraFar': { value: 1000.0 },
+                'sunDirection': { value: new THREE.Vector3(0.5, 0.8, 0.3) },
+                'sunColor': { value: new THREE.Color(1.0, 0.9, 0.7) },
+                'skyColor': { value: new THREE.Color(0.5, 0.7, 1.0) },
+                'cameraViewMatrix': { value: new THREE.Matrix4() },
+                'cameraProjectionMatrix': { value: new THREE.Matrix4() },
+                'showPixelGrid': { value: 1.0 },
+                'gridIntensity': { value: 0.1 }
+            },
+            
+            vertexShader: /* glsl */`
+                varying highp vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+                }
+            `,
+            
+            fragmentShader: /* glsl */`
+                uniform sampler2D tDiffuse;
+                uniform sampler2D tDepth;
+                uniform float pixelSize;
+                uniform vec2 resolution;
+                uniform float edgeThreshold;
+                uniform vec3 edgeColor;
+                uniform float shadowIntensity;
+                uniform float cameraNear;
+                uniform float cameraFar;
+                uniform vec3 sunDirection;
+                uniform vec3 sunColor;
+                uniform vec3 skyColor;
+                uniform mat4 cameraViewMatrix;
+                uniform mat4 cameraProjectionMatrix;
+                uniform float showPixelGrid;
+                uniform float gridIntensity;
+                varying highp vec2 vUv;
+                
+                float readDepth(vec2 coord) {
+                    float z_b = texture2D(tDepth, coord).x;
+                    float z_n = 2.0 * z_b - 1.0;
+                    return 2.0 * cameraNear * cameraFar / (cameraFar + cameraNear - z_n * (cameraFar - cameraNear));
+                }
+                
+                vec3 getWorldPosition(vec2 coord) {
+                    float depth = texture2D(tDepth, coord).x;
+                    vec3 ndc = vec3(coord * 2.0 - 1.0, depth * 2.0 - 1.0);
+                    vec4 worldPos = inverse(cameraProjectionMatrix * cameraViewMatrix) * vec4(ndc, 1.0);
+                    return worldPos.xyz / worldPos.w;
+                }
+                
+                vec3 getWorldNormal(vec2 coord) {
+                    vec2 texelSize = pixelSize / resolution;
+                    
+                    vec3 posCenter = getWorldPosition(coord);
+                    vec3 posRight = getWorldPosition(coord + vec2(texelSize.x, 0.0));
+                    vec3 posUp = getWorldPosition(coord + vec2(0.0, texelSize.y));
+                    
+                    vec3 tangent = normalize(posRight - posCenter);
+                    vec3 bitangent = normalize(posUp - posCenter);
+                    
+                    return normalize(cross(tangent, bitangent));
+                }
+                
+                float getEdgeValue(vec2 coord) {
+                    vec2 texelSize = pixelSize / resolution;
+                    
+                    // Sample depth at current pixel and neighbors
+                    float depth = readDepth(coord);
+                    float depthN = readDepth(coord + vec2(0.0, texelSize.y));
+                    float depthS = readDepth(coord + vec2(0.0, -texelSize.y));
+                    float depthE = readDepth(coord + vec2(texelSize.x, 0.0));
+                    float depthW = readDepth(coord + vec2(-texelSize.x, 0.0));
+                    
+                    // Calculate depth differences for edge detection
+                    float depthDiff = abs(depth - depthN) + abs(depth - depthS) + 
+                                     abs(depth - depthE) + abs(depth - depthW);
+                    
+                    return smoothstep(edgeThreshold * 0.5, edgeThreshold, depthDiff);
+                }
+                
+                vec3 calculateDirectionalShadow(vec3 color, vec2 coord) {
+                    vec2 texelSize = pixelSize / resolution;
+                    
+                    // Get world normal for lighting calculation
+                    vec3 worldNormal = getWorldNormal(coord);
+                    
+                    // Calculate directional lighting from sun
+                    float NdotL = max(0.0, dot(normalize(worldNormal), normalize(sunDirection)));
+                    
+                    // Create shadow based on sun direction
+                    vec2 shadowOffset = normalize(sunDirection.xy) * texelSize * 2.0;
+                    float currentDepth = readDepth(coord);
+                    float shadowDepth = readDepth(coord + shadowOffset);
+                    
+                    // If the shadow sample is closer to camera, we're in shadow
+                    float shadowFactor = currentDepth > shadowDepth + 0.5 ? (1.0 - shadowIntensity) : 1.0;
+                    
+                    // Combine directional lighting with shadow
+                    float lightingFactor = mix(0.3, 1.0, NdotL); // Ambient + directional
+                    float finalFactor = lightingFactor * shadowFactor;
+                    
+                    return color * finalFactor;
+                }
+                
+                vec3 calculateSkyColor(vec2 coord) {
+                    // Check if we're looking at sky (far depth)
+                    float depth = readDepth(coord);
+                    if (depth > cameraFar * 0.99) {
+                        // Sky gradient from horizon to zenith
+                        float skyGradient = smoothstep(0.0, 1.0, coord.y);
+                        vec3 horizonColor = mix(sunColor * 0.8, skyColor * 0.6, 0.5);
+                        vec3 zenithColor = skyColor;
+                        return mix(horizonColor, zenithColor, skyGradient);
+                    }
+                    return vec3(0.0); // Not sky
+                }
+                
+                float getPixelGrid(vec2 coord) {
+                    // Calculate pixel grid lines
+                    vec2 dxy = pixelSize / resolution;
+                    vec2 pixelPos = coord / dxy;
+                    vec2 grid = abs(fract(pixelPos) - 0.5);
+                    
+                    // Create thin grid lines near pixel boundaries
+                    float gridLineWidth = 0.05; // How thick the grid lines are
+                    float gridX = smoothstep(0.5 - gridLineWidth, 0.5, grid.x);
+                    float gridY = smoothstep(0.5 - gridLineWidth, 0.5, grid.y);
+                    
+                    // Combine horizontal and vertical grid lines
+                    float gridValue = max(gridX, gridY);
+                    
+                    return gridValue * gridIntensity * showPixelGrid;
+                }
+                
+                void main(){
+                    vec2 dxy = pixelSize / resolution;
+                    vec2 coord = dxy * floor( vUv / dxy );
+                    
+                    // Sample the base color with nearest neighbor
+                    vec4 baseColor = texture2D(tDiffuse, coord);
+                    
+                    // Check if this is sky
+                    vec3 skyContribution = calculateSkyColor(coord);
+                    if (length(skyContribution) > 0.0) {
+                        // Add pixel grid to sky too
+                        float gridValue = getPixelGrid(vUv);
+                        vec3 skyWithGrid = mix(skyContribution, vec3(1.0), gridValue);
+                        gl_FragColor = vec4(skyWithGrid, 1.0);
+                        return;
+                    }
+                    
+                    // Calculate edge highlights
+                    float edgeValue = getEdgeValue(coord);
+                    
+                    // Apply directional shadow effect
+                    vec3 shadedColor = calculateDirectionalShadow(baseColor.rgb, coord);
+                    
+                    // Mix in edge highlights
+                    vec3 finalColor = mix(shadedColor, edgeColor, edgeValue);
+                    
+                    // Slight warm tint from sun
+                    finalColor = mix(finalColor, finalColor * sunColor, 0.1);
+                    
+                    // Slight contrast boost for pixel art look
+                    finalColor = pow(finalColor, vec3(0.9));
+                    
+                    // Add pixel grid overlay
+                    float gridValue = getPixelGrid(vUv);
+                    finalColor = mix(finalColor, vec3(1.0), gridValue);
+                    
+                    gl_FragColor = vec4(finalColor, baseColor.a);
+                }
+            `
+        };
+        
+        // PixelPostProcessing Class
+        class PixelPostProcessing {
+                    constructor(renderer, scene, camera, isometricCamera, baseResolutionWidth = 800) {
+            this.renderer = renderer;
+            this.scene = scene;
+            this.camera = camera;
+            this.isometricCamera = isometricCamera;
+            
+            // Dimetric projection with 2:1 pixel ratio + optional pixelation for retro aesthetics
+            this.pixelationEnabled = false; // Start with normal high-res rendering
+            this.pixelZoomLevel = 1.0; // Pixelation intensity when enabled
+            this.baseResolutionWidth = baseResolutionWidth;
+            this.baseZoom = 16;
+                
+                this.setupDepthRenderTarget();
+                this.setupComposer();
+            }
+            
+            setupDepthRenderTarget() {
+                // Create depth render target for edge detection
+                this.depthRenderTarget = new THREE.WebGLRenderTarget(
+                    window.innerWidth, 
+                    window.innerHeight, 
+                    {
+                        minFilter: THREE.NearestFilter,
+                        magFilter: THREE.NearestFilter,
+                        format: THREE.RGBAFormat,
+                        type: THREE.UnsignedByteType,
+                        depthBuffer: true,
+                        depthTexture: new THREE.DepthTexture()
+                    }
+                );
+                this.depthRenderTarget.depthTexture.format = THREE.DepthFormat;
+                this.depthRenderTarget.depthTexture.type = THREE.UnsignedShortType;
+            }
+            
+            setupComposer() {
+                console.log('🎨 Setting up Three.js pixel postprocessing...');
+                
+                // Create composer with nearest neighbor filtering
+                this.composer = new EffectComposer(this.renderer);
+                
+                // Disable antialiasing on render targets
+                this.composer.renderTarget1.texture.magFilter = THREE.NearestFilter;
+                this.composer.renderTarget1.texture.minFilter = THREE.NearestFilter;
+                this.composer.renderTarget2.texture.magFilter = THREE.NearestFilter;
+                this.composer.renderTarget2.texture.minFilter = THREE.NearestFilter;
+                
+                // Render pass
+                const renderPass = new RenderPass(this.scene, this.camera);
+                this.composer.addPass(renderPass);
+                
+                // Pixel pass with edge highlights and directional shadows
+                this.pixelPass = new ShaderPass(PixelShader);
+                this.pixelPass.uniforms['resolution'].value = new THREE.Vector2(
+                    window.innerWidth, 
+                    window.innerHeight
+                );
+                this.pixelPass.uniforms['pixelSize'].value = this.calculatePixelSize();
+                this.pixelPass.uniforms['tDepth'].value = this.depthRenderTarget.depthTexture;
+                this.pixelPass.uniforms['cameraNear'].value = this.camera.near;
+                this.pixelPass.uniforms['cameraFar'].value = this.camera.far;
+                this.pixelPass.uniforms['edgeThreshold'].value = 0.15;
+                this.pixelPass.uniforms['edgeColor'].value = new THREE.Color(0.1, 0.1, 0.1);
+                this.pixelPass.uniforms['shadowIntensity'].value = 0.4;
+                
+                // Sun and sky system
+                this.sunDirection = new THREE.Vector3(0.5, 0.8, 0.3).normalize();
+                this.pixelPass.uniforms['sunDirection'].value = this.sunDirection;
+                this.pixelPass.uniforms['sunColor'].value = new THREE.Color(1.0, 0.9, 0.7);
+                this.pixelPass.uniforms['skyColor'].value = new THREE.Color(0.5, 0.7, 1.0);
+                this.pixelPass.uniforms['cameraViewMatrix'].value = this.camera.matrixWorldInverse;
+                this.pixelPass.uniforms['cameraProjectionMatrix'].value = this.camera.projectionMatrix;
+                
+                // Pixel grid system
+                this.pixelPass.uniforms['showPixelGrid'].value = 1.0;
+                this.pixelPass.uniforms['gridIntensity'].value = 0.15;
+                
+                this.composer.addPass(this.pixelPass);
+                
+                // Output pass (for proper gamma correction)
+                const outputPass = new OutputPass();
+                this.composer.addPass(outputPass);
+                
+                console.log('✅ DIMETRIC projection with 2:1 pixel ratio initialized');
+                console.log('✅ Post-processing: Normal high-resolution rendering active');
+                console.log(`🔧 Controls: Q = toggle pixelation, mouse wheel = pixelation zoom (when enabled), WASD = move`);
+                console.log(`💡 Press Q to toggle retro pixelation effect for classic game look`);
+            }
+            
+            calculatePixelSize() {
+                // If pixelation is disabled, return 1 for normal rendering
+                if (!this.pixelationEnabled) {
+                    return 1;
+                }
+                
+                // Calculate pixelation effect when enabled
+                const zoomMultiplier = this.pixelZoomLevel || 1.0;
+                const basePixelSize = 8; // Standard pixel size for retro effect
+                const pixelSize = Math.max(2, Math.round(basePixelSize * zoomMultiplier / 2) * 2);
+                
+                // Only adjust camera when pixelation is active
+                this.adjustCameraToPixelGrid(pixelSize);
+                
+                console.log(`📐 Dimetric pixelation: ${pixelSize}px (${zoomMultiplier}x zoom, maintains 2:1 ratio)`);
+                return pixelSize;
+            }
+            
+            adjustCameraToPixelGrid(pixelSize) {
+                // Calculate the exact world view size for dimetric 2:1 projection
+                const screenWidth = window.innerWidth;
+                const screenHeight = window.innerHeight;
+                
+                // Calculate how many pixels we have in each direction
+                const pixelsWide = screenWidth / pixelSize;
+                const pixelsHigh = screenHeight / pixelSize;
+                
+                // For dimetric 2:1 ratio: diagonal moves 2 pixels horizontally, 1 pixel vertically
+                // Adjust world view to maintain this exact pixel relationship
+                const dimetricRatio = 2.0; // 2:1 pixel ratio
+                const worldViewWidth = pixelsWide / dimetricRatio;
+                const worldViewHeight = pixelsHigh / dimetricRatio;
+                
+                // Update the camera's orthographic view
+                this.isometricCamera.viewSize = Math.min(worldViewWidth, worldViewHeight);
+                this.isometricCamera.updateProjection();
+                
+                console.log(`📐 Dimetric camera aligned - View: ${this.isometricCamera.viewSize.toFixed(1)} units, 2:1 ratio`);
+            }
+            
+            render() {
+                // Update pixel size
+                if (this.pixelPass) {
+                    const pixelSize = this.calculatePixelSize();
+                    this.pixelPass.uniforms['pixelSize'].value = pixelSize;
+                    
+                    // Only snap camera to pixel boundaries when pixelation is enabled
+                    if (this.pixelationEnabled) {
+                        this.isometricCamera.snapToPixelBoundary();
+                    }
+                    
+                    // Update camera matrices for world space calculations
+                    this.pixelPass.uniforms['cameraViewMatrix'].value.copy(this.camera.matrixWorldInverse);
+                    this.pixelPass.uniforms['cameraProjectionMatrix'].value.copy(this.camera.projectionMatrix);
+                }
+                
+                // First render the scene to capture depth information
+                this.renderer.setRenderTarget(this.depthRenderTarget);
+                this.renderer.render(this.scene, this.camera);
+                this.renderer.setRenderTarget(null);
+                
+                // Then render with post-processing effects
+                this.composer.render();
+            }
+            
+            adjustBaseResolution(delta) {
+                // Adjust resolution in steps that maintain 2-pixel diagonal alignment
+                const step = delta * 32; // Use multiples of 32 for better alignment
+                this.baseResolutionWidth = Math.max(320, Math.min(1600, this.baseResolutionWidth + step));
+                
+                // Snap to multiples of 32 for consistent pixel alignment
+                this.baseResolutionWidth = Math.round(this.baseResolutionWidth / 32) * 32;
+                
+                // Update pixel size when resolution changes
+                if (this.pixelPass) {
+                    this.pixelPass.uniforms['pixelSize'].value = this.calculatePixelSize();
+                }
+                
+                console.log(`🎨 Virtual resolution: ${this.baseResolutionWidth}px (maintains 2-pixel diagonals)`);
+            }
+            
+            adjustEdgeThreshold(delta) {
+                if (this.pixelPass) {
+                    const currentThreshold = this.pixelPass.uniforms['edgeThreshold'].value;
+                    const newThreshold = Math.max(0.05, Math.min(0.5, currentThreshold + delta * 0.05));
+                    this.pixelPass.uniforms['edgeThreshold'].value = newThreshold;
+                    console.log(`🔳 Edge threshold: ${newThreshold.toFixed(2)}`);
+                }
+            }
+            
+            adjustShadowIntensity(delta) {
+                if (this.pixelPass) {
+                    const currentIntensity = this.pixelPass.uniforms['shadowIntensity'].value;
+                    const newIntensity = Math.max(0.0, Math.min(1.0, currentIntensity + delta * 0.1));
+                    this.pixelPass.uniforms['shadowIntensity'].value = newIntensity;
+                    console.log(`🌑 Shadow intensity: ${newIntensity.toFixed(2)}`);
+                }
+            }
+            
+            adjustSunPosition(deltaX, deltaY) {
+                if (this.pixelPass && this.sunDirection) {
+                    // Rotate sun position around Y axis (horizontal) and adjust elevation
+                    const currentDir = this.sunDirection.clone();
+                    
+                    // Horizontal rotation (azimuth)
+                    const angle = Math.atan2(currentDir.z, currentDir.x) + deltaX * 0.1;
+                    
+                    // Vertical adjustment (elevation)
+                    const elevation = Math.asin(currentDir.y) + deltaY * 0.1;
+                    const elevationClamped = Math.max(0.1, Math.min(Math.PI * 0.4, elevation));
+                    
+                    // Calculate new direction
+                    const radius = Math.cos(elevationClamped);
+                    this.sunDirection.set(
+                        Math.cos(angle) * radius,
+                        Math.sin(elevationClamped),
+                        Math.sin(angle) * radius
+                    ).normalize();
+                    
+                    this.pixelPass.uniforms['sunDirection'].value.copy(this.sunDirection);
+                    
+                    console.log(`☀️ Sun position: (${this.sunDirection.x.toFixed(2)}, ${this.sunDirection.y.toFixed(2)}, ${this.sunDirection.z.toFixed(2)})`);
+                }
+            }
+            
+            updateSceneLighting() {
+                // This will be called from the main game to update the directional light
+                if (this.onSunDirectionChange) {
+                    this.onSunDirectionChange(this.sunDirection);
+                }
+            }
+            
+            togglePixelGrid() {
+                if (this.pixelPass) {
+                    const currentValue = this.pixelPass.uniforms['showPixelGrid'].value;
+                    this.pixelPass.uniforms['showPixelGrid'].value = currentValue > 0.5 ? 0.0 : 1.0;
+                    console.log(`🔲 Pixel grid: ${this.pixelPass.uniforms['showPixelGrid'].value > 0.5 ? 'ON' : 'OFF'}`);
+                }
+            }
+            
+            adjustGridIntensity(delta) {
+                if (this.pixelPass) {
+                    const currentIntensity = this.pixelPass.uniforms['gridIntensity'].value;
+                    const newIntensity = Math.max(0.0, Math.min(0.5, currentIntensity + delta * 0.05));
+                    this.pixelPass.uniforms['gridIntensity'].value = newIntensity;
+                    console.log(`🔲 Grid intensity: ${newIntensity.toFixed(2)}`);
+                }
+            }
+            
+            increasePixelSize() {
+                // Legacy method - now handled by adjustBaseResolution
+                this.adjustBaseResolution(-1);
+            }
+            
+            decreasePixelSize() {
+                // Legacy method - now handled by adjustBaseResolution
+                this.adjustBaseResolution(1);
+            }
+            
+            onWindowResize(width, height) {
+                this.composer.setSize(width, height);
+                this.depthRenderTarget.setSize(width, height);
+                
+                if (this.pixelPass) {
+                    this.pixelPass.uniforms['resolution'].value.set(width, height);
+                    this.pixelPass.uniforms['pixelSize'].value = this.calculatePixelSize();
+                }
+            }
+            
+            getPixelSize() {
+                return Math.round(this.calculatePixelSize());
+            }
+            
+            getVirtualResolution() {
+                const aspectRatio = window.innerWidth / window.innerHeight;
+                return {
+                    width: this.baseResolutionWidth,
+                    height: Math.round(this.baseResolutionWidth / aspectRatio)
+                };
+            }
+            
+            setPixelationZoom(zoomLevel) {
+                // Set pixelation zoom level (only affects pixelated mode)
+                this.pixelZoomLevel = zoomLevel;
+                
+                // Recalculate and apply the new pixel size
+                if (this.pixelPass) {
+                    this.pixelPass.uniforms['pixelSize'].value = this.calculatePixelSize();
+                }
+                
+                console.log(`📐 Pixelation zoom: ${zoomLevel}x`);
+            }
+            
+            togglePixelation() {
+                this.pixelationEnabled = !this.pixelationEnabled;
+                
+                if (this.pixelPass) {
+                    this.pixelPass.uniforms['pixelSize'].value = this.calculatePixelSize();
+                }
+                
+                console.log(`🎨 Dimetric pixelation: ${this.pixelationEnabled ? 'ENABLED (retro 2:1 tiles)' : 'DISABLED (smooth rendering)'}`);
+            }
+            
+            setFixedPixelSize(pixelSize) {
+                // Legacy method - now just sets pixelation zoom
+                const zoomLevel = pixelSize / 8; // Convert pixel size to zoom level
+                this.setPixelationZoom(zoomLevel);
+            }
+        }
+        
+        // Main Game Class
+        class IsometricFarmingGame {
+            constructor() {
+                console.log('🎮 Initializing game...');
+                
+                this.scene = null;
+                this.renderer = null;
+                this.clock = new THREE.Clock();
+                this.camera = null;
+                this.tileGrid = null;
+                this.player = null;
+                this.controls = null;
+                this.pixelPostProcessing = null;
+                this.usePostProcessing = true; // Enable post-processing by default
+                
+                this.init();
+            }
+            
+            async init() {
+                try {
+                    this.setupRenderer();
+                    this.setupScene();
+                    this.setupCamera();
+                    this.setupGrid();
+                    this.setupLighting();
+                    this.setupPlayer();
+                    this.setupControls();
+                    this.setupPostProcessing();
+                    this.setupEventListeners();
+                    this.addSampleObjects();
+                    
+                    this.animate();
+                    
+                    console.log('✅ Game initialized successfully!');
+                    this.updateDebugInfo();
+                    
+                } catch (error) {
+                    console.error('❌ Game initialization failed:', error);
+                    const debugEl = document.getElementById('debugInfo');
+                    if (debugEl) debugEl.textContent = `ERROR: ${error.message}`;
+                }
+            }
+            
+            setupRenderer() {
+                console.log('🖥️ Setting up renderer...');
+                this.renderer = new THREE.WebGLRenderer({ 
+                    antialias: false, 
+                    alpha: true,
+                    powerPreference: "high-performance"
+                });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setClearColor(0x87CEEB, 1);
+                this.renderer.shadowMap.enabled = true;
+                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                
+                // Disable texture filtering for pixel-perfect rendering
+                this.renderer.getContext().getExtension('EXT_texture_filter_anisotropic');
+                
+                document.getElementById('gameContainer').appendChild(this.renderer.domElement);
+            }
+            
+            setupScene() {
+                console.log('🌍 Setting up scene...');
+                this.scene = new THREE.Scene();
+                
+                // Create sky gradient background
+                this.setupSkyBackground();
+                this.scene.fog = new THREE.Fog(0x87CEEB, 50, 100);
+            }
+            
+            setupSkyBackground() {
+                // Create a large sky dome
+                const skyGeometry = new THREE.SphereGeometry(200, 32, 32);
+                const skyMaterial = new THREE.ShaderMaterial({
+                    uniforms: {
+                        sunDirection: { value: new THREE.Vector3(0.5, 0.8, 0.3) },
+                        sunColor: { value: new THREE.Color(1.0, 0.9, 0.7) },
+                        skyColor: { value: new THREE.Color(0.5, 0.7, 1.0) }
+                    },
+                    vertexShader: `
+                        varying vec3 vWorldPosition;
+                        void main() {
+                            vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                            vWorldPosition = worldPosition.xyz;
+                            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                        }
+                    `,
+                    fragmentShader: `
+                        uniform vec3 sunDirection;
+                        uniform vec3 sunColor;
+                        uniform vec3 skyColor;
+                        varying vec3 vWorldPosition;
+                        
+                        void main() {
+                            vec3 direction = normalize(vWorldPosition);
+                            
+                            // Sky gradient
+                            float elevation = direction.y;
+                            vec3 horizonColor = mix(sunColor * 0.8, skyColor * 0.6, 0.5);
+                            vec3 zenithColor = skyColor;
+                            vec3 color = mix(horizonColor, zenithColor, smoothstep(0.0, 1.0, elevation));
+                            
+                            // Sun disk
+                            float sunDot = dot(direction, normalize(sunDirection));
+                            float sunDisk = smoothstep(0.996, 0.998, sunDot);
+                            color = mix(color, sunColor * 2.0, sunDisk);
+                            
+                            // Sun glow
+                            float sunGlow = smoothstep(0.94, 0.996, sunDot);
+                            color = mix(color, sunColor * 1.5, sunGlow * 0.3);
+                            
+                            gl_FragColor = vec4(color, 1.0);
+                        }
+                    `,
+                    side: THREE.BackSide
+                });
+                
+                this.skyDome = new THREE.Mesh(skyGeometry, skyMaterial);
+                this.scene.add(this.skyDome);
+            }
+            
+            setupCamera() {
+                console.log('📷 Setting up camera...');
+                const aspectRatio = window.innerWidth / window.innerHeight;
+                this.camera = new IsometricCamera(aspectRatio, 20);
+            }
+            
+            setupGrid() {
+                console.log('🔲 Setting up grid...');
+                this.tileGrid = new TileGrid(10, 10, 2);
+                this.scene.add(this.tileGrid.getGroup());
+            }
+            
+            setupLighting() {
+                console.log('💡 Setting up lighting...');
+                
+                // Ambient light for general illumination
+                const ambientLight = new THREE.AmbientLight(0x404080, 0.4);
+                this.scene.add(ambientLight);
+                
+                // Main directional light (sun)
+                this.sunLight = new THREE.DirectionalLight(0xfff8e1, 1.0);
+                this.updateSunLightPosition(new THREE.Vector3(0.5, 0.8, 0.3));
+                this.sunLight.castShadow = true;
+                
+                this.sunLight.shadow.mapSize.width = 2048;
+                this.sunLight.shadow.mapSize.height = 2048;
+                this.sunLight.shadow.camera.near = 0.5;
+                this.sunLight.shadow.camera.far = 50;
+                this.sunLight.shadow.camera.left = -25;
+                this.sunLight.shadow.camera.right = 25;
+                this.sunLight.shadow.camera.top = 25;
+                this.sunLight.shadow.camera.bottom = -25;
+                
+                this.scene.add(this.sunLight);
+                
+                // Subtle fill light from opposite direction
+                const fillLight = new THREE.DirectionalLight(0x8bc5ff, 0.2);
+                fillLight.position.set(-5, 3, -5);
+                this.scene.add(fillLight);
+            }
+            
+            updateSunLightPosition(sunDirection) {
+                if (this.sunLight) {
+                    // Position the light in the direction of the sun
+                    const lightDistance = 30;
+                    this.sunLight.position.copy(sunDirection.clone().multiplyScalar(lightDistance));
+                    this.sunLight.target.position.set(0, 0, 0);
+                    this.sunLight.target.updateMatrixWorld();
+                }
+                
+                // Update sky dome sun position
+                if (this.skyDome && this.skyDome.material.uniforms) {
+                    this.skyDome.material.uniforms.sunDirection.value.copy(sunDirection);
+                }
+            }
+            
+            setupPlayer() {
+                console.log('👤 Setting up player...');
+                this.player = new Player(this.scene, 20);
+                // Start player at center of grid
+                this.player.setPosition(0, 0);
+            }
+            
+            setupControls() {
+                console.log('🎮 Setting up controls...');
+                this.controls = new PlayerControls(this.player, this.camera, this.renderer.domElement);
+            }
+            
+            setupPostProcessing() {
+                console.log('🎨 Setting up post-processing...');
+                try {
+                    this.pixelPostProcessing = new PixelPostProcessing(
+                        this.renderer,
+                        this.scene,
+                        this.camera.getCamera(),
+                        this.camera, // Pass the isometric camera for zoom-based pixel sizing
+                        320 // Base resolution width (like classic Game Boy: 160px, NES: 256px, SNES: 256px)
+                    );
+                    
+                    // Set up callback for sun direction changes
+                    this.pixelPostProcessing.onSunDirectionChange = (sunDirection) => {
+                        this.updateSunLightPosition(sunDirection);
+                    };
+                    
+                    console.log('✅ Post-processing initialized with sun/sky system');
+                } catch (error) {
+                    console.error('❌ Failed to setup post-processing:', error);
+                    this.usePostProcessing = false;
+                }
+            }
+            
+            setupEventListeners() {
+                window.addEventListener('resize', this.onWindowResize.bind(this));
+                
+                // Add key controls for post-processing effects
+                document.addEventListener('keydown', (event) => {
+                    switch (event.code) {
+                        case 'KeyQ':
+                            if (this.pixelPostProcessing) {
+                                this.pixelPostProcessing.togglePixelation();
+                            }
+                            break;
+                        case 'KeyE':
+                            // Reserved for future use
+                            console.log(`💡 E key: Reserved for future features`);
+                            break;
+                        case 'KeyR':
+                            if (this.pixelPostProcessing) {
+                                this.pixelPostProcessing.adjustEdgeThreshold(1);
+                            }
+                            break;
+                        case 'KeyF':
+                            if (this.pixelPostProcessing) {
+                                this.pixelPostProcessing.adjustEdgeThreshold(-1);
+                            }
+                            break;
+                        case 'KeyT':
+                            if (this.pixelPostProcessing) {
+                                this.pixelPostProcessing.adjustShadowIntensity(1);
+                            }
+                            break;
+                        case 'KeyG':
+                            if (this.pixelPostProcessing) {
+                                this.pixelPostProcessing.adjustShadowIntensity(-1);
+                            }
+                            break;
+                        case 'KeyU':
+                            if (this.pixelPostProcessing) {
+                                this.pixelPostProcessing.adjustSunPosition(-1, 0);
+                                this.pixelPostProcessing.updateSceneLighting();
+                            }
+                            break;
+                        case 'KeyJ':
+                            if (this.pixelPostProcessing) {
+                                this.pixelPostProcessing.adjustSunPosition(1, 0);
+                                this.pixelPostProcessing.updateSceneLighting();
+                            }
+                            break;
+                        case 'KeyI':
+                            if (this.pixelPostProcessing) {
+                                this.pixelPostProcessing.adjustSunPosition(0, 1);
+                                this.pixelPostProcessing.updateSceneLighting();
+                            }
+                            break;
+                        case 'KeyK':
+                            if (this.pixelPostProcessing) {
+                                this.pixelPostProcessing.adjustSunPosition(0, -1);
+                                this.pixelPostProcessing.updateSceneLighting();
+                            }
+                            break;
+                        case 'KeyY':
+                            if (this.pixelPostProcessing) {
+                                this.pixelPostProcessing.adjustGridIntensity(1);
+                            }
+                            break;
+                        case 'KeyH':
+                            if (this.pixelPostProcessing) {
+                                this.pixelPostProcessing.adjustGridIntensity(-1);
+                            }
+                            break;
+                        case 'KeyO':
+                            if (this.pixelPostProcessing) {
+                                this.pixelPostProcessing.togglePixelGrid();
+                            }
+                            break;
+                        case 'KeyP':
+                            this.togglePostProcessing();
+                            break;
+                    }
+                });
+                
+                // Create debug info element
+                if (!document.getElementById('debugInfo')) {
+                    const debugDiv = document.createElement('div');
+                    debugDiv.id = 'debugInfo';
+                    debugDiv.style.cssText = `
+                        position: absolute;
+                        top: 150px;
+                        left: 10px;
+                        color: white;
+                        font-family: monospace;
+                        font-size: 11px;
+                        background: rgba(0, 0, 0, 0.7);
+                        padding: 5px;
+                        border-radius: 3px;
+                        z-index: 101;
+                    `;
+                    document.body.appendChild(debugDiv);
+                }
+            }
+            
+            addSampleObjects() {
+                console.log('🌳 Adding sample objects...');
+                
+                // Trees
+                const treeGeometry = new THREE.ConeGeometry(0.5, 2, 8);
+                const treeMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+                
+                for (let i = 0; i < 5; i++) {
+                    const tree = new THREE.Mesh(treeGeometry, treeMaterial);
+                    tree.position.set(
+                        (Math.random() - 0.5) * 15,
+                        1,
+                        (Math.random() - 0.5) * 15
+                    );
+                    tree.castShadow = true;
+                    tree.receiveShadow = true;
+                    this.scene.add(tree);
+                }
+                
+                // House
+                const houseGeometry = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+                const houseMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+                const house = new THREE.Mesh(houseGeometry, houseMaterial);
+                house.position.set(3, 0.75, 3);
+                house.castShadow = true;
+                house.receiveShadow = true;
+                this.scene.add(house);
+                
+                // Add test diagonal line to demonstrate 2-pixel stepping
+                this.createTestDiagonalLine();
+            }
+            
+            createTestDiagonalLine() {
+                // Create a diagonal line to show off the 2-pixel stepping effect
+                const points = [];
+                
+                // Create a perfect diagonal from bottom-left to top-right
+                for (let i = 0; i <= 8; i++) {
+                    points.push(new THREE.Vector3(-6 + i, 0.1, -6 + i));
+                }
+                
+                const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+                const lineMaterial = new THREE.LineBasicMaterial({ 
+                    color: 0xff0000, 
+                    linewidth: 3 
+                });
+                
+                const diagonalLine = new THREE.Line(lineGeometry, lineMaterial);
+                this.scene.add(diagonalLine);
+                
+                // Also add a straight horizontal line for comparison
+                const horizontalPoints = [
+                    new THREE.Vector3(-6, 0.1, 2),
+                    new THREE.Vector3(2, 0.1, 2)
+                ];
+                const horizontalGeometry = new THREE.BufferGeometry().setFromPoints(horizontalPoints);
+                const horizontalMaterial = new THREE.LineBasicMaterial({ 
+                    color: 0x00ff00, 
+                    linewidth: 3 
+                });
+                const horizontalLine = new THREE.Line(horizontalGeometry, horizontalMaterial);
+                this.scene.add(horizontalLine);
+                
+                console.log('📐 Test lines added - Red diagonal (2-pixel stepping), Green horizontal');
+            }
+            
+            togglePostProcessing() {
+                this.usePostProcessing = !this.usePostProcessing;
+                console.log('🎨 Post-processing:', this.usePostProcessing ? 'enabled' : 'disabled');
+            }
+            
+            onWindowResize() {
+                const newAspectRatio = window.innerWidth / window.innerHeight;
+                this.camera.onWindowResize(newAspectRatio);
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                
+                // Update post-processing
+                if (this.pixelPostProcessing) {
+                    this.pixelPostProcessing.onWindowResize(window.innerWidth, window.innerHeight);
+                }
+            }
+            
+            updateDebugInfo() {
+                const debugEl = document.getElementById('debugInfo');
+                if (debugEl) {
+                    const playerPos = this.player ? this.player.getPosition() : { x: 0, y: 0, z: 0 };
+                    const cameraPos = this.camera.getCamera().position;
+                    const virtualRes = this.pixelPostProcessing ? this.pixelPostProcessing.getVirtualResolution() : null;
+                    const edgeThreshold = this.pixelPostProcessing?.pixelPass?.uniforms['edgeThreshold']?.value || 0;
+                    const shadowIntensity = this.pixelPostProcessing?.pixelPass?.uniforms['shadowIntensity']?.value || 0;
+                    const sunDir = this.pixelPostProcessing?.sunDirection || { x: 0, y: 0, z: 0 };
+                    const showGrid = this.pixelPostProcessing?.pixelPass?.uniforms['showPixelGrid']?.value > 0.5;
+                    const gridIntensity = this.pixelPostProcessing?.pixelPass?.uniforms['gridIntensity']?.value || 0;
+                    
+                    const pixelationEnabled = this.pixelPostProcessing?.pixelationEnabled || false;
+                    const pixelZoom = this.pixelPostProcessing?.pixelZoomLevel || 1.0;
+                    
+                    debugEl.innerHTML = `
+                        Player: (${playerPos.x.toFixed(1)}, ${playerPos.z.toFixed(1)})<br>
+                        Camera: (${cameraPos.x.toFixed(1)}, ${cameraPos.y.toFixed(1)}, ${cameraPos.z.toFixed(1)})<br>
+                        Zoom: ${this.camera.viewSize.toFixed(1)}<br>
+                        Pixelation: ${pixelationEnabled ? `ON (${pixelZoom}x)` : 'OFF (normal rendering)'}<br>
+                        Pixel Size: ${this.pixelPostProcessing ? this.pixelPostProcessing.getPixelSize() : 'N/A'}<br>
+                        Edge Highlights: ${edgeThreshold.toFixed(2)}<br>
+                        Shadow Intensity: ${shadowIntensity.toFixed(2)}<br>
+                        Pixel Grid: ${showGrid ? 'ON' : 'OFF'} (${gridIntensity.toFixed(2)})<br>
+                        Sun Direction: (${sunDir.x.toFixed(2)}, ${sunDir.y.toFixed(2)}, ${sunDir.z.toFixed(2)})<br>
+                        Scene objects: ${this.scene.children.length}<br>
+                        Status: Running ✅<br>
+                        Projection: DIMETRIC (2:1 ratio)<br>
+                        <br>
+                        Controls: Q=toggle pixelation, wheel=zoom
+                    `;
+                }
+            }
+            
+            animate() {
+                requestAnimationFrame(this.animate.bind(this));
+                
+                const deltaTime = this.clock.getDelta();
+                
+                if (this.controls) {
+                    this.controls.update(deltaTime);
+                }
+                
+                // Render with or without post-processing
+                if (this.usePostProcessing && this.pixelPostProcessing) {
+                    this.pixelPostProcessing.render();
+                } else {
+                    this.renderer.render(this.scene, this.camera.getCamera());
+                }
+                
+                this.updateDebugInfo();
+            }
+        }
+        
+        // Start the game
+        document.addEventListener('DOMContentLoaded', () => {
+            const game = new IsometricFarmingGame();
+            window.game = game;
+            console.log('🎮 Game available as window.game');
+        });
+    </script>
+</body>
+</html> 

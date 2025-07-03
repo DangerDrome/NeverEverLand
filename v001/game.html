@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Isometric Farming Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            font-family: Arial, sans-serif;
+        }
+        
+        #gameContainer {
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 12px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        
+        #debugInfo {
+            position: absolute;
+            top: 150px;
+            left: 10px;
+            color: white;
+            font-family: monospace;
+            font-size: 11px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 5px;
+            border-radius: 3px;
+            z-index: 101;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer"></div>
+    <div id="controls">
+        <div>Controls:</div>
+        <div>WASD / Arrow Keys: Pan camera</div>
+        <div>Mouse Wheel: Zoom in/out</div>
+        <div>Q/E: Adjust pixelation</div>
+        <div>P: Toggle post-processing</div>
+    </div>
+    <div id="debugInfo">Loading...</div>
+    
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+        }
+    }
+    </script>
+    
+    <script type="module">
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+        
+        console.log('🎮 Starting Isometric Farming Game');
+        
+        // IsometricCamera Class
+        class IsometricCamera {
+            constructor(aspectRatio, viewSize = 20) {
+                this.viewSize = viewSize;
+                this.aspectRatio = aspectRatio;
+                
+                this.camera = new THREE.OrthographicCamera(
+                    -this.viewSize * this.aspectRatio / 2,
+                    this.viewSize * this.aspectRatio / 2,
+                    this.viewSize / 2,
+                    -this.viewSize / 2,
+                    0.1,
+                    1000
+                );
+                
+                this.setupIsometricPosition();
+            }
+            
+            setupIsometricPosition() {
+                const distance = 30;
+                const elevation = Math.PI / 6; // 30 degrees
+                const azimuth = Math.PI / 4;   // 45 degrees
+                
+                this.camera.position.set(
+                    distance * Math.cos(elevation) * Math.cos(azimuth),
+                    distance * Math.sin(elevation),
+                    distance * Math.cos(elevation) * Math.sin(azimuth)
+                );
+                
+                this.camera.lookAt(0, 0, 0);
+                this.camera.up.set(0, 1, 0);
+            }
+            
+            zoom(zoomFactor) {
+                this.viewSize *= zoomFactor;
+                this.viewSize = Math.max(5, Math.min(50, this.viewSize));
+                this.updateProjection();
+            }
+            
+            pan(deltaX, deltaZ) {
+                const panSpeed = 0.5;
+                const panVector = new THREE.Vector3(deltaX * panSpeed, 0, deltaZ * panSpeed);
+                this.camera.position.add(panVector);
+            }
+            
+            updateProjection() {
+                this.camera.left = -this.viewSize * this.aspectRatio / 2;
+                this.camera.right = this.viewSize * this.aspectRatio / 2;
+                this.camera.top = this.viewSize / 2;
+                this.camera.bottom = -this.viewSize / 2;
+                this.camera.updateProjectionMatrix();
+            }
+            
+            onWindowResize(newAspectRatio) {
+                this.aspectRatio = newAspectRatio;
+                this.updateProjection();
+            }
+            
+            getCamera() {
+                return this.camera;
+            }
+        }
+        
+        // TileGrid Class
+        class TileGrid {
+            constructor(gridWidth = 10, gridHeight = 10, tileSize = 2) {
+                this.gridWidth = gridWidth;
+                this.gridHeight = gridHeight;
+                this.tileSize = tileSize;
+                this.gridGroup = new THREE.Group();
+                
+                this.createGrid();
+            }
+            
+            createGrid() {
+                const grassMaterial = new THREE.MeshLambertMaterial({ 
+                    color: 0x4a7c3c,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                
+                const dirtMaterial = new THREE.MeshLambertMaterial({ 
+                    color: 0x8b4513,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                
+                const tileGeometry = new THREE.PlaneGeometry(
+                    this.tileSize * 0.95, 
+                    this.tileSize * 0.95
+                );
+                
+                const offsetX = -(this.gridWidth - 1) * this.tileSize / 2;
+                const offsetZ = -(this.gridHeight - 1) * this.tileSize / 2;
+                
+                for (let x = 0; x < this.gridWidth; x++) {
+                    for (let z = 0; z < this.gridHeight; z++) {
+                        const materialIndex = (x + z) % 2;
+                        const tileMesh = new THREE.Mesh(
+                            tileGeometry, 
+                            materialIndex === 0 ? grassMaterial : dirtMaterial
+                        );
+                        
+                        tileMesh.position.set(
+                            offsetX + x * this.tileSize,
+                            0,
+                            offsetZ + z * this.tileSize
+                        );
+                        
+                        tileMesh.rotation.x = -Math.PI / 2;
+                        tileMesh.receiveShadow = true;
+                        
+                        this.gridGroup.add(tileMesh);
+                    }
+                }
+                
+                // Add border
+                this.createGridBorder();
+            }
+            
+            createGridBorder() {
+                const borderMaterial = new THREE.LineBasicMaterial({ color: 0x666666 });
+                const borderPoints = [];
+                const halfWidth = this.gridWidth * this.tileSize / 2;
+                const halfHeight = this.gridHeight * this.tileSize / 2;
+                
+                borderPoints.push(new THREE.Vector3(-halfWidth, 0.01, -halfHeight));
+                borderPoints.push(new THREE.Vector3(halfWidth, 0.01, -halfHeight));
+                borderPoints.push(new THREE.Vector3(halfWidth, 0.01, halfHeight));
+                borderPoints.push(new THREE.Vector3(-halfWidth, 0.01, halfHeight));
+                borderPoints.push(new THREE.Vector3(-halfWidth, 0.01, -halfHeight));
+                
+                const borderGeometry = new THREE.BufferGeometry().setFromPoints(borderPoints);
+                const borderLine = new THREE.Line(borderGeometry, borderMaterial);
+                
+                this.gridGroup.add(borderLine);
+            }
+            
+            getGroup() {
+                return this.gridGroup;
+            }
+            
+            getDimensions() {
+                return {
+                    width: this.gridWidth,
+                    height: this.gridHeight,
+                    tileSize: this.tileSize
+                };
+            }
+        }
+        
+        // CameraControls Class
+        class CameraControls {
+            constructor(isometricCamera, domElement) {
+                this.isometricCamera = isometricCamera;
+                this.domElement = domElement;
+                this.panSpeed = 1.0;
+                this.zoomSpeed = 0.1;
+                this.smoothing = 0.1;
+                
+                this.keys = {
+                    forward: false, backward: false, left: false, right: false
+                };
+                
+                this.velocity = { x: 0, z: 0 };
+                this.targetVelocity = { x: 0, z: 0 };
+                
+                this.setupEventListeners();
+            }
+            
+            setupEventListeners() {
+                document.addEventListener('keydown', this.onKeyDown.bind(this));
+                document.addEventListener('keyup', this.onKeyUp.bind(this));
+                this.domElement.addEventListener('wheel', this.onWheel.bind(this));
+                this.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+            }
+            
+            onKeyDown(event) {
+                switch (event.code) {
+                    case 'KeyW': case 'ArrowUp': this.keys.forward = true; break;
+                    case 'KeyS': case 'ArrowDown': this.keys.backward = true; break;
+                    case 'KeyA': case 'ArrowLeft': this.keys.left = true; break;
+                    case 'KeyD': case 'ArrowRight': this.keys.right = true; break;
+                }
+                this.updateTargetVelocity();
+            }
+            
+            onKeyUp(event) {
+                switch (event.code) {
+                    case 'KeyW': case 'ArrowUp': this.keys.forward = false; break;
+                    case 'KeyS': case 'ArrowDown': this.keys.backward = false; break;
+                    case 'KeyA': case 'ArrowLeft': this.keys.left = false; break;
+                    case 'KeyD': case 'ArrowRight': this.keys.right = false; break;
+                }
+                this.updateTargetVelocity();
+            }
+            
+            onWheel(event) {
+                event.preventDefault();
+                const zoomFactor = event.deltaY > 0 ? 1 + this.zoomSpeed : 1 - this.zoomSpeed;
+                this.isometricCamera.zoom(zoomFactor);
+            }
+            
+            updateTargetVelocity() {
+                this.targetVelocity.x = 0;
+                this.targetVelocity.z = 0;
+                
+                if (this.keys.left) this.targetVelocity.x -= this.panSpeed;
+                if (this.keys.right) this.targetVelocity.x += this.panSpeed;
+                if (this.keys.forward) this.targetVelocity.z -= this.panSpeed;
+                if (this.keys.backward) this.targetVelocity.z += this.panSpeed;
+                
+                if (this.targetVelocity.x !== 0 && this.targetVelocity.z !== 0) {
+                    const length = Math.sqrt(this.targetVelocity.x ** 2 + this.targetVelocity.z ** 2);
+                    this.targetVelocity.x = this.targetVelocity.x / length * this.panSpeed;
+                    this.targetVelocity.z = this.targetVelocity.z / length * this.panSpeed;
+                }
+            }
+            
+            update(deltaTime) {
+                this.velocity.x = this.lerp(this.velocity.x, this.targetVelocity.x, this.smoothing);
+                this.velocity.z = this.lerp(this.velocity.z, this.targetVelocity.z, this.smoothing);
+                
+                if (Math.abs(this.velocity.x) > 0.01 || Math.abs(this.velocity.z) > 0.01) {
+                    this.isometricCamera.pan(this.velocity.x * deltaTime, this.velocity.z * deltaTime);
+                }
+            }
+            
+            lerp(start, end, factor) {
+                return start + (end - start) * factor;
+            }
+        }
+        
+        // Main Game Class
+        class IsometricFarmingGame {
+            constructor() {
+                console.log('🎮 Initializing game...');
+                
+                this.scene = null;
+                this.renderer = null;
+                this.clock = new THREE.Clock();
+                this.camera = null;
+                this.tileGrid = null;
+                this.controls = null;
+                this.usePostProcessing = false;
+                
+                this.init();
+            }
+            
+            async init() {
+                try {
+                    this.setupRenderer();
+                    this.setupScene();
+                    this.setupCamera();
+                    this.setupGrid();
+                    this.setupLighting();
+                    this.setupControls();
+                    this.setupEventListeners();
+                    this.addSampleObjects();
+                    
+                    this.animate();
+                    
+                    console.log('✅ Game initialized successfully!');
+                    this.updateDebugInfo();
+                    
+                } catch (error) {
+                    console.error('❌ Game initialization failed:', error);
+                    document.getElementById('debugInfo').textContent = `ERROR: ${error.message}`;
+                }
+            }
+            
+            setupRenderer() {
+                console.log('🖥️ Setting up renderer...');
+                this.renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setClearColor(0x87CEEB, 1);
+                this.renderer.shadowMap.enabled = true;
+                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                
+                document.getElementById('gameContainer').appendChild(this.renderer.domElement);
+            }
+            
+            setupScene() {
+                console.log('🌍 Setting up scene...');
+                this.scene = new THREE.Scene();
+                this.scene.background = new THREE.Color(0x87CEEB);
+                this.scene.fog = new THREE.Fog(0x87CEEB, 50, 100);
+            }
+            
+            setupCamera() {
+                console.log('📷 Setting up camera...');
+                const aspectRatio = window.innerWidth / window.innerHeight;
+                this.camera = new IsometricCamera(aspectRatio, 20);
+            }
+            
+            setupGrid() {
+                console.log('🔲 Setting up grid...');
+                this.tileGrid = new TileGrid(10, 10, 2);
+                this.scene.add(this.tileGrid.getGroup());
+            }
+            
+            setupLighting() {
+                console.log('💡 Setting up lighting...');
+                
+                const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+                this.scene.add(ambientLight);
+                
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(10, 20, 10);
+                directionalLight.castShadow = true;
+                
+                directionalLight.shadow.mapSize.width = 2048;
+                directionalLight.shadow.mapSize.height = 2048;
+                directionalLight.shadow.camera.near = 0.5;
+                directionalLight.shadow.camera.far = 50;
+                directionalLight.shadow.camera.left = -25;
+                directionalLight.shadow.camera.right = 25;
+                directionalLight.shadow.camera.top = 25;
+                directionalLight.shadow.camera.bottom = -25;
+                
+                this.scene.add(directionalLight);
+                
+                const rimLight = new THREE.DirectionalLight(0x8bc5ff, 0.3);
+                rimLight.position.set(-10, 5, -10);
+                this.scene.add(rimLight);
+            }
+            
+            setupControls() {
+                console.log('🎮 Setting up controls...');
+                this.controls = new CameraControls(this.camera, this.renderer.domElement);
+            }
+            
+            setupEventListeners() {
+                window.addEventListener('resize', this.onWindowResize.bind(this));
+            }
+            
+            addSampleObjects() {
+                console.log('🌳 Adding sample objects...');
+                
+                // Trees
+                const treeGeometry = new THREE.ConeGeometry(0.5, 2, 8);
+                const treeMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+                
+                for (let i = 0; i < 5; i++) {
+                    const tree = new THREE.Mesh(treeGeometry, treeMaterial);
+                    tree.position.set(
+                        (Math.random() - 0.5) * 15,
+                        1,
+                        (Math.random() - 0.5) * 15
+                    );
+                    tree.castShadow = true;
+                    tree.receiveShadow = true;
+                    this.scene.add(tree);
+                }
+                
+                // House
+                const houseGeometry = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+                const houseMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+                const house = new THREE.Mesh(houseGeometry, houseMaterial);
+                house.position.set(3, 0.75, 3);
+                house.castShadow = true;
+                house.receiveShadow = true;
+                this.scene.add(house);
+            }
+            
+            onWindowResize() {
+                const newAspectRatio = window.innerWidth / window.innerHeight;
+                this.camera.onWindowResize(newAspectRatio);
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+            
+            updateDebugInfo() {
+                const debugEl = document.getElementById('debugInfo');
+                if (debugEl) {
+                    const pos = this.camera.getCamera().position;
+                    debugEl.innerHTML = `
+                        Camera: (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)})<br>
+                        Zoom: ${this.camera.viewSize.toFixed(1)}<br>
+                        Scene objects: ${this.scene.children.length}<br>
+                        Status: Running ✅
+                    `;
+                }
+            }
+            
+            animate() {
+                requestAnimationFrame(this.animate.bind(this));
+                
+                const deltaTime = this.clock.getDelta();
+                
+                if (this.controls) {
+                    this.controls.update(deltaTime);
+                }
+                
+                this.renderer.render(this.scene, this.camera.getCamera());
+                this.updateDebugInfo();
+            }
+        }
+        
+        // Start the game
+        document.addEventListener('DOMContentLoaded', () => {
+            const game = new IsometricFarmingGame();
+            window.game = game;
+            console.log('🎮 Game available as window.game');
+        });
+    </script>
+</body>
+</html> 
