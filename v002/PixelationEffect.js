@@ -30,7 +30,8 @@ class PixelationEffect {
             uniforms: {
                 'tDiffuse': { value: null },
                 'resolution': { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-                'pixelSize': { value: this.pixelSize }
+                'pixelSize': { value: this.pixelSize },
+                'gridColor': { value: new THREE.Color(0x000000) }
             },
             vertexShader: `
                 varying vec2 vUv;
@@ -43,11 +44,18 @@ class PixelationEffect {
                 uniform sampler2D tDiffuse;
                 uniform vec2 resolution;
                 uniform float pixelSize;
+                uniform vec3 gridColor;
                 varying vec2 vUv;
                 void main() {
-                    vec2 grid = floor(vUv * resolution / pixelSize) * pixelSize / resolution;
-                    vec4 color = texture2D(tDiffuse, grid);
-                    gl_FragColor = color;
+                    vec2 coord = vUv * resolution;
+                    vec2 pixelCoord = floor(coord / pixelSize) * pixelSize;
+                    vec2 offset = coord - pixelCoord;
+                    vec4 color = texture2D(tDiffuse, (pixelCoord + vec2(0.5)) / resolution);
+                    if (offset.x < 1.0 || offset.y < 1.0) {
+                        gl_FragColor = vec4(gridColor, 1.0);
+                    } else {
+                        gl_FragColor = color;
+                    }
                 }
             `
         };

@@ -7,12 +7,58 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x87CEEB, 1);
 container.appendChild(renderer.domElement);
 
+// Pixel overlay grid canvas
+const pixelGridCanvas = document.createElement('canvas');
+pixelGridCanvas.id = 'pixelGridOverlay';
+pixelGridCanvas.style.position = 'absolute';
+pixelGridCanvas.style.top = '0';
+pixelGridCanvas.style.left = '0';
+pixelGridCanvas.style.pointerEvents = 'none'; // Allow clicks to pass through
+pixelGridCanvas.style.zIndex = '50';
+container.appendChild(pixelGridCanvas);
+
+// Base sizes for adaptive grid
+const baseViewSize = 16; // initial camera view size
+const basePixelSize = 4; // pixel size when view size is base
+let lastViewSize = baseViewSize;
+
+function drawPixelGrid() {
+    // Calculate pixel size relative to current zoom level
+    const zoomFactor = cameraController.viewSize / baseViewSize; // >1 when zoomed out
+    let pixelSize = Math.max(1, Math.round(basePixelSize / zoomFactor));
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    pixelGridCanvas.width = width;
+    pixelGridCanvas.height = height;
+    const ctx = pixelGridCanvas.getContext('2d');
+    ctx.clearRect(0, 0, width, height);
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+    ctx.lineWidth = 1;
+    // Vertical lines
+    for (let x = 0.5; x <= width; x += pixelSize) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+    }
+    // Horizontal lines
+    for (let y = 0.5; y <= height; y += pixelSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+    }
+}
+
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87CEEB);
 
 const aspect = window.innerWidth / window.innerHeight;
 const cameraController = new window.IsometricCamera(aspect, 16);
 const camera = cameraController.getCamera();
+// Ensure pixel grid is drawn now that cameraController exists
+lastViewSize = cameraController.viewSize;
+drawPixelGrid();
 
 const grid = new window.TileGrid(224, 224, 2, 1);
 scene.add(grid.getGroup());
@@ -135,6 +181,7 @@ document.addEventListener('keydown', (e) => {
     if (e.code === 'KeyG') {
         gridOverlayVisible = !gridOverlayVisible;
         if (grid.gridLines) grid.gridLines.visible = gridOverlayVisible;
+        pixelGridCanvas.style.display = gridOverlayVisible ? 'block' : 'none';
     }
     // Player movement
     if (e.code === 'ArrowUp' || e.code === 'KeyW') player.move(0, -1);
@@ -154,6 +201,11 @@ let fps = 0;
 function animate() {
     requestAnimationFrame(animate);
     const dt = clock.getDelta();
+    // Re-draw pixel grid if zoom changed
+    if (cameraController.viewSize !== lastViewSize) {
+        lastViewSize = cameraController.viewSize;
+        drawPixelGrid();
+    }
     // Animate camera focus
     if (cameraFocusTarget && cameraFocusProgress < 1) {
         cameraFocusProgress += dt / cameraFocusDuration;
@@ -218,6 +270,7 @@ window.addEventListener('resize', () => {
     const w = window.innerWidth, h = window.innerHeight;
     renderer.setSize(w, h);
     cameraController.onWindowResize(w / h);
+    drawPixelGrid();
 });
 
 // Run WFC once at start

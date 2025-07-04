@@ -1,0 +1,374 @@
+/* NeverEverLand v003 - ECS Demo Styles */
+body {
+    margin: 0;
+    padding: 0;
+    font-family: monospace;
+    background: #1a1a1a;
+    color: #fff;
+    overflow: hidden;
+}
+
+#container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+}
+
+#ui {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 15px;
+    border-radius: 5px;
+    border: 1px solid #333;
+    z-index: 100;
+    max-width: 300px;
+    font-size: 12px;
+}
+
+#ui.dragging {
+    user-select: none;
+    cursor: move;
+}
+
+#ui-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: -15px -15px 10px -15px;
+    padding: 10px 15px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 5px 5px 0 0;
+    cursor: move;
+}
+
+#ui-header:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+#ui-header h3 {
+    margin: 0;
+    color: #4CAF50;
+    font-size: 14px;
+}
+
+
+#ui button {
+    margin: 2px;
+    padding: 5px 10px;
+    background: #333;
+    color: #fff;
+    border: 1px solid #555;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: monospace;
+    font-size: 11px;
+}
+
+#ui button:hover {
+    background: #555;
+}
+
+#ui button:disabled {
+    background: #222;
+    color: #666;
+    cursor: not-allowed;
+}
+
+#ui button.danger {
+    background: #F44336;
+    border-color: #D32F2F;
+}
+
+#ui button.danger:hover {
+    background: #D32F2F;
+}
+
+#status {
+    margin: 10px 0;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    font-size: 11px;
+}
+
+#status div {
+    margin: 2px 0;
+}
+
+#inspector {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 320px;
+    height: 400px;
+    background: rgba(0, 0, 0, 0.9);
+    border: 2px solid #000;
+    border-radius: 5px;
+    font-family: monospace;
+    font-size: 12px;
+    z-index: 100;
+    resize: both;
+    overflow: hidden;
+    min-width: 250px;
+    min-height: 200px;
+}
+
+#inspector.dragging {
+    user-select: none;
+    cursor: move;
+}
+
+#inspector-header {
+    background: #333;
+    color: #fff;
+    padding: 10px;
+    border-bottom: 1px solid #555;
+    cursor: move;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: bold;
+}
+
+#inspector-header:hover {
+    background: #444;
+}
+
+#inspector-content {
+    padding: 10px;
+    height: calc(100% - 45px);
+    overflow-y: auto;
+    scrollbar-width: thick;
+    scrollbar-color: #4CAF50 #2c3e50;
+}
+
+#inspector-content::-webkit-scrollbar {
+    width: 12px;
+}
+
+#inspector-content::-webkit-scrollbar-track {
+    background: #2c3e50;
+    border-radius: 6px;
+}
+
+#inspector-content::-webkit-scrollbar-thumb {
+    background: #4CAF50;
+    border-radius: 6px;
+}
+
+#inspector-content::-webkit-scrollbar-thumb:hover {
+    background: #45a049;
+}
+
+#entityList {
+    padding-right: 8px;
+}
+
+.entity-card {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    border-radius: 5px;
+    padding: 10px;
+    margin: 8px 0;
+    cursor: pointer;
+    transition: all 0.2s;
+    opacity: 0.6;
+}
+
+.entity-card:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+}
+
+.entity-card.selected {
+    background: rgba(76, 175, 80, 0.5) !important;
+    border: 2px solid #4CAF50 !important;
+    box-shadow: 0 0 8px rgba(76, 175, 80, 0.6) !important;
+    opacity: 1 !important;
+}
+
+.entity-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    position: relative;
+}
+
+.entity-header strong {
+    color: #4CAF50;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+}
+
+.entity-buttons {
+    display: flex;
+    gap: 4px;
+}
+
+.entity-btn {
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 8px;
+    cursor: pointer;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 28px;
+    transition: all 0.2s;
+}
+
+.entity-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.entity-btn:disabled {
+    background: #666;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.entity-btn.remove {
+    background: #FFC107;
+}
+
+.entity-btn.remove:hover {
+    background: #FFB300;
+}
+
+.entity-btn.destroy {
+    background: #F44336;
+}
+
+.entity-btn.destroy:hover {
+    background: #D32F2F;
+}
+
+.component {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 3px 6px 3px 0;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: bold;
+    color: #fff;
+    transition: all 0.2s;
+    user-select: none;
+    min-height: 24px;
+    line-height: 1.2;
+    cursor: pointer;
+    text-align: center;
+}
+
+.component:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+    filter: brightness(1.2);
+}
+
+.component.inactive {
+    opacity: 0.4;
+    background: #666 !important;
+    text-decoration: line-through;
+}
+
+.component.inactive:hover {
+    opacity: 0.6;
+}
+
+.component.transform {
+    background: #2196F3;
+}
+
+.component.renderable {
+    background: #9C27B0;
+}
+
+.component.movement {
+    background: #FF9800;
+}
+
+.component.health {
+    background: #4CAF50;
+}
+
+.component.lifetime {
+    background: #F44336;
+}
+
+/* Physics components */
+.component.rigidbodycomponent {
+    background: #8BC34A;
+}
+
+.component.boxcollidercomponent {
+    background: #00BCD4;
+}
+
+.component.spherecollidercomponent {
+    background: #3F51B5;
+}
+
+.component.physicsmaterialcomponent {
+    background: #795548;
+}
+
+/* Animation components */
+.component.tweencomponent {
+    background: #E91E63;
+}
+
+.component.animatorcomponent {
+    background: #673AB7;
+}
+
+/* Visual component */
+.component.visualcomponent {
+    background: #FF5722;
+}
+
+/* Resize handle */
+#inspector::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 20px;
+    height: 20px;
+    background: linear-gradient(-45deg, transparent 0%, transparent 40%, #666 40%, #666 60%, transparent 60%);
+    cursor: nw-resize;
+    pointer-events: none;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    #inspector {
+        width: 280px;
+        height: 350px;
+    }
+    
+    #ui {
+        max-width: 250px;
+        font-size: 11px;
+    }
+    
+    .entity-card {
+        padding: 8px;
+    }
+    
+    .entity-btn {
+        min-width: 24px;
+        height: 24px;
+        padding: 4px 6px;
+    }
+}

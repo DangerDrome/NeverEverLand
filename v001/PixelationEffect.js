@@ -39,7 +39,8 @@ class PixelationEffect {
                         window.innerHeight
                     ) 
                 },
-                'pixelSize': { value: this.pixelSize }
+                'pixelSize': { value: this.pixelSize },
+                'gridColor': { value: new THREE.Color(0x000000) }
             },
             
             vertexShader: /* glsl */`
@@ -55,20 +56,24 @@ class PixelationEffect {
                 uniform sampler2D tDiffuse;
                 uniform vec2 resolution;
                 uniform float pixelSize;
+                uniform vec3 gridColor;
                 varying vec2 vUv;
                 
                 void main() {
-                    // Calculate pixel grid
-                    vec2 pixelGrid = floor(vUv * resolution / pixelSize) * pixelSize / resolution;
-                    
-                    // Sample texture at pixelated coordinates
-                    vec4 color = texture2D(tDiffuse, pixelGrid);
+                    vec2 coord = vUv * resolution;
+                    vec2 pixelCoord = floor(coord / pixelSize) * pixelSize;
+                    vec2 offset = coord - pixelCoord;
+                    vec4 color = texture2D(tDiffuse, (pixelCoord + vec2(0.5)) / resolution);
                     
                     // Apply slight contrast and saturation boost for retro feel
                     color.rgb = pow(color.rgb, vec3(0.9));
                     color.rgb = mix(vec3(dot(color.rgb, vec3(0.299, 0.587, 0.114))), color.rgb, 1.2);
                     
-                    gl_FragColor = color;
+                    if (offset.x < 1.0 || offset.y < 1.0) {
+                        gl_FragColor = vec4(gridColor, 1.0);
+                    } else {
+                        gl_FragColor = color;
+                    }
                 }
             `
         };
