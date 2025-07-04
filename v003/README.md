@@ -39,6 +39,13 @@ A state-of-the-art Entity Component System (ECS) game engine built for the Never
 - **PhysicsSystem**: Gravity, forces, collision detection, and dynamics
 - **AnimationSystem**: Tweening, state machines, and complex sequences
 
+### Phase 3 Systems (Implemented)
+- **PartySystem**: Formation management, member coordination, leader switching
+- **CharacterSystem**: Stats, leveling, health/mana, equipment processing
+- **AISystem**: Behavior processing (follow, guard, patrol, aggressive) and pathfinding
+- **CombatSystem**: Damage calculation, combat state management, status effects
+- **InventorySystem**: Item management, weight calculations, currency tracking
+
 ## 🎮 Integrated ECS Demo
 
 The main demo (`index.html`) showcases all ECS functionality in one unified interface:
@@ -53,10 +60,16 @@ The main demo (`index.html`) showcases all ECS functionality in one unified inte
 - **Core**: Transform, Renderable, Movement, Health, Lifetime, VisualComponent
 - **Physics**: RigidbodyComponent, BoxColliderComponent, SphereColliderComponent, PhysicsMaterialComponent  
 - **Animation**: TweenComponent, AnimatorComponent
+- **Party & Character**: PartyComponent, CharacterComponent, AIComponent, CombatComponent, InventoryComponent
 
 ### Features
 - **Physics Simulation**: Gravity, bouncing, collision detection with ground
-- **Component Visualization**: Wireframe colliders, animation helpers
+- **Party Management**: 3-member parties with leader switching and formation control
+- **AI Behaviors**: Follow, guard, patrol, and aggressive AI with automatic target detection
+- **Combat System**: Real-time combat with damage calculation, critical hits, and status effects
+- **Character Progression**: Leveling system with stat growth and equipment slots
+- **Inventory Management**: 20-slot inventory with weight limits and currency tracking
+- **Component Visualization**: Collider helpers, animation indicators
 - **Performance Monitoring**: Real-time stats and entity counts
 - **Component Activation**: Toggle components on/off to see effects
 
@@ -144,23 +157,24 @@ const entities = world.query(['TransformComponent', 'RenderableComponent']);
 
 ## 🎯 Roadmap
 
-### Phase 2: Party & Character Systems (Planned)
-- Party management and AI
-- Character switching and coordination
-- Combat system foundation
-- Animation system
+### Phase 3: Party & Character Systems (✅ COMPLETED)
+- ✅ Party management with 3-member parties and formation control
+- ✅ AI system with follow, guard, patrol, and aggressive behaviors
+- ✅ Character progression with stats, leveling, and equipment
+- ✅ Real-time combat system with damage calculation and status effects
+- ✅ Inventory management with 20 slots, weight limits, and currency
 
-### Phase 3: World Building (Planned)
+### Phase 4: World Building (Planned)
 - Village construction system
-- Resource management
-- Economy simulation
-- Save/load system
+- Resource management and economy simulation
+- Building placement and upgrade mechanics
+- Save/load system with game state persistence
 
-### Phase 4: Advanced Gameplay (Planned)
-- Quest system
-- Dialogue trees
-- Puzzle mechanics
-- Boss encounters
+### Phase 5: Advanced Gameplay (Planned)
+- Quest system with objectives and dependencies
+- Dialogue trees and NPC interactions
+- Puzzle mechanics and interactive elements
+- Boss encounters with complex mechanics
 
 ## 🧪 Testing & Debugging
 
@@ -230,6 +244,6 @@ Built-in metrics include:
 
 ---
 
-**Next Steps**: Continue with Phase 2 implementation (Party & Character Systems) or explore the existing demos to understand the engine capabilities.
+**Next Steps**: Continue with Phase 4 implementation (World Building Systems) or test the existing party, AI, and combat mechanics in the integrated demo.
 
 **Performance Notes**: This engine is designed for scalability - it can handle simple prototypes today and complex RPG systems tomorrow, all while maintaining 60fps performance.
