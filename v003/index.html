@@ -206,8 +206,8 @@ Click an entity to select it. Click components to toggle on/off.
                     const transform = entity.getComponent('Transform');
                     const movement = entity.getComponent('Movement');
                     
-                    // Only update if both components exist and movement is active
-                    if (transform && movement && movement.active !== false) {
+                    // Only update if both components exist and both are active
+                    if (transform && transform.active !== false && movement && movement.active !== false) {
                         // Update position based on velocity
                         transform.x += movement.velocity.x * deltaTime;
                         transform.y += movement.velocity.y * deltaTime;
@@ -1771,7 +1771,7 @@ Click an entity to select it. Click components to toggle on/off.
                             const transform = entity.getComponent('Transform');
                             const rigidbody = entity.getComponent('RigidbodyComponent');
                             
-                            if (rigidbody.isKinematic || rigidbody.isSleeping || rigidbody.active === false) return;
+                            if (rigidbody.isKinematic || rigidbody.isSleeping || rigidbody.active === false || transform.active === false) return;
                             
                             // Apply gravity
                             if (rigidbody.useGravity && this.enableGravity) {
@@ -2260,6 +2260,8 @@ Click an entity to select it. Click components to toggle on/off.
             const transform = entity.getComponent('Transform');
             if (!transform) return;
             
+            // Always create visualizations - they show component state, not movement state
+            
             // Remove existing collider visualizations
             removeColliderVisualization(entity);
             
@@ -2561,7 +2563,7 @@ Click an entity to select it. Click components to toggle on/off.
             if (!entity || entity !== selectedEntity) return;
             
             const transform = entity.getComponent('Transform');
-            if (!transform) return;
+            if (!transform || transform.active === false) return;
             
             const now = Date.now();
             
@@ -2705,6 +2707,16 @@ Click an entity to select it. Click components to toggle on/off.
             component.active = !wasActive;
             
             console.log(`🔄 ${wasActive ? 'Disabled' : 'Enabled'} ${componentType} for entity ${entity.id}`);
+            
+            // If this is the selected entity, update its visualizations immediately
+            if (entity === selectedEntity) {
+                // Always refresh visualizations to sync with component active states
+                removeColliderVisualization(entity);
+                addColliderVisualization(entity);
+                
+                // Maintain entity selection
+                selectedEntity = entity;
+            }
             
             // Force immediate update after toggle to show the change
             setTimeout(() => {
