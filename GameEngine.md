@@ -245,6 +245,11 @@ The main demo showcases all implemented functionality in one unified interface:
 - F4: DevTools debug panel
 - F8: Dump world state to console
 
+**Visual Component Debugging:**
+- Click entities to select and see all component visualizations
+- Toggle any component on/off in the inspector to see immediate visual feedback
+- Real-time component state visualization in 3D viewport
+
 ---
 
 ## File Structure
@@ -281,6 +286,47 @@ v003/
 - **Dirty Flag Optimization**: Only update matrices when transforms change
 - **Query Caching**: Efficient component queries with frame-based cache invalidation
 - **Batch Operations**: Group similar operations to reduce overhead
+
+---
+
+## Visual Debugging System
+
+### Component Visualizations
+Each component type has a distinct visual representation when an entity is selected:
+
+**Core Components:**
+- **Transform**: Controls all visualizations (disable to freeze in place)
+- **Renderable**: 3D mesh representation
+- **Movement**: Velocity-based motion
+- **Health**: Color-coded material (green/yellow/red based on health percentage)
+- **VisualComponent**: Dynamic material effects and opacity
+
+**Physics Components:**
+- **RigidbodyComponent**: Physics simulation and forces
+- **SphereColliderComponent**: Green wireframe sphere showing collision bounds
+- **BoxColliderComponent**: Blue wireframe box showing collision bounds
+- **PhysicsMaterialComponent**: Controls friction and restitution
+
+**Animation Components:**
+- **TweenComponent**: Magenta pulsing ring with rotation animation
+- **AnimatorComponent**: Purple wireframe octahedron with multi-axis rotation
+
+**Phase 3 Components:**
+- **PartyComponent**: Golden crown with gentle bobbing and rotation
+- **CharacterComponent**: Health bar (scales with health %) + level indicator ring
+- **AIComponent**: Colored sphere with behavior-specific animations:
+  - Green (Follow): Gentle floating motion
+  - Orange (Guard): Steady pulsing opacity
+  - Blue (Patrol): Rotating motion
+  - Red (Aggressive): Rapid pulsing opacity
+- **CombatComponent**: Red attack range ring on ground with pulsing and rotation
+- **InventoryComponent**: Brown bag that scales with inventory weight and sways
+
+### Interactive Debugging
+- **Click entities** in viewport to select and see all component visualizations
+- **Toggle components** in inspector to see immediate visual feedback
+- **Real-time updates** - visualizations respond to component state changes
+- **Component state** - active/inactive components show different visual styles
 
 ---
 
@@ -336,17 +382,41 @@ F8: Dump complete world state to console
 - ✅ InventorySystem (item management, weight calculations)
 - ✅ CharacterSystem (stat management, leveling, status effects)
 
-### Phase 4: World Building Systems
-- VillageComponent/System (population, morale, production)
-- BuildingComponent/System (construction, upgrades, placement)
-- EconomyComponent/System (resource flow, trade, markets)
-- SaveComponent/System (game state persistence)
+### Phase 4: World Building Systems 🏗️ (Next Priority)
+**Core Village & Economy Systems:**
+- **VillageComponent/System**: Population management, morale tracking, production queues
+- **BuildingComponent/System**: Construction mechanics, upgrade trees, placement validation
+- **ResourceComponent/System**: Wood, stone, food, gold resource management
+- **EconomyComponent/System**: Trade routes, market prices, supply/demand
+- **WorkerComponent/System**: Villager job assignments, productivity, skill levels
 
-### Phase 5: Content Systems
-- QuestComponent/System (objectives, dependencies, rewards)
-- DialogueComponent/System (conversation trees, branching)
-- PuzzleComponent/System (interactive puzzle mechanics)
-- BossComponent/System (complex encounter mechanics)
+**Infrastructure Systems:**
+- **ConstructionComponent/System**: Building placement, resource requirements, build times
+- **ProductionComponent/System**: Resource generation, crafting queues, efficiency bonuses
+- **StorageComponent/System**: Warehouse management, capacity limits, distribution
+- **SaveComponent/System**: Complete game state persistence and loading
+
+**Expected Development Time**: 4-6 weeks
+**Target Performance**: Maintain 60 FPS with 50+ buildings, 200+ villagers
+
+### Phase 5: Advanced Gameplay Systems 🎯 (Future)
+**Quest & Narrative Systems:**
+- **QuestComponent/System**: Objective tracking, dependencies, rewards, branching storylines
+- **DialogueComponent/System**: Conversation trees, character relationships, choices
+- **NPCComponent/System**: Advanced AI behaviors, scheduling, interactions
+
+**Interactive Content:**
+- **PuzzleComponent/System**: Environmental puzzles, logic challenges, rewards
+- **EventComponent/System**: Random events, consequences, player choices
+- **BossComponent/System**: Complex encounter mechanics, phases, special abilities
+
+**World Systems:**
+- **WeatherComponent/System**: Dynamic weather affecting gameplay
+- **SeasonComponent/System**: Seasonal changes, crop cycles, migration
+- **DiplomacyComponent/System**: Faction relationships, treaties, warfare
+
+**Expected Development Time**: 6-8 weeks
+**Target Scope**: Full RPG feature set with rich interactive content
 
 ---
 
@@ -393,10 +463,18 @@ this.world.registerComponentPool(SphereColliderComponent, 100);
 
 ## Conclusion
 
-NeverEverLand v003 has successfully established a solid ECS foundation with working physics and animation systems. The integrated demo approach provides immediate feedback for all engine features while maintaining clean, modular code architecture.
+NeverEverLand v003 has successfully completed Phase 3 with comprehensive party management, AI systems, character progression, and real-time combat mechanics. The engine now includes full visual debugging capabilities with component-specific visualizations in the 3D viewport.
 
-**Current Status**: Ready for Phase 4 development (World Building Systems)
-**Next Milestone**: Village construction, resource management, and economy simulation
-**Performance**: Exceeding targets with room for significant expansion
+**Current Status**: Phase 3 COMPLETED ✅ - Ready for Phase 4 development
+**Key Achievements**: 
+- ✅ All 13 core systems implemented and functional
+- ✅ Complete visual debugging system with real-time component visualization
+- ✅ Interactive component inspector with toggle functionality
+- ✅ Proper component state management and synchronization
+- ✅ Performance optimized for 1000+ entities at 60 FPS
+- ✅ Codebase cleaned and optimized for future development
 
-The engine now supports full party-based RPG mechanics with AI companions, character progression, and real-time combat systems. Complex gameplay features are built incrementally on top of the well-designed ECS architecture, with each phase building naturally on the previous foundation.
+**Next Milestone**: Phase 4 - World Building Systems (Village construction, resource management, economy simulation)
+**Performance**: Exceeding all targets with room for significant expansion
+
+The engine now supports full party-based RPG mechanics with AI companions, character progression, real-time combat systems, and comprehensive visual debugging tools. The foundation is solid and ready for Phase 4 development.

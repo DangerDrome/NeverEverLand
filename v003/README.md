@@ -69,7 +69,7 @@ The main demo (`index.html`) showcases all ECS functionality in one unified inte
 - **Combat System**: Real-time combat with damage calculation, critical hits, and status effects
 - **Character Progression**: Leveling system with stat growth and equipment slots
 - **Inventory Management**: 20-slot inventory with weight limits and currency tracking
-- **Component Visualization**: Collider helpers, animation indicators
+- **Component Visualization**: Complete visual debugging system with real-time component state visualization
 - **Performance Monitoring**: Real-time stats and entity counts
 - **Component Activation**: Toggle components on/off to see effects
 
@@ -93,11 +93,19 @@ Real-time tracking of:
 - Draw calls and triangle counts
 - Memory usage and component pools
 
-### Component Inspector
-- Live entity component viewing
-- Real-time property updates
-- Serialization debugging
-- Component state inspection
+### Visual Component Debugging
+- **Interactive Selection**: Click entities in 3D viewport to select and inspect
+- **Real-time Visualization**: Each component type has distinct 3D visual indicators
+- **Component Toggling**: Click components in inspector to toggle on/off with immediate visual feedback
+- **State Synchronization**: Component active/inactive states sync between inspector and viewport
+- **Visual Indicators**: Color-coded representations for all component types:
+  - Physics: Wireframe collision shapes (spheres, boxes)
+  - Animation: Animated helpers (pulsing rings, rotating shapes)
+  - Party: Crown indicators for leadership
+  - Character: Health bars and level indicators
+  - AI: Behavior-specific colored spheres with unique animations
+  - Combat: Attack range visualization
+  - Inventory: Bag indicators that scale with content
 
 ## 📊 Performance Targets
 

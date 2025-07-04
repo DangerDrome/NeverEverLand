@@ -630,13 +630,11 @@ Click an entity to select it. Click components to toggle on/off.
         // Global state
         let scene, camera, renderer, world;
         let lastTime = Date.now();
-        let queryTestCount = 0;
         let selectedEntity = null;
         let raycaster, mouse;
         
         // Component loading state
         let phase2ComponentsLoaded = false;
-        let lastInspectorUpdate = 0;
         
         // Inspector dragging state
         let isDragging = false;
@@ -646,7 +644,6 @@ Click an entity to select it. Click components to toggle on/off.
         
         function init() {
             // Verify Phase 3 components are available at init time
-            console.log('🔍 Checking Phase 3 components at init:');
             console.log('  PartyComponent:', !!window.PartyComponent);
             console.log('  CharacterComponent:', !!window.CharacterComponent);
             console.log('  AIComponent:', !!window.AIComponent);
