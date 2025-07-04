@@ -362,6 +362,44 @@ body {
     background: #9C27B0;
 }
 
+/* Phase 4 components */
+.component.villagecomponent {
+    background: #8BC34A;
+}
+
+.component.buildingcomponent {
+    background: #795548;
+}
+
+.component.resourcecomponent {
+    background: #FF9800;
+}
+
+.component.workercomponent {
+    background: #607D8B;
+}
+
+.component.economycomponent {
+    background: #FFC107;
+}
+
+/* Phase 5 components */
+.component.questcomponent {
+    background: #FFEB3B;
+}
+
+.component.dialoguecomponent {
+    background: #03A9F4;
+}
+
+.component.npccomponent {
+    background: #8BC34A;
+}
+
+.component.eventcomponent {
+    background: #FF5722;
+}
+
 /* Resize handle */
 #inspector::after {
     content: '';

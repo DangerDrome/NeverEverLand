@@ -38,7 +38,9 @@ Click an entity to select it. Click components to toggle on/off.
                 • Components hold data<br>
                 • Systems process components<br>
                 • Queries find entities by components<br><br>
-                <strong style="color: #4CAF50;">🚀 Physics & Animation Components Available!</strong><br>
+                <strong style="color: #4CAF50;">🚀 Physics, Animation & World Building Components Available!</strong><br>
+                <strong style="color: #FFC107;">🏗️ Phase 4: Village, Building, Resource, Worker & Economy Systems!</strong><br>
+                <strong style="color: #FF5722;">🎯 Phase 5: Quest, Dialogue, NPC & Event Systems!</strong><br>
                 Use the + button in the inspector to add any component!
             </div>
         </div>
@@ -618,6 +620,685 @@ Click an entity to select it. Click components to toggle on/off.
             }
         }
         
+        // === Phase 4 Components: World Building Systems ===
+        
+        class VillageComponent {
+            constructor() {
+                this.name = 'New Village';
+                this.population = 5; // Starting population
+                this.maxPopulation = 50;
+                this.morale = 75; // 0-100, affects productivity
+                this.founded = Date.now();
+                
+                // Population tracking
+                this.adults = 3;
+                this.children = 2;
+                this.elderly = 0;
+                
+                // Village stats
+                this.happiness = 70; // 0-100
+                this.prosperity = 50; // 0-100
+                this.safety = 60; // 0-100
+                
+                // Growth factors
+                this.growthRate = 0.1; // Population growth per day
+                this.immigrationRate = 0.05;
+                this.emigrationRate = 0.02;
+                
+                this.active = true;
+            }
+            
+            addPopulation(count = 1) {
+                if (this.population + count <= this.maxPopulation) {
+                    this.population += count;
+                    this.adults += count;
+                    return true;
+                }
+                return false;
+            }
+            
+            removePopulation(count = 1) {
+                if (this.population - count >= 0) {
+                    this.population -= count;
+                    this.adults = Math.max(0, this.adults - count);
+                    return true;
+                }
+                return false;
+            }
+            
+            calculateMorale() {
+                // Morale based on happiness, safety, and prosperity
+                this.morale = Math.round((this.happiness + this.safety + this.prosperity) / 3);
+                return this.morale;
+            }
+        }
+        
+        class BuildingComponent {
+            constructor() {
+                this.buildingType = 'house'; // house, farm, workshop, storage, etc.
+                this.level = 1;
+                this.maxLevel = 5;
+                this.health = 100; // Building durability
+                this.maxHealth = 100;
+                
+                // Construction state
+                this.isConstructed = false;
+                this.constructionProgress = 0; // 0-100%
+                this.constructionTime = 10; // Seconds to build
+                this.constructionStarted = null;
+                
+                // Resource requirements
+                this.resourceRequirements = {
+                    wood: 10,
+                    stone: 5,
+                    gold: 20
+                };
+                
+                // Production capabilities
+                this.produces = null; // What this building produces
+                this.productionRate = 1; // Per second
+                this.capacity = 100; // Storage/housing capacity
+                this.occupied = 0; // Current occupancy
+                
+                // Worker requirements
+                this.workersRequired = 1;
+                this.workersAssigned = 0;
+                this.efficiency = 1.0; // 0.0-2.0 based on workers/morale
+                
+                this.active = true;
+            }
+            
+            startConstruction() {
+                if (!this.isConstructed && this.constructionProgress === 0) {
+                    this.constructionStarted = Date.now();
+                    return true;
+                }
+                return false;
+            }
+            
+            updateConstruction() {
+                if (this.constructionStarted && !this.isConstructed) {
+                    const elapsed = (Date.now() - this.constructionStarted) / 1000;
+                    this.constructionProgress = Math.min(100, (elapsed / this.constructionTime) * 100);
+                    
+                    if (this.constructionProgress >= 100) {
+                        this.isConstructed = true;
+                        this.health = this.maxHealth;
+                    }
+                }
+            }
+            
+            upgrade() {
+                if (this.level < this.maxLevel && this.isConstructed) {
+                    this.level++;
+                    this.capacity = Math.floor(this.capacity * 1.5);
+                    this.productionRate *= 1.3;
+                    this.maxHealth = Math.floor(this.maxHealth * 1.2);
+                    this.health = this.maxHealth;
+                    return true;
+                }
+                return false;
+            }
+        }
+        
+        class ResourceComponent {
+            constructor() {
+                this.resources = {
+                    wood: 50,
+                    stone: 30,
+                    food: 40,
+                    gold: 100,
+                    iron: 0,
+                    tools: 5
+                };
+                
+                this.maxStorage = {
+                    wood: 500,
+                    stone: 500,
+                    food: 200,
+                    gold: 1000,
+                    iron: 300,
+                    tools: 50
+                };
+                
+                // Resource generation rates (per second)
+                this.productionRates = {
+                    wood: 0.1,
+                    stone: 0.05,
+                    food: 0.2,
+                    gold: 0.02,
+                    iron: 0.01,
+                    tools: 0.005
+                };
+                
+                // Resource consumption rates (per second)
+                this.consumptionRates = {
+                    food: 0.1, // Population consumes food
+                    tools: 0.001 // Tools wear out
+                };
+                
+                this.active = true;
+            }
+            
+            addResource(type, amount) {
+                if (this.resources.hasOwnProperty(type)) {
+                    const maxAmount = this.maxStorage[type];
+                    const currentAmount = this.resources[type];
+                    const addedAmount = Math.min(amount, maxAmount - currentAmount);
+                    this.resources[type] += addedAmount;
+                    return addedAmount;
+                }
+                return 0;
+            }
+            
+            removeResource(type, amount) {
+                if (this.resources.hasOwnProperty(type)) {
+                    const currentAmount = this.resources[type];
+                    const removedAmount = Math.min(amount, currentAmount);
+                    this.resources[type] -= removedAmount;
+                    return removedAmount;
+                }
+                return 0;
+            }
+            
+            hasResources(requirements) {
+                for (const [type, amount] of Object.entries(requirements)) {
+                    if (!this.resources[type] || this.resources[type] < amount) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            
+            consumeResources(requirements) {
+                if (this.hasResources(requirements)) {
+                    for (const [type, amount] of Object.entries(requirements)) {
+                        this.resources[type] -= amount;
+                    }
+                    return true;
+                }
+                return false;
+            }
+        }
+        
+        class WorkerComponent {
+            constructor() {
+                this.workerId = Math.floor(Math.random() * 10000);
+                this.name = `Worker ${this.workerId}`;
+                this.job = 'unemployed'; // unemployed, farmer, builder, miner, etc.
+                this.skill = 1; // 1-10 skill level
+                this.experience = 0;
+                this.productivity = 1.0; // Base productivity multiplier
+                
+                // Worker stats
+                this.energy = 100; // 0-100, affects productivity
+                this.maxEnergy = 100;
+                this.happiness = 70; // 0-100
+                this.loyalty = 60; // 0-100
+                
+                // Work assignment
+                this.assignedBuilding = null; // Entity ID of assigned building
+                this.workSchedule = {
+                    startTime: 6, // 6 AM
+                    endTime: 18,  // 6 PM
+                    breakTime: 12 // Lunch break at noon
+                };
+                
+                // Work state
+                this.isWorking = false;
+                this.lastWorkTime = Date.now();
+                this.totalWorkTime = 0; // Total work time in seconds
+                
+                this.active = true;
+            }
+            
+            assignToJob(jobType, buildingEntity = null) {
+                this.job = jobType;
+                this.assignedBuilding = buildingEntity ? buildingEntity.id : null;
+                this.isWorking = jobType !== 'unemployed';
+                return true;
+            }
+            
+            work(deltaTime) {
+                if (this.isWorking && this.energy > 10) {
+                    // Simulate work energy consumption
+                    this.energy -= deltaTime * 2; // Lose 2 energy per second
+                    this.energy = Math.max(0, this.energy);
+                    
+                    // Gain experience
+                    this.experience += deltaTime * 0.1;
+                    
+                    // Update skill level based on experience
+                    const newSkill = Math.min(10, Math.floor(this.experience / 100) + 1);
+                    if (newSkill > this.skill) {
+                        this.skill = newSkill;
+                        this.productivity = 1.0 + (this.skill - 1) * 0.1; // +10% per skill level
+                    }
+                    
+                    this.totalWorkTime += deltaTime;
+                    this.lastWorkTime = Date.now();
+                    
+                    return this.productivity;
+                }
+                return 0;
+            }
+            
+            rest(deltaTime) {
+                // Restore energy when not working
+                if (!this.isWorking || this.energy <= 10) {
+                    this.energy += deltaTime * 5; // Restore 5 energy per second
+                    this.energy = Math.min(this.maxEnergy, this.energy);
+                }
+            }
+        }
+        
+        class EconomyComponent {
+            constructor() {
+                this.tradingPosts = [];
+                this.marketPrices = {
+                    wood: 2,
+                    stone: 3,
+                    food: 1,
+                    gold: 1, // Base currency
+                    iron: 5,
+                    tools: 10
+                };
+                
+                // Market dynamics
+                this.supply = {
+                    wood: 100,
+                    stone: 80,
+                    food: 120,
+                    iron: 30,
+                    tools: 20
+                };
+                
+                this.demand = {
+                    wood: 80,
+                    stone: 90,
+                    food: 110,
+                    iron: 40,
+                    tools: 25
+                };
+                
+                // Trade relationships
+                this.tradeRoutes = [];
+                this.reputation = 50; // 0-100, affects trade prices
+                
+                this.active = true;
+            }
+            
+            updateMarketPrices() {
+                // Simple supply/demand price calculation
+                for (const resource in this.marketPrices) {
+                    const supplyLevel = this.supply[resource] || 100;
+                    const demandLevel = this.demand[resource] || 100;
+                    const ratio = demandLevel / supplyLevel;
+                    
+                    // Adjust price based on supply/demand
+                    this.marketPrices[resource] = Math.max(0.1, this.marketPrices[resource] * (0.95 + ratio * 0.1));
+                }
+            }
+            
+            trade(resource, amount, isBuying = true) {
+                const price = this.marketPrices[resource] * amount;
+                
+                if (isBuying) {
+                    this.supply[resource] = Math.max(0, this.supply[resource] - amount);
+                    this.demand[resource] += amount * 0.1; // Buying increases future demand
+                } else {
+                    this.supply[resource] += amount;
+                    this.demand[resource] = Math.max(0, this.demand[resource] - amount * 0.1);
+                }
+                
+                return price;
+            }
+        }
+        
+        // ===== PHASE 5: ADVANCED GAMEPLAY SYSTEMS =====
+        
+        class QuestComponent {
+            constructor() {
+                this.questId = Math.random().toString(36).substr(2, 9);
+                this.title = 'Sample Quest';
+                this.description = 'Complete this quest objective';
+                this.questType = 'kill'; // kill, collect, deliver, talk, explore
+                
+                // Quest status
+                this.status = 'available'; // available, active, completed, failed
+                this.startTime = null;
+                this.completionTime = null;
+                
+                // Objectives system
+                this.objectives = [
+                    {
+                        id: 'obj1',
+                        description: 'Defeat 5 enemies',
+                        type: 'kill',
+                        target: 'enemy',
+                        current: 0,
+                        required: 5,
+                        completed: false
+                    }
+                ];
+                
+                // Rewards
+                this.rewards = {
+                    experience: 100,
+                    gold: 50,
+                    items: [],
+                    reputation: 10
+                };
+                
+                // Quest dependencies
+                this.prerequisites = []; // Quest IDs that must be completed first
+                this.unlocks = []; // Quest IDs that this quest unlocks
+                
+                // NPC associations
+                this.questGiver = null; // Entity ID of quest giver
+                this.turnInNPC = null; // Entity ID to turn quest in to
+                
+                this.active = true;
+            }
+            
+            addObjective(description, type, target, required) {
+                const obj = {
+                    id: 'obj' + (this.objectives.length + 1),
+                    description,
+                    type,
+                    target,
+                    current: 0,
+                    required,
+                    completed: false
+                };
+                this.objectives.push(obj);
+                return obj;
+            }
+            
+            updateObjective(objectiveId, progress) {
+                const objective = this.objectives.find(obj => obj.id === objectiveId);
+                if (objective) {
+                    objective.current = Math.min(objective.current + progress, objective.required);
+                    objective.completed = objective.current >= objective.required;
+                    return objective.completed;
+                }
+                return false;
+            }
+            
+            isCompleted() {
+                return this.objectives.every(obj => obj.completed);
+            }
+        }
+        
+        class DialogueComponent {
+            constructor() {
+                this.characterName = 'Unknown NPC';
+                this.currentDialogue = null;
+                this.dialogueHistory = [];
+                
+                // Dialogue tree structure
+                this.dialogueTree = {
+                    root: {
+                        id: 'start',
+                        text: 'Hello, traveler!',
+                        speaker: 'npc',
+                        choices: [
+                            {
+                                text: 'Hello! How are you?',
+                                next: 'friendly',
+                                requirements: null,
+                                consequence: { reputation: 1 }
+                            },
+                            {
+                                text: 'I need information.',
+                                next: 'business',
+                                requirements: null,
+                                consequence: null
+                            }
+                        ]
+                    },
+                    friendly: {
+                        id: 'friendly',
+                        text: 'I am well, thank you for asking!',
+                        speaker: 'npc',
+                        choices: [
+                            {
+                                text: 'Goodbye.',
+                                next: 'end',
+                                requirements: null,
+                                consequence: null
+                            }
+                        ]
+                    },
+                    business: {
+                        id: 'business',
+                        text: 'What would you like to know?',
+                        speaker: 'npc',
+                        choices: [
+                            {
+                                text: 'Tell me about this place.',
+                                next: 'location_info',
+                                requirements: null,
+                                consequence: null
+                            }
+                        ]
+                    }
+                };
+                
+                // Character relationships
+                this.relationship = {
+                    reputation: 50, // 0-100
+                    trust: 50, // 0-100
+                    fear: 0, // 0-100
+                    friendship: 50 // 0-100
+                };
+                
+                // Dialogue state
+                this.lastInteraction = null;
+                this.conversationCount = 0;
+                
+                this.active = true;
+            }
+            
+            startDialogue(nodeId = 'start') {
+                this.currentDialogue = this.dialogueTree.root;
+                this.conversationCount++;
+                this.lastInteraction = Date.now();
+                return this.currentDialogue;
+            }
+            
+            chooseOption(choiceIndex) {
+                if (!this.currentDialogue || !this.currentDialogue.choices) return null;
+                
+                const choice = this.currentDialogue.choices[choiceIndex];
+                if (!choice) return null;
+                
+                // Apply consequences
+                if (choice.consequence) {
+                    if (choice.consequence.reputation) {
+                        this.relationship.reputation += choice.consequence.reputation;
+                    }
+                }
+                
+                // Move to next dialogue node
+                if (choice.next === 'end') {
+                    this.currentDialogue = null;
+                    return null;
+                }
+                
+                this.currentDialogue = this.dialogueTree[choice.next];
+                this.dialogueHistory.push(choice.text);
+                
+                return this.currentDialogue;
+            }
+        }
+        
+        class NPCComponent {
+            constructor() {
+                this.npcType = 'villager'; // villager, merchant, guard, quest_giver, etc.
+                this.name = 'Unnamed NPC';
+                this.level = 1;
+                
+                // Advanced AI behavior
+                this.personality = {
+                    friendliness: Math.random() * 100,
+                    helpfulness: Math.random() * 100,
+                    aggressiveness: Math.random() * 100,
+                    curiosity: Math.random() * 100
+                };
+                
+                // Daily schedule
+                this.schedule = [
+                    { time: 6, activity: 'wake_up', location: 'home' },
+                    { time: 8, activity: 'work', location: 'workplace' },
+                    { time: 12, activity: 'lunch', location: 'tavern' },
+                    { time: 13, activity: 'work', location: 'workplace' },
+                    { time: 18, activity: 'socializing', location: 'town_square' },
+                    { time: 22, activity: 'sleep', location: 'home' }
+                ];
+                
+                this.currentActivity = null;
+                this.activityStartTime = null;
+                
+                // Social interactions
+                this.relationships = new Map(); // Entity ID -> relationship value
+                this.socialGroup = 'villagers';
+                this.reputation = 50; // 0-100 in community
+                
+                // Economic behavior
+                this.profession = 'farmer'; // farmer, blacksmith, merchant, etc.
+                this.skills = {
+                    farming: Math.random() * 100,
+                    crafting: Math.random() * 100,
+                    trading: Math.random() * 100,
+                    combat: Math.random() * 100
+                };
+                
+                // Inventory and needs
+                this.needs = {
+                    food: 80,
+                    shelter: 90,
+                    safety: 70,
+                    social: 60
+                };
+                
+                this.active = true;
+            }
+            
+            getCurrentActivity(gameTime) {
+                const hour = Math.floor(gameTime / 3600) % 24; // Convert to hours in 24h format
+                
+                for (let i = this.schedule.length - 1; i >= 0; i--) {
+                    if (hour >= this.schedule[i].time) {
+                        return this.schedule[i];
+                    }
+                }
+                return this.schedule[0]; // Default to first activity
+            }
+            
+            updateNeeds(deltaTime) {
+                // Simulate need decay over time
+                this.needs.food -= deltaTime * 0.5;
+                this.needs.shelter -= deltaTime * 0.1;
+                this.needs.safety -= deltaTime * 0.2;
+                this.needs.social -= deltaTime * 0.3;
+                
+                // Clamp values
+                Object.keys(this.needs).forEach(need => {
+                    this.needs[need] = Math.max(0, Math.min(100, this.needs[need]));
+                });
+            }
+        }
+        
+        class EventComponent {
+            constructor() {
+                this.eventType = 'random'; // random, scripted, seasonal, triggered
+                this.eventName = 'Strange Occurrence';
+                this.description = 'Something unusual is happening...';
+                
+                // Event timing
+                this.triggerTime = null;
+                this.duration = 300; // 5 minutes in seconds
+                this.startTime = null;
+                this.endTime = null;
+                
+                // Event state
+                this.status = 'pending'; // pending, active, completed, failed
+                this.participants = []; // Entity IDs affected by event
+                
+                // Event effects
+                this.effects = {
+                    weatherChange: null, // sunny, rainy, stormy, etc.
+                    resourceModifiers: {}, // Resource generation modifiers
+                    moodModifiers: {}, // NPC mood changes
+                    spawnEnemies: 0, // Number of enemies to spawn
+                    questTriggers: [] // Quest IDs to activate
+                };
+                
+                // Randomization
+                this.randomEvents = [
+                    {
+                        name: 'Merchant Caravan',
+                        description: 'A trading caravan has arrived!',
+                        effects: { resourceModifiers: { gold: 1.5 } },
+                        probability: 0.3
+                    },
+                    {
+                        name: 'Heavy Rainfall',
+                        description: 'The skies open and rain pours down.',
+                        effects: { weatherChange: 'rainy', resourceModifiers: { food: 1.2 } },
+                        probability: 0.4
+                    },
+                    {
+                        name: 'Bandit Attack',
+                        description: 'Bandits are threatening the village!',
+                        effects: { spawnEnemies: 3, moodModifiers: { fear: 20 } },
+                        probability: 0.2
+                    }
+                ];
+                
+                // Player choices and consequences
+                this.playerChoices = [];
+                this.consequences = [];
+                
+                this.active = true;
+            }
+            
+            triggerRandomEvent() {
+                const availableEvents = this.randomEvents.filter(event => 
+                    Math.random() < event.probability
+                );
+                
+                if (availableEvents.length > 0) {
+                    const selectedEvent = availableEvents[Math.floor(Math.random() * availableEvents.length)];
+                    this.eventName = selectedEvent.name;
+                    this.description = selectedEvent.description;
+                    this.effects = { ...this.effects, ...selectedEvent.effects };
+                    this.status = 'active';
+                    this.startTime = Date.now();
+                    return selectedEvent;
+                }
+                return null;
+            }
+            
+            processEvent(deltaTime, world) {
+                if (this.status !== 'active') return;
+                
+                const elapsed = (Date.now() - this.startTime) / 1000;
+                
+                // Apply ongoing effects
+                if (this.effects.resourceModifiers) {
+                    // This would integrate with the resource system
+                }
+                
+                // Check if event should end
+                if (elapsed >= this.duration) {
+                    this.status = 'completed';
+                    this.endTime = Date.now();
+                }
+            }
+        }
+        
         // Attach Phase 3 components to window so they can be accessed globally
         window.PartyComponent = PartyComponent;
         window.CharacterComponent = CharacterComponent;
@@ -625,7 +1306,22 @@ Click an entity to select it. Click components to toggle on/off.
         window.CombatComponent = CombatComponent;
         window.InventoryComponent = InventoryComponent;
         
+        // Attach Phase 4 components to window
+        window.VillageComponent = VillageComponent;
+        window.BuildingComponent = BuildingComponent;
+        window.ResourceComponent = ResourceComponent;
+        window.WorkerComponent = WorkerComponent;
+        window.EconomyComponent = EconomyComponent;
+        
+        // Attach Phase 5 components to window
+        window.QuestComponent = QuestComponent;
+        window.DialogueComponent = DialogueComponent;
+        window.NPCComponent = NPCComponent;
+        window.EventComponent = EventComponent;
+        
         console.log('✅ Phase 3 components attached to window');
+        console.log('✅ Phase 4 components attached to window');
+        console.log('✅ Phase 5 components attached to window');
         
         // Global state
         let scene, camera, renderer, world;
@@ -635,6 +1331,8 @@ Click an entity to select it. Click components to toggle on/off.
         
         // Component loading state
         let phase2ComponentsLoaded = false;
+        let queryTestCount = 0;
+        let lastInspectorUpdate = 0;
         
         // Inspector dragging state
         let isDragging = false;
@@ -834,7 +1532,6 @@ Click an entity to select it. Click components to toggle on/off.
                     const party = new window.PartyComponent();
                     party.addMember(entity.id);
                     entity.addComponent(party);
-                    console.log('✅ Added PartyComponent to entity', entity.id);
                 } else {
                     console.log('❌ PartyComponent not available');
                 }
@@ -865,7 +1562,77 @@ Click an entity to select it. Click components to toggle on/off.
                     entity.addComponent(inventory);
                 }
                 
-                console.log('✅ Created entity with all components including physics and Phase 3!');
+                // Add Phase 4 components if available
+                if (window.VillageComponent) {
+                    const village = new window.VillageComponent();
+                    village.name = `Village ${entity.id}`;
+                    village.population = Math.floor(Math.random() * 20) + 5;
+                    entity.addComponent(village);
+                }
+                
+                if (window.BuildingComponent) {
+                    const building = new window.BuildingComponent();
+                    const buildingTypes = ['house', 'farm', 'workshop', 'storage', 'barracks'];
+                    building.buildingType = buildingTypes[Math.floor(Math.random() * buildingTypes.length)];
+                    building.level = Math.floor(Math.random() * 3) + 1;
+                    entity.addComponent(building);
+                }
+                
+                if (window.ResourceComponent) {
+                    const resource = new window.ResourceComponent();
+                    // Randomize starting resources
+                    resource.resources.wood = Math.floor(Math.random() * 100) + 20;
+                    resource.resources.stone = Math.floor(Math.random() * 80) + 10;
+                    resource.resources.food = Math.floor(Math.random() * 60) + 30;
+                    entity.addComponent(resource);
+                }
+                
+                if (window.WorkerComponent) {
+                    const worker = new window.WorkerComponent();
+                    const jobs = ['farmer', 'builder', 'miner', 'soldier', 'merchant'];
+                    worker.job = jobs[Math.floor(Math.random() * jobs.length)];
+                    worker.skill = Math.floor(Math.random() * 5) + 1;
+                    entity.addComponent(worker);
+                }
+                
+                if (window.EconomyComponent) {
+                    const economy = new window.EconomyComponent();
+                    economy.reputation = Math.floor(Math.random() * 50) + 25;
+                    entity.addComponent(economy);
+                }
+                
+                // Phase 5 components
+                if (window.QuestComponent) {
+                    const quest = new window.QuestComponent();
+                    const questTypes = ['kill', 'collect', 'deliver', 'talk', 'explore'];
+                    quest.questType = questTypes[Math.floor(Math.random() * questTypes.length)];
+                    quest.title = `${quest.questType.charAt(0).toUpperCase() + quest.questType.slice(1)} Quest`;
+                    entity.addComponent(quest);
+                }
+                
+                if (window.DialogueComponent) {
+                    const dialogue = new window.DialogueComponent();
+                    const names = ['Elder Smith', 'Merchant Joe', 'Guard Captain', 'Village Chief', 'Wise Oracle'];
+                    dialogue.characterName = names[Math.floor(Math.random() * names.length)];
+                    entity.addComponent(dialogue);
+                }
+                
+                if (window.NPCComponent) {
+                    const npc = new window.NPCComponent();
+                    const types = ['villager', 'merchant', 'guard', 'quest_giver', 'farmer'];
+                    npc.npcType = types[Math.floor(Math.random() * types.length)];
+                    npc.name = `NPC_${Math.floor(Math.random() * 1000)}`;
+                    entity.addComponent(npc);
+                }
+                
+                if (window.EventComponent) {
+                    const event = new window.EventComponent();
+                    const eventTypes = ['random', 'scripted', 'seasonal', 'triggered'];
+                    event.eventType = eventTypes[Math.floor(Math.random() * eventTypes.length)];
+                    entity.addComponent(event);
+                }
+                
+                console.log('✅ Created entity with all components including physics, Phases 3, 4, and 5!');
             } else {
                 // Add Phase 3 components even if physics components aren't loaded yet
                 console.log('🔍 Checking Phase 3 components availability (no physics):', {
@@ -880,7 +1647,6 @@ Click an entity to select it. Click components to toggle on/off.
                     const party = new window.PartyComponent();
                     party.addMember(entity.id);
                     entity.addComponent(party);
-                    console.log('✅ Added PartyComponent to entity', entity.id, '(no physics)');
                 } else {
                     console.log('❌ PartyComponent not available (no physics)');
                 }
@@ -911,7 +1677,77 @@ Click an entity to select it. Click components to toggle on/off.
                     entity.addComponent(inventory);
                 }
                 
-                console.log('✅ Created entity with basic components and Phase 3 components (physics components loading...)');
+                // Add Phase 4 components even if physics components aren't loaded yet
+                if (window.VillageComponent) {
+                    const village = new window.VillageComponent();
+                    village.name = `Village ${entity.id}`;
+                    village.population = Math.floor(Math.random() * 20) + 5;
+                    entity.addComponent(village);
+                }
+                
+                if (window.BuildingComponent) {
+                    const building = new window.BuildingComponent();
+                    const buildingTypes = ['house', 'farm', 'workshop', 'storage', 'barracks'];
+                    building.buildingType = buildingTypes[Math.floor(Math.random() * buildingTypes.length)];
+                    building.level = Math.floor(Math.random() * 3) + 1;
+                    entity.addComponent(building);
+                }
+                
+                if (window.ResourceComponent) {
+                    const resource = new window.ResourceComponent();
+                    // Randomize starting resources
+                    resource.resources.wood = Math.floor(Math.random() * 100) + 20;
+                    resource.resources.stone = Math.floor(Math.random() * 80) + 10;
+                    resource.resources.food = Math.floor(Math.random() * 60) + 30;
+                    entity.addComponent(resource);
+                }
+                
+                if (window.WorkerComponent) {
+                    const worker = new window.WorkerComponent();
+                    const jobs = ['farmer', 'builder', 'miner', 'soldier', 'merchant'];
+                    worker.job = jobs[Math.floor(Math.random() * jobs.length)];
+                    worker.skill = Math.floor(Math.random() * 5) + 1;
+                    entity.addComponent(worker);
+                }
+                
+                if (window.EconomyComponent) {
+                    const economy = new window.EconomyComponent();
+                    economy.reputation = Math.floor(Math.random() * 50) + 25;
+                    entity.addComponent(economy);
+                }
+                
+                // Phase 5 components (no physics)
+                if (window.QuestComponent) {
+                    const quest = new window.QuestComponent();
+                    const questTypes = ['kill', 'collect', 'deliver', 'talk', 'explore'];
+                    quest.questType = questTypes[Math.floor(Math.random() * questTypes.length)];
+                    quest.title = `${quest.questType.charAt(0).toUpperCase() + quest.questType.slice(1)} Quest`;
+                    entity.addComponent(quest);
+                }
+                
+                if (window.DialogueComponent) {
+                    const dialogue = new window.DialogueComponent();
+                    const names = ['Elder Smith', 'Merchant Joe', 'Guard Captain', 'Village Chief', 'Wise Oracle'];
+                    dialogue.characterName = names[Math.floor(Math.random() * names.length)];
+                    entity.addComponent(dialogue);
+                }
+                
+                if (window.NPCComponent) {
+                    const npc = new window.NPCComponent();
+                    const types = ['villager', 'merchant', 'guard', 'quest_giver', 'farmer'];
+                    npc.npcType = types[Math.floor(Math.random() * types.length)];
+                    npc.name = `NPC_${Math.floor(Math.random() * 1000)}`;
+                    entity.addComponent(npc);
+                }
+                
+                if (window.EventComponent) {
+                    const event = new window.EventComponent();
+                    const eventTypes = ['random', 'scripted', 'seasonal', 'triggered'];
+                    event.eventType = eventTypes[Math.floor(Math.random() * eventTypes.length)];
+                    entity.addComponent(event);
+                }
+                
+                console.log('✅ Created entity with basic components, Phases 3, 4, and 5 components (physics components loading...)');
             }
             
             updateStatus();
@@ -919,7 +1755,7 @@ Click an entity to select it. Click components to toggle on/off.
         }
         
         function addComponentToEntity(entity) {
-            const componentTypes = ['Movement', 'Health', 'Lifetime', 'RigidbodyComponent', 'BoxColliderComponent', 'SphereColliderComponent', 'TweenComponent', 'AnimatorComponent', 'VisualComponent', 'PartyComponent', 'CharacterComponent', 'AIComponent', 'CombatComponent', 'InventoryComponent'];
+            const componentTypes = ['Movement', 'Health', 'Lifetime', 'RigidbodyComponent', 'BoxColliderComponent', 'SphereColliderComponent', 'TweenComponent', 'AnimatorComponent', 'VisualComponent', 'PartyComponent', 'CharacterComponent', 'AIComponent', 'CombatComponent', 'InventoryComponent', 'VillageComponent', 'BuildingComponent', 'ResourceComponent', 'WorkerComponent', 'EconomyComponent'];
             const availableTypes = componentTypes.filter(type => !entity.hasComponent(type));
             
             if (availableTypes.length === 0) {
@@ -1001,6 +1837,38 @@ Click an entity to select it. Click components to toggle on/off.
                     component = new InventoryComponent();
                     component.currency = Math.floor(Math.random() * 100);
                     console.log('🎒 Added inventory component');
+                    break;
+                case 'VillageComponent':
+                    component = new VillageComponent();
+                    component.name = `Village ${entity.id}`;
+                    component.population = Math.floor(Math.random() * 30) + 5;
+                    console.log('🏘️ Added village component');
+                    break;
+                case 'BuildingComponent':
+                    component = new BuildingComponent();
+                    const buildingTypes = ['house', 'farm', 'workshop', 'storage', 'barracks'];
+                    component.buildingType = buildingTypes[Math.floor(Math.random() * buildingTypes.length)];
+                    component.level = Math.floor(Math.random() * 3) + 1;
+                    console.log('🏗️ Added building component');
+                    break;
+                case 'ResourceComponent':
+                    component = new ResourceComponent();
+                    component.resources.wood = Math.floor(Math.random() * 100) + 20;
+                    component.resources.stone = Math.floor(Math.random() * 80) + 10;
+                    component.resources.food = Math.floor(Math.random() * 60) + 30;
+                    console.log('📦 Added resource component');
+                    break;
+                case 'WorkerComponent':
+                    component = new WorkerComponent();
+                    const jobs = ['farmer', 'builder', 'miner', 'soldier', 'merchant'];
+                    component.job = jobs[Math.floor(Math.random() * jobs.length)];
+                    component.skill = Math.floor(Math.random() * 5) + 1;
+                    console.log('👷 Added worker component');
+                    break;
+                case 'EconomyComponent':
+                    component = new EconomyComponent();
+                    component.reputation = Math.floor(Math.random() * 50) + 25;
+                    console.log('💰 Added economy component');
                     break;
             }
             
@@ -1084,14 +1952,6 @@ Click an entity to select it. Click components to toggle on/off.
             updateStatus();
         }
         
-        function destroyRandomEntity() {
-            if (world.entities.length > 0) {
-                const entity = world.entities[Math.floor(Math.random() * world.entities.length)];
-                world.destroyEntity(entity);
-                console.log(`Destroyed entity ${entity.id}`);
-                updateStatus();
-            }
-        }
         
         function clearAll() {
             // Clear selection first
@@ -1508,7 +2368,7 @@ Click an entity to select it. Click components to toggle on/off.
                 addBtn.innerHTML = '<i data-lucide="plus" style="width: 14px; height: 14px;"></i>';
                 addBtn.title = 'Add Component';
                 
-                const componentTypes = ['Movement', 'Health', 'Lifetime', 'RigidbodyComponent', 'BoxColliderComponent', 'SphereColliderComponent', 'TweenComponent', 'AnimatorComponent', 'VisualComponent', 'PartyComponent', 'CharacterComponent', 'AIComponent', 'CombatComponent', 'InventoryComponent'];
+                const componentTypes = ['Movement', 'Health', 'Lifetime', 'RigidbodyComponent', 'BoxColliderComponent', 'SphereColliderComponent', 'TweenComponent', 'AnimatorComponent', 'VisualComponent', 'PartyComponent', 'CharacterComponent', 'AIComponent', 'CombatComponent', 'InventoryComponent', 'VillageComponent', 'BuildingComponent', 'ResourceComponent', 'WorkerComponent', 'EconomyComponent'];
                 const availableTypes = componentTypes.filter(type => !entity.hasComponent(type));
                 addBtn.disabled = availableTypes.length === 0;
                 
@@ -1686,6 +2546,37 @@ Click an entity to select it. Click components to toggle on/off.
             }
             if (world.inventorySystem) {
                 world.inventorySystem.update(deltaTime);
+            }
+            
+            // Update Phase 4 systems if available
+            if (world.villageSystem) {
+                world.villageSystem.update(deltaTime);
+            }
+            if (world.buildingSystem) {
+                world.buildingSystem.update(deltaTime);
+            }
+            if (world.resourceSystem) {
+                world.resourceSystem.update(deltaTime);
+            }
+            if (world.workerSystem) {
+                world.workerSystem.update(deltaTime);
+            }
+            if (world.economySystem) {
+                world.economySystem.update(deltaTime);
+            }
+            
+            // Phase 5 systems
+            if (world.questSystem) {
+                world.questSystem.update(deltaTime);
+            }
+            if (world.dialogueSystem) {
+                world.dialogueSystem.update(deltaTime);
+            }
+            if (world.npcSystem) {
+                world.npcSystem.update(deltaTime);
+            }
+            if (world.eventSystem) {
+                world.eventSystem.update(deltaTime);
             }
             
             
@@ -2221,6 +3112,656 @@ Click an entity to select it. Click components to toggle on/off.
             console.log('🎯 Phase 3 systems integration complete');
         }
         
+        // === Phase 4 Systems: World Building ===
+        function addPhase4SystemsToECS() {
+            console.log('🏗️ Adding Phase 4 systems to ECS...');
+            
+            // VillageSystem
+            if (!world.villageSystem) {
+                world.villageSystem = {
+                    update: function(deltaTime) {
+                        world.entities.forEach(entity => {
+                            const village = entity.getComponent('VillageComponent');
+                            if (!village || village.active === false) return;
+                            
+                            this.updatePopulation(village, deltaTime);
+                            this.updateMorale(village);
+                            this.processGrowth(village, deltaTime);
+                        });
+                    },
+                    
+                    updatePopulation: function(village, deltaTime) {
+                        // Natural population growth/decline
+                        const timeInDays = deltaTime / (24 * 3600); // Convert to days for growth calculations
+                        
+                        if (village.morale > 60 && village.population < village.maxPopulation) {
+                            // Growth based on morale and current population
+                            const growthChance = village.growthRate * timeInDays * (village.morale / 100);
+                            if (Math.random() < growthChance * 0.01) { // Very slow growth for demo
+                                village.addPopulation(1);
+                                console.log(`👶 ${village.name} population grew to ${village.population}`);
+                            }
+                        } else if (village.morale < 30) {
+                            // Population decline due to low morale
+                            const declineChance = village.emigrationRate * timeInDays * (1 - village.morale / 100);
+                            if (Math.random() < declineChance * 0.01) {
+                                village.removePopulation(1);
+                                console.log(`😞 ${village.name} population declined to ${village.population}`);
+                            }
+                        }
+                    },
+                    
+                    updateMorale: function(village) {
+                        // Recalculate morale based on village conditions
+                        village.calculateMorale();
+                        
+                        // Random events affecting morale
+                        if (Math.random() < 0.001) { // 0.1% chance per update
+                            const events = [
+                                { name: 'Good Harvest', happiness: 10, prosperity: 5 },
+                                { name: 'Festival', happiness: 15, morale: 5 },
+                                { name: 'Disease Outbreak', happiness: -15, safety: -10 },
+                                { name: 'Bandits Spotted', safety: -10, happiness: -5 },
+                                { name: 'Trade Success', prosperity: 10, happiness: 5 }
+                            ];
+                            
+                            const event = events[Math.floor(Math.random() * events.length)];
+                            if (event.happiness) village.happiness = Math.max(0, Math.min(100, village.happiness + event.happiness));
+                            if (event.prosperity) village.prosperity = Math.max(0, Math.min(100, village.prosperity + event.prosperity));
+                            if (event.safety) village.safety = Math.max(0, Math.min(100, village.safety + event.safety));
+                            if (event.morale) village.morale = Math.max(0, Math.min(100, village.morale + event.morale));
+                            
+                            console.log(`📰 ${village.name}: ${event.name}!`);
+                        }
+                    },
+                    
+                    processGrowth: function(village, deltaTime) {
+                        // Update village age and handle milestones
+                        const age = (Date.now() - village.founded) / 1000; // Age in seconds
+                        
+                        // Unlock population capacity based on age
+                        if (age > 300 && village.maxPopulation < 75) { // 5 minutes = small growth
+                            village.maxPopulation = 75;
+                            console.log(`🏘️ ${village.name} expanded its borders! Max population: ${village.maxPopulation}`);
+                        } else if (age > 600 && village.maxPopulation < 100) { // 10 minutes = major growth
+                            village.maxPopulation = 100;
+                            console.log(`🏘️ ${village.name} became a town! Max population: ${village.maxPopulation}`);
+                        }
+                    }
+                };
+                console.log('✅ VillageSystem added to ECS');
+            }
+            
+            // BuildingSystem
+            if (!world.buildingSystem) {
+                world.buildingSystem = {
+                    update: function(deltaTime) {
+                        world.entities.forEach(entity => {
+                            const building = entity.getComponent('BuildingComponent');
+                            if (!building || building.active === false) return;
+                            
+                            this.updateConstruction(building, deltaTime);
+                            this.updateProduction(building, deltaTime);
+                            this.updateMaintenance(building, deltaTime);
+                        });
+                    },
+                    
+                    updateConstruction: function(building, deltaTime) {
+                        if (!building.isConstructed && building.constructionStarted) {
+                            building.updateConstruction();
+                            
+                            if (building.isConstructed) {
+                                console.log(`🏗️ ${building.buildingType} construction completed!`);
+                            }
+                        }
+                    },
+                    
+                    updateProduction: function(building, deltaTime) {
+                        if (building.isConstructed && building.produces && building.workersAssigned > 0) {
+                            // Calculate efficiency based on workers and skill
+                            const baseEfficiency = Math.min(1.0, building.workersAssigned / building.workersRequired);
+                            building.efficiency = baseEfficiency * (building.health / building.maxHealth);
+                            
+                            // Generate resources
+                            const productionAmount = building.productionRate * building.efficiency * deltaTime;
+                            
+                            if (productionAmount > 0) {
+                                console.log(`⚙️ ${building.buildingType} produced ${productionAmount.toFixed(2)} ${building.produces}`);
+                            }
+                        }
+                    },
+                    
+                    updateMaintenance: function(building, deltaTime) {
+                        if (building.isConstructed) {
+                            // Buildings slowly degrade over time
+                            const degradationRate = 0.1; // Health lost per minute
+                            building.health -= degradationRate * (deltaTime / 60);
+                            building.health = Math.max(0, building.health);
+                            
+                            if (building.health <= 0 && building.isConstructed) {
+                                console.log(`💥 ${building.buildingType} has collapsed due to poor maintenance!`);
+                                building.isConstructed = false;
+                                building.constructionProgress = 0;
+                            } else if (building.health < 25) {
+                                console.log(`⚠️ ${building.buildingType} needs urgent repairs!`);
+                            }
+                        }
+                    },
+                    
+                    startBuilding: function(building, resourceComponent) {
+                        if (resourceComponent && resourceComponent.hasResources(building.resourceRequirements)) {
+                            if (resourceComponent.consumeResources(building.resourceRequirements)) {
+                                building.startConstruction();
+                                console.log(`🚧 Started building ${building.buildingType}`);
+                                return true;
+                            }
+                        }
+                        return false;
+                    }
+                };
+                console.log('✅ BuildingSystem added to ECS');
+            }
+            
+            // ResourceSystem
+            if (!world.resourceSystem) {
+                world.resourceSystem = {
+                    update: function(deltaTime) {
+                        world.entities.forEach(entity => {
+                            const resource = entity.getComponent('ResourceComponent');
+                            if (!resource || resource.active === false) return;
+                            
+                            this.updateProduction(resource, deltaTime);
+                            this.updateConsumption(resource, deltaTime);
+                            this.processDecay(resource, deltaTime);
+                        });
+                    },
+                    
+                    updateProduction: function(resource, deltaTime) {
+                        // Generate resources over time
+                        for (const [type, rate] of Object.entries(resource.productionRates)) {
+                            if (rate > 0) {
+                                const produced = resource.addResource(type, rate * deltaTime);
+                                if (produced > 0 && Math.random() < 0.001) { // Occasional logging
+                                    console.log(`⛏️ Produced ${produced.toFixed(1)} ${type}`);
+                                }
+                            }
+                        }
+                    },
+                    
+                    updateConsumption: function(resource, deltaTime) {
+                        // Consume resources over time
+                        for (const [type, rate] of Object.entries(resource.consumptionRates)) {
+                            if (rate > 0) {
+                                const consumed = resource.removeResource(type, rate * deltaTime);
+                                if (consumed > 0 && resource.resources[type] <= 10) {
+                                    console.log(`⚠️ Low ${type}! Only ${resource.resources[type].toFixed(1)} remaining`);
+                                }
+                            }
+                        }
+                    },
+                    
+                    processDecay: function(resource, deltaTime) {
+                        // Food spoilage
+                        if (resource.resources.food > 100) {
+                            const spoilage = (resource.resources.food - 100) * 0.01 * deltaTime;
+                            resource.removeResource('food', spoilage);
+                            if (spoilage > 0.1) {
+                                console.log(`🦠 ${spoilage.toFixed(1)} food spoiled due to poor storage`);
+                            }
+                        }
+                    },
+                    
+                    transferResources: function(fromResource, toResource, transfers) {
+                        for (const [type, amount] of Object.entries(transfers)) {
+                            const available = fromResource.removeResource(type, amount);
+                            toResource.addResource(type, available);
+                        }
+                    }
+                };
+                console.log('✅ ResourceSystem added to ECS');
+            }
+            
+            // WorkerSystem
+            if (!world.workerSystem) {
+                world.workerSystem = {
+                    update: function(deltaTime) {
+                        world.entities.forEach(entity => {
+                            const worker = entity.getComponent('WorkerComponent');
+                            if (!worker || worker.active === false) return;
+                            
+                            this.updateWork(worker, deltaTime);
+                            this.updateWellbeing(worker, deltaTime);
+                            this.processSkillGrowth(worker, deltaTime);
+                        });
+                    },
+                    
+                    updateWork: function(worker, deltaTime) {
+                        const currentHour = new Date().getHours();
+                        const shouldWork = currentHour >= worker.workSchedule.startTime && 
+                                         currentHour < worker.workSchedule.endTime && 
+                                         currentHour !== worker.workSchedule.breakTime;
+                        
+                        if (shouldWork && worker.job !== 'unemployed') {
+                            const productivity = worker.work(deltaTime);
+                            if (productivity > 0 && Math.random() < 0.001) {
+                                console.log(`👷 ${worker.name} working as ${worker.job} (productivity: ${productivity.toFixed(2)})`);
+                            }
+                        } else {
+                            worker.rest(deltaTime);
+                        }
+                    },
+                    
+                    updateWellbeing: function(worker, deltaTime) {
+                        // Happiness affects productivity
+                        if (worker.energy < 30) {
+                            worker.happiness -= deltaTime * 0.1; // Tired workers become unhappy
+                        } else if (worker.energy > 80) {
+                            worker.happiness += deltaTime * 0.05; // Well-rested workers are happier
+                        }
+                        
+                        // Loyalty changes based on treatment
+                        if (worker.happiness > 80) {
+                            worker.loyalty += deltaTime * 0.02;
+                        } else if (worker.happiness < 20) {
+                            worker.loyalty -= deltaTime * 0.05;
+                            
+                            if (worker.loyalty < 10 && Math.random() < 0.001) {
+                                console.log(`😠 ${worker.name} is considering quitting due to poor conditions`);
+                            }
+                        }
+                        
+                        // Clamp values
+                        worker.happiness = Math.max(0, Math.min(100, worker.happiness));
+                        worker.loyalty = Math.max(0, Math.min(100, worker.loyalty));
+                    },
+                    
+                    processSkillGrowth: function(worker, deltaTime) {
+                        // Workers improve skills over time
+                        if (worker.isWorking && worker.skill < 10) {
+                            const skillGrowthRate = 0.001; // Very slow skill growth
+                            worker.experience += skillGrowthRate * deltaTime;
+                            
+                            const newSkill = Math.min(10, Math.floor(worker.experience / 100) + 1);
+                            if (newSkill > worker.skill) {
+                                worker.skill = newSkill;
+                                worker.productivity = 1.0 + (worker.skill - 1) * 0.1;
+                                console.log(`📈 ${worker.name} improved to skill level ${worker.skill}!`);
+                            }
+                        }
+                    },
+                    
+                    assignWorker: function(worker, building) {
+                        if (building && building.workersAssigned < building.workersRequired) {
+                            worker.assignToJob(building.buildingType, building);
+                            building.workersAssigned++;
+                            console.log(`👷 ${worker.name} assigned to work at ${building.buildingType}`);
+                            return true;
+                        }
+                        return false;
+                    }
+                };
+                console.log('✅ WorkerSystem added to ECS');
+            }
+            
+            // EconomySystem
+            if (!world.economySystem) {
+                world.economySystem = {
+                    update: function(deltaTime) {
+                        world.entities.forEach(entity => {
+                            const economy = entity.getComponent('EconomyComponent');
+                            if (!economy || economy.active === false) return;
+                            
+                            this.updateMarket(economy, deltaTime);
+                            this.processTrade(economy, deltaTime);
+                        });
+                    },
+                    
+                    updateMarket: function(economy, deltaTime) {
+                        // Update market prices based on supply and demand
+                        economy.updateMarketPrices();
+                        
+                        // Random market fluctuations
+                        if (Math.random() < 0.001) { // 0.1% chance per update
+                            const resources = Object.keys(economy.marketPrices);
+                            const resource = resources[Math.floor(Math.random() * resources.length)];
+                            const fluctuation = (Math.random() - 0.5) * 0.2; // ±10% change
+                            
+                            economy.marketPrices[resource] *= (1 + fluctuation);
+                            economy.marketPrices[resource] = Math.max(0.1, economy.marketPrices[resource]);
+                            
+                            console.log(`📈 Market: ${resource} price changed to ${economy.marketPrices[resource].toFixed(2)}`);
+                        }
+                    },
+                    
+                    processTrade: function(economy, deltaTime) {
+                        // Simulate some automatic trading
+                        if (Math.random() < 0.0005) { // Very rare automatic trades
+                            const resources = Object.keys(economy.marketPrices);
+                            const resource = resources[Math.floor(Math.random() * resources.length)];
+                            const amount = Math.floor(Math.random() * 10) + 1;
+                            const isBuying = Math.random() > 0.5;
+                            
+                            const price = economy.trade(resource, amount, isBuying);
+                            console.log(`💱 Market ${isBuying ? 'bought' : 'sold'} ${amount} ${resource} for ${price.toFixed(2)} gold`);
+                        }
+                    },
+                    
+                    calculateTradeValue: function(economy, resource, amount) {
+                        const basePrice = economy.marketPrices[resource];
+                        const reputationModifier = 0.5 + (economy.reputation / 100); // 50% to 150% based on reputation
+                        return basePrice * amount * reputationModifier;
+                    }
+                };
+                console.log('✅ EconomySystem added to ECS');
+            }
+            
+            console.log('🏗️ Phase 4 systems integration complete');
+        }
+        
+        function addPhase5SystemsToECS() {
+            console.log('🎯 Adding Phase 5 systems to ECS...');
+            
+            // Quest System - handles quest progression and objectives
+            if (!world.questSystem) {
+                world.questSystem = {
+                    update: function(deltaTime) {
+                        world.entities.forEach(entity => {
+                            const quest = entity.getComponent('QuestComponent');
+                            if (!quest || quest.active === false) return;
+                            
+                            this.processQuest(entity, quest, deltaTime);
+                        });
+                    },
+                    
+                    processQuest: function(entity, quest, deltaTime) {
+                        if (quest.status === 'active') {
+                            // Check objective completion conditions
+                            quest.objectives.forEach(objective => {
+                                if (!objective.completed) {
+                                    this.checkObjectiveProgress(objective, entity);
+                                }
+                            });
+                            
+                            // Check if quest is completed
+                            if (quest.isCompleted() && quest.status === 'active') {
+                                this.completeQuest(entity, quest);
+                            }
+                        }
+                    },
+                    
+                    checkObjectiveProgress: function(objective, questEntity) {
+                        // Example: check for kill objectives
+                        if (objective.type === 'kill') {
+                            // This would integrate with combat system
+                            if (Math.random() < 0.001) { // Simulate progress
+                                objective.current = Math.min(objective.current + 1, objective.required);
+                                objective.completed = objective.current >= objective.required;
+                            }
+                        }
+                    },
+                    
+                    completeQuest: function(entity, quest) {
+                        quest.status = 'completed';
+                        quest.completionTime = Date.now();
+                        
+                        // Grant rewards
+                        const character = entity.getComponent('CharacterComponent');
+                        if (character && quest.rewards) {
+                            if (quest.rewards.experience) {
+                                character.experience += quest.rewards.experience;
+                            }
+                            if (quest.rewards.gold) {
+                                character.gold += quest.rewards.gold;
+                            }
+                        }
+                        
+                        console.log(`✅ Quest '${quest.title}' completed for entity ${entity.id}`);
+                    },
+                    
+                    startQuest: function(entity, questId) {
+                        const quest = entity.getComponent('QuestComponent');
+                        if (quest && quest.questId === questId) {
+                            quest.status = 'active';
+                            quest.startTime = Date.now();
+                            console.log(`🎯 Quest '${quest.title}' started for entity ${entity.id}`);
+                        }
+                    }
+                };
+                console.log('✅ QuestSystem added to ECS');
+            }
+            
+            // Dialogue System - manages conversation flow
+            if (!world.dialogueSystem) {
+                world.dialogueSystem = {
+                    activeDialogues: new Map(), // Entity ID -> dialogue state
+                    
+                    update: function(deltaTime) {
+                        world.entities.forEach(entity => {
+                            const dialogue = entity.getComponent('DialogueComponent');
+                            if (!dialogue || dialogue.active === false) return;
+                            
+                            this.processDialogue(entity, dialogue, deltaTime);
+                        });
+                    },
+                    
+                    processDialogue: function(entity, dialogue, deltaTime) {
+                        // Update relationship values over time
+                        if (dialogue.lastInteraction) {
+                            const timeSinceInteraction = Date.now() - dialogue.lastInteraction;
+                            
+                            // Relationships naturally decay over time
+                            if (timeSinceInteraction > 86400000) { // 24 hours
+                                Object.keys(dialogue.relationship).forEach(rel => {
+                                    dialogue.relationship[rel] = Math.max(0, 
+                                        dialogue.relationship[rel] - 0.1 * deltaTime);
+                                });
+                            }
+                        }
+                    },
+                    
+                    startConversation: function(entity, playerEntity = null) {
+                        const dialogue = entity.getComponent('DialogueComponent');
+                        if (!dialogue) return null;
+                        
+                        const conversation = dialogue.startDialogue();
+                        this.activeDialogues.set(entity.id, {
+                            entity: entity,
+                            player: playerEntity,
+                            currentNode: conversation
+                        });
+                        
+                        console.log(`💬 Started conversation with ${dialogue.characterName}`);
+                        return conversation;
+                    },
+                    
+                    makeChoice: function(entityId, choiceIndex) {
+                        const activeDialogue = this.activeDialogues.get(entityId);
+                        if (!activeDialogue) return null;
+                        
+                        const dialogue = activeDialogue.entity.getComponent('DialogueComponent');
+                        const nextNode = dialogue.chooseOption(choiceIndex);
+                        
+                        if (nextNode) {
+                            activeDialogue.currentNode = nextNode;
+                        } else {
+                            // Conversation ended
+                            this.activeDialogues.delete(entityId);
+                            console.log(`💬 Conversation with ${dialogue.characterName} ended`);
+                        }
+                        
+                        return nextNode;
+                    }
+                };
+                console.log('✅ DialogueSystem added to ECS');
+            }
+            
+            // NPC System - advanced NPC behaviors and scheduling
+            if (!world.npcSystem) {
+                world.npcSystem = {
+                    gameTime: 0, // Simulated game time in seconds
+                    
+                    update: function(deltaTime) {
+                        this.gameTime += deltaTime;
+                        
+                        world.entities.forEach(entity => {
+                            const npc = entity.getComponent('NPCComponent');
+                            if (!npc || npc.active === false) return;
+                            
+                            this.processNPC(entity, npc, deltaTime);
+                        });
+                    },
+                    
+                    processNPC: function(entity, npc, deltaTime) {
+                        // Update needs
+                        npc.updateNeeds(deltaTime);
+                        
+                        // Update current activity based on schedule
+                        const currentActivity = npc.getCurrentActivity(this.gameTime);
+                        if (npc.currentActivity !== currentActivity.activity) {
+                            npc.currentActivity = currentActivity.activity;
+                            npc.activityStartTime = this.gameTime;
+                            console.log(`🤖 ${npc.name} is now ${currentActivity.activity} at ${currentActivity.location}`);
+                        }
+                        
+                        // Process social interactions
+                        this.processSocialBehavior(entity, npc, deltaTime);
+                        
+                        // Economic decision making
+                        this.processEconomicBehavior(entity, npc, deltaTime);
+                    },
+                    
+                    processSocialBehavior: function(entity, npc, deltaTime) {
+                        // NPCs seek social interaction based on their needs
+                        if (npc.needs.social < 30 && Math.random() < 0.001) {
+                            // Look for nearby NPCs to socialize with
+                            const nearbyNPCs = world.entities.filter(other => 
+                                other !== entity && 
+                                other.getComponent('NPCComponent') &&
+                                other.getComponent('Transform')
+                            );
+                            
+                            if (nearbyNPCs.length > 0) {
+                                npc.needs.social += 10;
+                                console.log(`😊 ${npc.name} socialized and feels better`);
+                            }
+                        }
+                    },
+                    
+                    processEconomicBehavior: function(entity, npc, deltaTime) {
+                        // NPCs make economic decisions based on their profession and needs
+                        if (npc.needs.food < 50 && Math.random() < 0.0001) {
+                            const economy = entity.getComponent('EconomyComponent');
+                            if (economy && economy.marketPrices.food) {
+                                // Buy food
+                                const foodCost = economy.marketPrices.food * 5;
+                                npc.needs.food += 20;
+                                console.log(`🍞 ${npc.name} bought food for ${foodCost.toFixed(2)} gold`);
+                            }
+                        }
+                    }
+                };
+                console.log('✅ NPCSystem added to ECS');
+            }
+            
+            // Event System - handles random and scripted world events
+            if (!world.eventSystem) {
+                world.eventSystem = {
+                    activeEvents: [],
+                    eventTimer: 0,
+                    eventFrequency: 30, // Seconds between potential events
+                    
+                    update: function(deltaTime) {
+                        this.eventTimer += deltaTime;
+                        
+                        // Process active events
+                        this.activeEvents.forEach(event => {
+                            event.processEvent(deltaTime, world);
+                        });
+                        
+                        // Remove completed events
+                        this.activeEvents = this.activeEvents.filter(event => 
+                            event.status === 'active'
+                        );
+                        
+                        // Check for new random events
+                        if (this.eventTimer >= this.eventFrequency) {
+                            this.eventTimer = 0;
+                            this.checkForRandomEvents();
+                        }
+                        
+                        // Process entity events
+                        world.entities.forEach(entity => {
+                            const eventComp = entity.getComponent('EventComponent');
+                            if (!eventComp || eventComp.active === false) return;
+                            
+                            this.processEntityEvent(entity, eventComp, deltaTime);
+                        });
+                    },
+                    
+                    checkForRandomEvents: function() {
+                        if (Math.random() < 0.3) { // 30% chance every interval
+                            const eventEntities = world.entities.filter(entity => 
+                                entity.getComponent('EventComponent')
+                            );
+                            
+                            if (eventEntities.length > 0) {
+                                const randomEntity = eventEntities[Math.floor(Math.random() * eventEntities.length)];
+                                const eventComp = randomEntity.getComponent('EventComponent');
+                                const triggeredEvent = eventComp.triggerRandomEvent();
+                                
+                                if (triggeredEvent) {
+                                    this.activeEvents.push(eventComp);
+                                    console.log(`🎲 Random event triggered: ${triggeredEvent.name}`);
+                                }
+                            }
+                        }
+                    },
+                    
+                    processEntityEvent: function(entity, eventComp, deltaTime) {
+                        if (eventComp.status === 'active') {
+                            eventComp.processEvent(deltaTime, world);
+                            
+                            // Apply event effects to nearby entities
+                            if (eventComp.effects.moodModifiers) {
+                                this.applyMoodEffects(entity, eventComp.effects.moodModifiers);
+                            }
+                        }
+                    },
+                    
+                    applyMoodEffects: function(sourceEntity, moodModifiers) {
+                        const transform = sourceEntity.getComponent('Transform');
+                        if (!transform) return;
+                        
+                        // Affect nearby NPCs
+                        world.entities.forEach(entity => {
+                            const npc = entity.getComponent('NPCComponent');
+                            const entityTransform = entity.getComponent('Transform');
+                            
+                            if (npc && entityTransform && entity !== sourceEntity) {
+                                const distance = Math.sqrt(
+                                    Math.pow(transform.x - entityTransform.x, 2) +
+                                    Math.pow(transform.z - entityTransform.z, 2)
+                                );
+                                
+                                if (distance < 10) { // Within 10 units
+                                    Object.keys(moodModifiers).forEach(mood => {
+                                        if (npc.needs[mood] !== undefined) {
+                                            npc.needs[mood] = Math.max(0, Math.min(100, 
+                                                npc.needs[mood] + moodModifiers[mood]
+                                            ));
+                                        }
+                                    });
+                                }
+                            }
+                        });
+                    }
+                };
+                console.log('✅ EventSystem added to ECS');
+            }
+            
+            console.log('🎯 Phase 5 systems integration complete');
+        }
+        
         // Load Phase 3 components and systems
         function loadPhase3Components(callback) {
             console.log('📦 Loading Phase 3 components for ECS...');
@@ -2245,7 +3786,15 @@ Click an entity to select it. Click components to toggle on/off.
             // Add Phase 3 systems to existing ECS
             addPhase3SystemsToECS();
             
+            // Add Phase 4 systems to existing ECS
+            addPhase4SystemsToECS();
+            
+            // Add Phase 5 systems to existing ECS
+            addPhase5SystemsToECS();
+            
             console.log('✅ Phase 3 components and systems loaded');
+            console.log('✅ Phase 4 components and systems loaded');
+            console.log('✅ Phase 5 components and systems loaded');
             if (callback) callback();
         }
         
@@ -2264,7 +3813,7 @@ Click an entity to select it. Click components to toggle on/off.
             
             // Visualize SphereColliderComponent
             const sphereCollider = entity.getComponent('SphereColliderComponent');
-            if (sphereCollider && sphereCollider.active !== false) {
+            if (sphereCollider && sphereCollider.active !== false && !entity.sphereColliderHelper) {
                 const geometry = new THREE.SphereGeometry(sphereCollider.radius, 16, 12);
                 const material = new THREE.MeshBasicMaterial({ 
                     color: 0x00ff88,
@@ -2287,7 +3836,7 @@ Click an entity to select it. Click components to toggle on/off.
             
             // Visualize BoxColliderComponent
             const boxCollider = entity.getComponent('BoxColliderComponent');
-            if (boxCollider && boxCollider.active !== false) {
+            if (boxCollider && boxCollider.active !== false && !entity.boxColliderHelper) {
                 const geometry = new THREE.BoxGeometry(boxCollider.size.x, boxCollider.size.y, boxCollider.size.z);
                 const material = new THREE.MeshBasicMaterial({ 
                     color: 0x0088ff,
@@ -2371,7 +3920,6 @@ Click an entity to select it. Click components to toggle on/off.
                 entity.partyHelper = crownHelper;
                 scene.add(crownHelper);
                 
-                console.log(`👑 Added party leadership indicator for entity ${entity.id}`);
             }
             
             // Visualize CharacterComponent
@@ -2406,7 +3954,6 @@ Click an entity to select it. Click components to toggle on/off.
                 scene.add(healthBar);
                 scene.add(levelHelper);
                 
-                console.log(`❤️ Added health bar and level indicator for entity ${entity.id}`);
             }
             
             // Visualize AIComponent
@@ -2433,7 +3980,6 @@ Click an entity to select it. Click components to toggle on/off.
                 entity.aiHelper = behaviorHelper;
                 scene.add(behaviorHelper);
                 
-                console.log(`🤖 Added AI behavior indicator for entity ${entity.id}`);
             }
             
             // Visualize CombatComponent
@@ -2454,7 +4000,6 @@ Click an entity to select it. Click components to toggle on/off.
                 entity.combatHelper = rangeHelper;
                 scene.add(rangeHelper);
                 
-                console.log(`⚔️ Added combat range indicator for entity ${entity.id}`);
             }
             
             // Visualize InventoryComponent
@@ -2473,7 +4018,233 @@ Click an entity to select it. Click components to toggle on/off.
                 entity.inventoryHelper = bagHelper;
                 scene.add(bagHelper);
                 
-                console.log(`💰 Added inventory indicator for entity ${entity.id}`);
+            }
+            
+            // Visualize Phase 4 Components
+            
+            // Visualize VillageComponent
+            const village = entity.getComponent('VillageComponent');
+            if (village && village.active !== false) {
+                // Create village indicator (small house)
+                const houseGeometry = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+                const houseMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0x8bc34a,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                const houseHelper = new THREE.Mesh(houseGeometry, houseMaterial);
+                houseHelper.position.set(transform.x - 1.0, transform.y + 1.5, transform.z);
+                
+                // Add roof
+                const roofGeometry = new THREE.ConeGeometry(0.3, 0.3, 4);
+                const roofMaterial = new THREE.MeshBasicMaterial({ color: 0x795548 });
+                const roofHelper = new THREE.Mesh(roofGeometry, roofMaterial);
+                roofHelper.position.set(transform.x - 1.0, transform.y + 1.8, transform.z);
+                
+                entity.villageHelper = houseHelper;
+                entity.villageRoofHelper = roofHelper;
+                scene.add(houseHelper);
+                scene.add(roofHelper);
+                
+            }
+            
+            // Visualize BuildingComponent
+            const building = entity.getComponent('BuildingComponent');
+            if (building && building.active !== false) {
+                // Create building indicator based on type
+                let buildingColor;
+                switch(building.buildingType) {
+                    case 'house': buildingColor = 0x8bc34a; break;
+                    case 'farm': buildingColor = 0x4caf50; break;
+                    case 'workshop': buildingColor = 0x795548; break;
+                    case 'storage': buildingColor = 0xff9800; break;
+                    case 'barracks': buildingColor = 0xf44336; break;
+                    default: buildingColor = 0x607d8b;
+                }
+                
+                const buildingGeometry = new THREE.BoxGeometry(0.6, 0.8, 0.6);
+                const buildingMaterial = new THREE.MeshBasicMaterial({ 
+                    color: buildingColor,
+                    transparent: true,
+                    opacity: building.isConstructed ? 0.8 : 0.4
+                });
+                const buildingHelper = new THREE.Mesh(buildingGeometry, buildingMaterial);
+                buildingHelper.position.set(transform.x + 1.0, transform.y + 1.4, transform.z);
+                
+                entity.buildingHelper = buildingHelper;
+                scene.add(buildingHelper);
+                
+            }
+            
+            // Visualize ResourceComponent
+            const resource = entity.getComponent('ResourceComponent');
+            if (resource && resource.active !== false) {
+                // Create resource stack indicator
+                const stackGeometry = new THREE.CylinderGeometry(0.2, 0.2, 0.5, 8);
+                const stackMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0xff9800,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const stackHelper = new THREE.Mesh(stackGeometry, stackMaterial);
+                stackHelper.position.set(transform.x, transform.y + 2.2, transform.z + 1.0);
+                
+                entity.resourceHelper = stackHelper;
+                scene.add(stackHelper);
+                
+            }
+            
+            // Visualize WorkerComponent
+            const worker = entity.getComponent('WorkerComponent');
+            if (worker && worker.active !== false) {
+                // Create worker tool indicator
+                const toolGeometry = new THREE.BoxGeometry(0.1, 0.6, 0.1);
+                const toolMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0x607d8b,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                const toolHelper = new THREE.Mesh(toolGeometry, toolMaterial);
+                toolHelper.position.set(transform.x - 0.5, transform.y + 1.5, transform.z - 0.5);
+                toolHelper.rotation.z = Math.PI / 4; // Lean the tool
+                
+                entity.workerHelper = toolHelper;
+                scene.add(toolHelper);
+                
+            }
+            
+            // Visualize EconomyComponent
+            const economy = entity.getComponent('EconomyComponent');
+            if (economy && economy.active !== false) {
+                // Store all coin helpers in an array
+                entity.economyHelpers = [];
+                
+                // Stack multiple coins - create separate geometry and material for each
+                for (let i = 0; i < 3; i++) {
+                    const coinGeometry = new THREE.CylinderGeometry(0.15, 0.15, 0.05, 12);
+                    const coinMaterial = new THREE.MeshBasicMaterial({ 
+                        color: 0xffc107,
+                        transparent: true,
+                        opacity: 0.9
+                    });
+                    
+                    const coinHelper = new THREE.Mesh(coinGeometry, coinMaterial);
+                    coinHelper.position.set(transform.x + 0.5, transform.y + 1.0 + (i * 0.1), transform.z + 0.5);
+                    
+                    entity.economyHelpers.push(coinHelper);
+                    scene.add(coinHelper);
+                }
+                
+                // Keep reference to first coin for easy access in updates
+                entity.economyHelper = entity.economyHelpers[0];
+                
+            }
+            
+            // ===== PHASE 5 VISUALIZATIONS =====
+            
+            // Visualize QuestComponent
+            const quest = entity.getComponent('QuestComponent');
+            if (quest && quest.active !== false) {
+                // Create quest indicator based on status
+                let questColor;
+                switch(quest.status) {
+                    case 'available': questColor = 0xffeb3b; break; // Yellow
+                    case 'active': questColor = 0x2196f3; break;    // Blue
+                    case 'completed': questColor = 0x4caf50; break; // Green
+                    case 'failed': questColor = 0xf44336; break;    // Red
+                    default: questColor = 0x9e9e9e;                // Gray
+                }
+                
+                const questGeometry = new THREE.ConeGeometry(0.2, 0.8, 4);
+                const questMaterial = new THREE.MeshBasicMaterial({ 
+                    color: questColor,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const questHelper = new THREE.Mesh(questGeometry, questMaterial);
+                questHelper.position.set(transform.x - 1.0, transform.y + 1.5, transform.z);
+                questHelper.rotation.x = Math.PI; // Point upward
+                
+                entity.questHelper = questHelper;
+                scene.add(questHelper);
+                
+            }
+            
+            // Visualize DialogueComponent
+            const dialogue = entity.getComponent('DialogueComponent');
+            if (dialogue && dialogue.active !== false) {
+                // Create speech bubble indicator
+                const bubbleGeometry = new THREE.SphereGeometry(0.3, 8, 6);
+                const bubbleMaterial = new THREE.MeshBasicMaterial({ 
+                    color: 0xe1f5fe,
+                    transparent: true,
+                    opacity: 0.7
+                });
+                const bubbleHelper = new THREE.Mesh(bubbleGeometry, bubbleMaterial);
+                bubbleHelper.position.set(transform.x + 1.5, transform.y + 1.8, transform.z);
+                
+                entity.dialogueHelper = bubbleHelper;
+                scene.add(bubbleHelper);
+                
+            }
+            
+            // Visualize NPCComponent
+            const npc = entity.getComponent('NPCComponent');
+            if (npc && npc.active !== false) {
+                // Create NPC type indicator
+                let npcColor;
+                switch(npc.npcType) {
+                    case 'villager': npcColor = 0x8bc34a; break;   // Light green
+                    case 'merchant': npcColor = 0xffc107; break;   // Amber
+                    case 'guard': npcColor = 0x607d8b; break;      // Blue gray
+                    case 'quest_giver': npcColor = 0x9c27b0; break; // Purple
+                    case 'farmer': npcColor = 0x795548; break;     // Brown
+                    default: npcColor = 0x2196f3;                 // Blue
+                }
+                
+                const npcGeometry = new THREE.OctahedronGeometry(0.25, 0);
+                const npcMaterial = new THREE.MeshBasicMaterial({ 
+                    color: npcColor,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const npcHelper = new THREE.Mesh(npcGeometry, npcMaterial);
+                npcHelper.position.set(transform.x, transform.y + 2.0, transform.z + 1.0);
+                
+                entity.npcHelper = npcHelper;
+                scene.add(npcHelper);
+                
+            }
+            
+            // Visualize EventComponent
+            const event = entity.getComponent('EventComponent');
+            if (event && event.active !== false) {
+                // Create event indicator based on type and status
+                let eventColor;
+                if (event.status === 'active') {
+                    eventColor = 0xff5722; // Deep orange for active events
+                } else {
+                    switch(event.eventType) {
+                        case 'random': eventColor = 0x4caf50; break;    // Green
+                        case 'scripted': eventColor = 0x2196f3; break;  // Blue
+                        case 'seasonal': eventColor = 0xff9800; break;  // Orange
+                        case 'triggered': eventColor = 0x9c27b0; break; // Purple
+                        default: eventColor = 0x607d8b;                // Blue gray
+                    }
+                }
+                
+                const eventGeometry = new THREE.TetrahedronGeometry(0.4, 0);
+                const eventMaterial = new THREE.MeshBasicMaterial({ 
+                    color: eventColor,
+                    transparent: true,
+                    opacity: event.status === 'active' ? 0.9 : 0.6
+                });
+                const eventHelper = new THREE.Mesh(eventGeometry, eventMaterial);
+                eventHelper.position.set(transform.x - 1.5, transform.y + 2.2, transform.z);
+                
+                entity.eventHelper = eventHelper;
+                scene.add(eventHelper);
+                
             }
         }
         
@@ -2553,6 +4324,82 @@ Click an entity to select it. Click components to toggle on/off.
                 entity.inventoryHelper.geometry.dispose();
                 entity.inventoryHelper.material.dispose();
                 delete entity.inventoryHelper;
+            }
+            
+            // Remove Phase 4 component helpers
+            if (entity.villageHelper) {
+                scene.remove(entity.villageHelper);
+                entity.villageHelper.geometry.dispose();
+                entity.villageHelper.material.dispose();
+                delete entity.villageHelper;
+            }
+            
+            if (entity.villageRoofHelper) {
+                scene.remove(entity.villageRoofHelper);
+                entity.villageRoofHelper.geometry.dispose();
+                entity.villageRoofHelper.material.dispose();
+                delete entity.villageRoofHelper;
+            }
+            
+            if (entity.buildingHelper) {
+                scene.remove(entity.buildingHelper);
+                entity.buildingHelper.geometry.dispose();
+                entity.buildingHelper.material.dispose();
+                delete entity.buildingHelper;
+            }
+            
+            if (entity.resourceHelper) {
+                scene.remove(entity.resourceHelper);
+                entity.resourceHelper.geometry.dispose();
+                entity.resourceHelper.material.dispose();
+                delete entity.resourceHelper;
+            }
+            
+            if (entity.workerHelper) {
+                scene.remove(entity.workerHelper);
+                entity.workerHelper.geometry.dispose();
+                entity.workerHelper.material.dispose();
+                delete entity.workerHelper;
+            }
+            
+            // Remove all economy helpers (multiple coins)
+            if (entity.economyHelpers) {
+                entity.economyHelpers.forEach(coinHelper => {
+                    scene.remove(coinHelper);
+                    coinHelper.geometry.dispose();
+                    coinHelper.material.dispose();
+                });
+                delete entity.economyHelpers;
+                delete entity.economyHelper; // Remove the reference to first coin too
+            }
+            
+            // Phase 5 cleanup
+            if (entity.questHelper) {
+                scene.remove(entity.questHelper);
+                entity.questHelper.geometry.dispose();
+                entity.questHelper.material.dispose();
+                delete entity.questHelper;
+            }
+            
+            if (entity.dialogueHelper) {
+                scene.remove(entity.dialogueHelper);
+                entity.dialogueHelper.geometry.dispose();
+                entity.dialogueHelper.material.dispose();
+                delete entity.dialogueHelper;
+            }
+            
+            if (entity.npcHelper) {
+                scene.remove(entity.npcHelper);
+                entity.npcHelper.geometry.dispose();
+                entity.npcHelper.material.dispose();
+                delete entity.npcHelper;
+            }
+            
+            if (entity.eventHelper) {
+                scene.remove(entity.eventHelper);
+                entity.eventHelper.geometry.dispose();
+                entity.eventHelper.material.dispose();
+                delete entity.eventHelper;
             }
         }
         
@@ -2694,6 +4541,189 @@ Click an entity to select it. Click components to toggle on/off.
                     const fillPercent = inventory.currentWeight / inventory.maxWeight;
                     const scale = 0.8 + (fillPercent * 0.4); // Scale from 0.8 to 1.2
                     entity.inventoryHelper.scale.setScalar(scale);
+                }
+            }
+            
+            // Update Phase 4 component helpers
+            if (entity.villageHelper) {
+                entity.villageHelper.position.set(transform.x - 1.0, transform.y + 1.5, transform.z);
+                entity.villageRoofHelper.position.set(transform.x - 1.0, transform.y + 1.8, transform.z);
+                
+                // Gentle house breathing animation
+                const breathe = Math.sin(now * 0.002) * 0.05 + 1.0;
+                entity.villageHelper.scale.setScalar(breathe);
+                
+                // Roof sways slightly
+                entity.villageRoofHelper.rotation.z = Math.sin(now * 0.001) * 0.02;
+            }
+            
+            if (entity.buildingHelper) {
+                entity.buildingHelper.position.set(transform.x + 1.0, transform.y + 1.4, transform.z);
+                
+                // Update building opacity based on construction progress
+                const building = entity.getComponent('BuildingComponent');
+                if (building) {
+                    const opacity = building.isConstructed ? 0.8 : 0.4 + (building.constructionProgress / 100) * 0.4;
+                    entity.buildingHelper.material.opacity = opacity;
+                    
+                    // Building under construction flickers
+                    if (!building.isConstructed && building.constructionStarted) {
+                        const flicker = Math.sin(now * 0.01) * 0.1 + 0.9;
+                        entity.buildingHelper.material.opacity *= flicker;
+                    }
+                }
+            }
+            
+            if (entity.resourceHelper) {
+                entity.resourceHelper.position.set(transform.x, transform.y + 2.2, transform.z + 1.0);
+                
+                // Resource stack height based on total resources
+                const resource = entity.getComponent('ResourceComponent');
+                if (resource) {
+                    const totalResources = Object.values(resource.resources).reduce((sum, amount) => sum + amount, 0);
+                    const stackHeight = Math.max(0.3, Math.min(1.5, totalResources / 200));
+                    entity.resourceHelper.scale.y = stackHeight;
+                }
+                
+                // Gentle rotation
+                entity.resourceHelper.rotation.y += 0.005;
+            }
+            
+            if (entity.workerHelper) {
+                entity.workerHelper.position.set(transform.x - 0.5, transform.y + 1.5, transform.z - 0.5);
+                
+                // Tool animation based on work state
+                const worker = entity.getComponent('WorkerComponent');
+                if (worker && worker.isWorking) {
+                    // Working animation - tool moves up and down
+                    const workMotion = Math.sin(now * 0.008) * 0.2;
+                    entity.workerHelper.position.y += workMotion;
+                    entity.workerHelper.rotation.z = Math.PI / 4 + Math.sin(now * 0.008) * 0.3;
+                } else {
+                    // Idle animation - gentle sway
+                    entity.workerHelper.rotation.z = Math.PI / 4 + Math.sin(now * 0.002) * 0.1;
+                }
+            }
+            
+            // Update ALL economy coin helpers
+            if (entity.economyHelpers && entity.economyHelpers.length > 0) {
+                const economy = entity.getComponent('EconomyComponent');
+                const economicActivity = economy && Math.random() < 0.001;
+                const glint = Math.sin(now * 0.003) * 0.3 + 0.9;
+                
+                entity.economyHelpers.forEach((coinHelper, index) => {
+                    // Update position with stacked height
+                    coinHelper.position.set(
+                        transform.x + 0.5, 
+                        transform.y + 1.0 + (index * 0.1), 
+                        transform.z + 0.5
+                    );
+                    
+                    // Coins glint animation (slight variation per coin)
+                    const coinGlint = Math.sin(now * 0.003 + index * 0.5) * 0.3 + 0.9;
+                    coinHelper.material.opacity = coinGlint;
+                    
+                    // Slight rotation (different speed per coin)
+                    coinHelper.rotation.y += 0.01 + (index * 0.002);
+                    
+                    // Economic activity causes coins to bounce
+                    if (economicActivity) {
+                        const bounce = Math.sin(now * 0.02 + index * 0.3) * 0.1;
+                        coinHelper.position.y += bounce;
+                    }
+                });
+            }
+            
+            // Phase 5 visualization updates
+            if (entity.questHelper) {
+                entity.questHelper.position.set(transform.x - 1.0, transform.y + 1.5, transform.z);
+                
+                // Quest indicator animation - gentle bobbing
+                const questBob = Math.sin(now * 0.003) * 0.1;
+                entity.questHelper.position.y += questBob;
+                
+                // Rotate quest indicator
+                entity.questHelper.rotation.y += 0.01;
+                
+                // Update color based on quest status
+                const quest = entity.getComponent('QuestComponent');
+                if (quest) {
+                    let questColor;
+                    switch(quest.status) {
+                        case 'available': questColor = 0xffeb3b; break; // Yellow
+                        case 'active': questColor = 0x2196f3; break;    // Blue
+                        case 'completed': questColor = 0x4caf50; break; // Green
+                        case 'failed': questColor = 0xf44336; break;    // Red
+                        default: questColor = 0x9e9e9e;                // Gray
+                    }
+                    entity.questHelper.material.color.setHex(questColor);
+                }
+            }
+            
+            if (entity.dialogueHelper) {
+                entity.dialogueHelper.position.set(transform.x + 1.5, transform.y + 1.8, transform.z);
+                
+                // Speech bubble animation - floating and pulsing
+                const bubbleFloat = Math.sin(now * 0.004) * 0.15;
+                entity.dialogueHelper.position.y += bubbleFloat;
+                
+                const bubblePulse = 0.8 + Math.sin(now * 0.006) * 0.2;
+                entity.dialogueHelper.scale.setScalar(bubblePulse);
+                
+                // Dialogue activity indicator
+                const dialogue = entity.getComponent('DialogueComponent');
+                if (dialogue && dialogue.currentDialogue) {
+                    entity.dialogueHelper.material.opacity = 0.9;
+                } else {
+                    entity.dialogueHelper.material.opacity = 0.7;
+                }
+            }
+            
+            if (entity.npcHelper) {
+                entity.npcHelper.position.set(transform.x, transform.y + 2.0, transform.z + 1.0);
+                
+                // NPC indicator animation - rotation and activity-based movement
+                entity.npcHelper.rotation.x += 0.02;
+                entity.npcHelper.rotation.y += 0.015;
+                
+                const npc = entity.getComponent('NPCComponent');
+                if (npc) {
+                    // Activity-based animation
+                    if (npc.currentActivity === 'work') {
+                        const workMotion = Math.sin(now * 0.01) * 0.1;
+                        entity.npcHelper.position.y += workMotion;
+                    } else if (npc.currentActivity === 'socializing') {
+                        const socialSway = Math.sin(now * 0.005) * 0.05;
+                        entity.npcHelper.position.x += socialSway;
+                    }
+                    
+                    // Mood-based opacity
+                    const averageMood = Object.values(npc.needs).reduce((sum, need) => sum + need, 0) / Object.keys(npc.needs).length;
+                    entity.npcHelper.material.opacity = 0.5 + (averageMood / 100) * 0.4;
+                }
+            }
+            
+            if (entity.eventHelper) {
+                entity.eventHelper.position.set(transform.x - 1.5, transform.y + 2.2, transform.z);
+                
+                // Event indicator animation
+                entity.eventHelper.rotation.x += 0.03;
+                entity.eventHelper.rotation.y += 0.02;
+                entity.eventHelper.rotation.z += 0.01;
+                
+                const event = entity.getComponent('EventComponent');
+                if (event) {
+                    if (event.status === 'active') {
+                        // Active events pulse more intensely
+                        const activePulse = 0.8 + Math.sin(now * 0.01) * 0.4;
+                        entity.eventHelper.scale.setScalar(activePulse);
+                        entity.eventHelper.material.opacity = 0.9;
+                    } else {
+                        // Inactive events gentle pulse
+                        const gentlePulse = 0.9 + Math.sin(now * 0.003) * 0.1;
+                        entity.eventHelper.scale.setScalar(gentlePulse);
+                        entity.eventHelper.material.opacity = 0.6;
+                    }
                 }
             }
         }
