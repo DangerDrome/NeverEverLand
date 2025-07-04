@@ -22,9 +22,6 @@ Click an entity to select it. Click components to toggle on/off.
                 <button onclick="stressTest()">Stress Test</button>
             </div>
             
-            <div>
-                <button class="danger" onclick="clearAll()">Clear All</button>
-            </div>
             
             
             <div id="status">
@@ -41,8 +38,8 @@ Click an entity to select it. Click components to toggle on/off.
                 • Components hold data<br>
                 • Systems process components<br>
                 • Queries find entities by components<br><br>
-                <strong style="color: #4CAF50;">🚀 Physics & Animation Integrated!</strong><br>
-                Use the + button in the inspector to add physics/animation components!
+                <strong style="color: #4CAF50;">🚀 Physics & Animation Components Available!</strong><br>
+                Use the + button in the inspector to add any component!
             </div>
         </div>
         
@@ -52,7 +49,10 @@ Click an entity to select it. Click components to toggle on/off.
                 <span style="font-size: 10px; color: #888;"><i data-lucide="move" style="width: 12px; height: 12px;"></i> Drag to move • <i data-lucide="maximize-2" style="width: 12px; height: 12px;"></i> Resize corner</span>
             </div>
             <div id="inspector-content">
-                <button onclick="createEntity()" style="width: 100%; margin-bottom: 10px; padding: 8px; background: #4CAF50; color: white; border: none; border-radius: 3px; cursor: pointer; font-family: monospace; display: flex; align-items: center; justify-content: center; gap: 5px;"><i data-lucide="plus" style="width: 16px; height: 16px;"></i> Create Entity</button>
+                <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+                    <button onclick="createEntity()" style="flex: 1; padding: 8px; background: #4CAF50; color: white; border: none; border-radius: 3px; cursor: pointer; font-family: monospace; display: flex; align-items: center; justify-content: center; gap: 5px;"><i data-lucide="plus" style="width: 16px; height: 16px;"></i> Create Entity</button>
+                    <button onclick="clearAll()" style="padding: 8px 12px; background: #F44336; color: white; border: none; border-radius: 3px; cursor: pointer; font-family: monospace; display: flex; align-items: center; justify-content: center; gap: 5px;"><i data-lucide="trash-2" style="width: 16px; height: 16px;"></i> Clear All</button>
+                </div>
                 <div id="entityList"></div>
             </div>
         </div>
@@ -235,19 +235,12 @@ Click an entity to select it. Click components to toggle on/off.
                     const transform = entity.getComponent('Transform');
                     const renderable = entity.getComponent('Renderable');
                     
-                    if (transform && renderable && renderable.mesh) {
+                    if (transform && transform.active !== false && renderable && renderable.mesh) {
                         // Update mesh transform
                         renderable.mesh.position.set(transform.x, transform.y, transform.z);
                         renderable.mesh.rotation.set(transform.rotation.x, transform.rotation.y, transform.rotation.z);
                         renderable.mesh.scale.set(transform.scale.x, transform.scale.y, transform.scale.z);
                         renderable.mesh.visible = renderable.visible;
-                        
-                        // Update wireframe edges if they exist (for selected entity)
-                        if (renderable.wireframeHelper) {
-                            renderable.wireframeHelper.position.copy(renderable.mesh.position);
-                            renderable.wireframeHelper.rotation.copy(renderable.mesh.rotation);
-                            renderable.wireframeHelper.scale.copy(renderable.mesh.scale);
-                        }
                     }
                 });
             }
@@ -273,6 +266,12 @@ Click an entity to select it. Click components to toggle on/off.
                     }
                     world.destroyEntity(entity);
                 });
+                
+                // Force inspector update if entities were destroyed
+                if (toDestroy.length > 0) {
+                    updateInspector();
+                    updateStatus();
+                }
             }
         }
         
@@ -326,14 +325,14 @@ Click an entity to select it. Click components to toggle on/off.
                 const renderable = entity.getComponent('Renderable');
                 if (renderable && renderable.mesh) {
                     scene.remove(renderable.mesh);
-                    
-                    // Clean up wireframe edges if they exist
-                    if (renderable.wireframeHelper) {
-                        scene.remove(renderable.wireframeHelper);
-                        renderable.wireframeHelper.geometry.dispose();
-                        renderable.wireframeHelper.material.dispose();
-                        renderable.wireframeHelper = null;
-                    }
+                }
+                
+                // Clean up all visualization helpers
+                removeColliderVisualization(entity);
+                
+                // Clear selection if this entity is currently selected
+                if (selectedEntity && selectedEntity.id === entity.id) {
+                    selectEntity(null);
                 }
                 
                 const index = this.entities.indexOf(entity);
@@ -389,9 +388,7 @@ Click an entity to select it. Click components to toggle on/off.
         let selectedEntity = null;
         let raycaster, mouse;
         
-        // Phase 2 demo variables
-        let currentPhase2Demo = null;
-        let currentGameEngine = null;
+        // Component loading state
         let phase2ComponentsLoaded = false;
         let lastInspectorUpdate = 0;
         
@@ -658,9 +655,12 @@ Click an entity to select it. Click components to toggle on/off.
         }
         
         function destroyEntity(entity) {
+            // Always clean up visualization helpers for this entity
+            removeColliderVisualization(entity);
+            
             // Clear selection if this entity is currently selected
             if (selectedEntity && selectedEntity.id === entity.id) {
-                selectEntity(null); // This will clear wireframes and selection properly
+                selectEntity(null); // This will clear selection properly
             }
             
             world.destroyEntity(entity);
@@ -722,6 +722,9 @@ Click an entity to select it. Click components to toggle on/off.
         }
         
         function clearAll() {
+            // Clear selection first
+            selectEntity(null);
+            
             while (world.entities.length > 0) {
                 world.destroyEntity(world.entities[0]);
             }
@@ -805,19 +808,11 @@ Click an entity to select it. Click components to toggle on/off.
         function selectEntity(entity) {
             console.log(`🔄 selectEntity called with: ${entity ? `entity ${entity.id}` : 'null'}`);
             
-            // Clear previous selection highlight and edges
+            // Clear previous selection highlight
             if (selectedEntity) {
                 const prevRenderable = selectedEntity.getComponent('Renderable');
                 if (prevRenderable && prevRenderable.mesh) {
                     prevRenderable.mesh.material.emissive.setHex(0x000000);
-                    
-                    // Remove wireframe edges if they exist
-                    if (prevRenderable.wireframeHelper) {
-                        scene.remove(prevRenderable.wireframeHelper);
-                        prevRenderable.wireframeHelper.geometry.dispose();
-                        prevRenderable.wireframeHelper.material.dispose();
-                        prevRenderable.wireframeHelper = null;
-                    }
                 }
                 
                 // Remove collider visualization from previous selection
@@ -826,39 +821,20 @@ Click an entity to select it. Click components to toggle on/off.
             
             selectedEntity = entity;
             
-            // Highlight new selection with glow and edges
+            // Highlight new selection with emissive glow
             if (selectedEntity) {
                 const renderable = selectedEntity.getComponent('Renderable');
                 if (renderable && renderable.mesh) {
-                    // Add emissive glow
+                    // Add emissive glow for selection feedback
                     renderable.mesh.material.emissive.setHex(0x004400);
-                    
-                    // Add wireframe edges
-                    const edgesGeometry = new THREE.EdgesGeometry(renderable.mesh.geometry);
-                    const edgesMaterial = new THREE.LineBasicMaterial({ 
-                        color: 0x00ff00, 
-                        linewidth: 2,
-                        transparent: true,
-                        opacity: 0.8
-                    });
-                    const wireframeHelper = new THREE.LineSegments(edgesGeometry, edgesMaterial);
-                    
-                    // Match the mesh's transform
-                    wireframeHelper.position.copy(renderable.mesh.position);
-                    wireframeHelper.rotation.copy(renderable.mesh.rotation);
-                    wireframeHelper.scale.copy(renderable.mesh.scale);
-                    
-                    // Store reference and add to scene
-                    renderable.wireframeHelper = wireframeHelper;
-                    scene.add(wireframeHelper);
                 }
                 
-                // Add collider visualization
+                // Add collider visualization (replaces wireframe)
                 addColliderVisualization(selectedEntity);
             }
             
             updateSelectionUI();
-            updateInspector(); // This will update the CI to show the selected state
+            updateInspector(); // This will update the inspector to show the selected state
         }
         
         function updateSelectionUI() {
@@ -1305,13 +1281,9 @@ Click an entity to select it. Click components to toggle on/off.
                 world.physicsSystem.update(deltaTime);
             }
             
-            // Update Phase 2 demo if active
-            if (currentPhase2Demo && currentPhase2Demo.update) {
-                currentPhase2Demo.update(deltaTime);
-            }
             
             // Update UI less frequently to avoid flickering (every 1000ms)
-            if (world.entities.length > 0 && (now - lastInspectorUpdate) > 1000) {
+            if ((now - lastInspectorUpdate) > 1000) {
                 updateInspector();
                 updateStatus();
                 lastInspectorUpdate = now;
@@ -1374,70 +1346,97 @@ Click an entity to select it. Click components to toggle on/off.
         }
         
         function addPhysicsSystemToECS() {
-            // Add a physics system to the existing ECS world
+            // Add a proper physics system based on PhysicsSystem from GameEngine
             if (!world.physicsSystem) {
                 world.physicsSystem = {
+                    gravity: new THREE.Vector3(0, -9.81, 0),
+                    enableGravity: true,
+                    requiredComponents: ['Transform', 'RigidbodyComponent'],
+                    
                     update: function(deltaTime) {
+                        // Process entities using proper ECS pattern
                         world.entities.forEach(entity => {
-                            const rigidbody = entity.getComponent('RigidbodyComponent');
-                            const transform = entity.getComponent('Transform');
+                            if (!this.entityMatches(entity)) return;
                             
-                            if (rigidbody && rigidbody.active !== false && transform && !rigidbody.isKinematic) {
-                                // Apply gravity
-                                if (rigidbody.useGravity) {
-                                    rigidbody.velocity.y -= 9.81 * deltaTime;
-                                }
+                            const transform = entity.getComponent('Transform');
+                            const rigidbody = entity.getComponent('RigidbodyComponent');
+                            
+                            if (rigidbody.isKinematic || rigidbody.isSleeping || rigidbody.active === false) return;
+                            
+                            // Apply gravity
+                            if (rigidbody.useGravity && this.enableGravity) {
+                                rigidbody.forces = rigidbody.forces || [];
+                                const gravityForce = this.gravity.clone().multiplyScalar(rigidbody.mass);
+                                rigidbody.forces.push(gravityForce);
+                            }
+                            
+                            // Apply forces to acceleration
+                            rigidbody.acceleration = rigidbody.acceleration || new THREE.Vector3(0, 0, 0);
+                            rigidbody.acceleration.set(0, 0, 0);
+                            
+                            if (rigidbody.forces) {
+                                rigidbody.forces.forEach(force => {
+                                    rigidbody.acceleration.add(force.clone().divideScalar(rigidbody.mass));
+                                });
+                                rigidbody.forces = []; // Clear forces
+                            }
+                            
+                            // Apply drag
+                            if (rigidbody.drag) {
+                                const dragForce = rigidbody.velocity.clone().multiplyScalar(-rigidbody.drag);
+                                rigidbody.acceleration.add(dragForce);
+                            }
+                            
+                            // Update velocity
+                            rigidbody.velocity.add(rigidbody.acceleration.clone().multiplyScalar(deltaTime));
+                            
+                            // Update position 
+                            const deltaPosition = rigidbody.velocity.clone().multiplyScalar(deltaTime);
+                            transform.x += deltaPosition.x;
+                            transform.y += deltaPosition.y;
+                            transform.z += deltaPosition.z;
+                            
+                            // Simple ground collision with collider detection
+                            const sphereCollider = entity.getComponent('SphereColliderComponent');
+                            const boxCollider = entity.getComponent('BoxColliderComponent');
+                            
+                            let colliderRadius = 0.5; // Default
+                            if (sphereCollider) {
+                                colliderRadius = sphereCollider.radius;
+                            } else if (boxCollider) {
+                                colliderRadius = Math.min(boxCollider.size.x, boxCollider.size.y, boxCollider.size.z) / 2;
+                            }
+                            
+                            if (transform.y < colliderRadius) {
+                                transform.y = colliderRadius;
+                                rigidbody.velocity.y = Math.abs(rigidbody.velocity.y) * 0.7; // Bounce with restitution
                                 
-                                // Update position
-                                transform.x += rigidbody.velocity.x * deltaTime;
-                                transform.y += rigidbody.velocity.y * deltaTime;
-                                transform.z += rigidbody.velocity.z * deltaTime;
-                                
-                                // Simple ground collision
-                                if (transform.y < 0) {
-                                    transform.y = 0;
-                                    rigidbody.velocity.y = Math.abs(rigidbody.velocity.y) * 0.7; // Bounce
-                                }
+                                // Wake up if sleeping
+                                rigidbody.isSleeping = false;
+                            }
+                            
+                            // Check for sleep threshold
+                            if (rigidbody.velocity.length() < (rigidbody.sleepThreshold || 0.01)) {
+                                rigidbody.isSleeping = true;
                             }
                         });
+                    },
+                    
+                    entityMatches: function(entity) {
+                        return this.requiredComponents.every(componentType => entity.hasComponent(componentType));
+                    },
+                    
+                    getStats: function() {
+                        return {
+                            gravity: this.gravity.clone(),
+                            enableGravity: this.enableGravity
+                        };
                     }
                 };
-                console.log('🔬 Physics system integrated into existing ECS');
+                console.log('✅ Proper PhysicsSystem integrated into existing ECS with collision detection');
             }
         }
         
-        function loadPhase2Scripts(callback) {
-            // This function now loads the demo scripts for the demo buttons
-            console.log('📦 Loading Phase 2 demo scripts...');
-            
-            // Load Physics Demo
-            const physicsScript = document.createElement('script');
-            physicsScript.src = './physics-demo-standalone.js';
-            physicsScript.onload = () => {
-                console.log('✅ Physics Demo loaded');
-                
-                // Load Animation Demo
-                const animationScript = document.createElement('script');
-                animationScript.src = './animation-demo-standalone.js';
-                animationScript.onload = () => {
-                    console.log('✅ Animation Demo loaded');
-                    callback();
-                };
-                animationScript.onerror = () => {
-                    console.error('❌ Failed to load Animation Demo script');
-                };
-                document.head.appendChild(animationScript);
-            };
-            physicsScript.onerror = () => {
-                console.error('❌ Failed to load Physics Demo script');
-            };
-            document.head.appendChild(physicsScript);
-        }
-        
-        function loadPhysicsDemo() {
-            console.log('🔬 Loading Physics Demo...');
-            switchToPhase2Demo('physics');
-        }
         
         // Collider visualization
         function addColliderVisualization(entity) {
@@ -1642,408 +1641,8 @@ Click an entity to select it. Click components to toggle on/off.
             }, 0);
         }
         
-        // Demo functions removed - components are now integrated directly into ECS
-        
-        function switchToPhase2Demo(demoType) {
-            try {
-                // Instead of creating a new engine, extend the existing ECS demo
-                // Load required scripts if not already loaded
-                loadPhase2Scripts(() => {
-                    // Store current ECS state
-                    window.ecsBackupState = {
-                        entities: world.entities.slice(),
-                        selectedEntity: selectedEntity
-                    };
-                    
-                    // Clear current entities but keep the ECS infrastructure
-                    clearAll();
-                    
-                    // Add physics/animation components to existing ECS
-                    addPhase2ComponentsToECS();
-                    
-                    // Create demo using existing ECS infrastructure
-                    if (demoType === 'physics') {
-                        currentPhase2Demo = createPhysicsDemoInECS();
-                    } else if (demoType === 'animation') {
-                        currentPhase2Demo = createAnimationDemoInECS();
-                    }
-                    
-                    // Update UI to show Phase 2 controls
-                    showPhase2UI(demoType);
-                    
-                    console.log(`✅ ${demoType} demo loaded in existing ECS!`);
-                });
-                
-            } catch (error) {
-                console.error(`❌ Failed to load ${demoType} demo:`, error);
-                alert(`Failed to load ${demoType} demo. Check console for details.`);
-            }
-        }
-        
-        function addPhase2ComponentsToECS() {
-            // Add physics and animation component classes to the existing ECS
-            window.RigidbodyComponent = window.RigidbodyComponent;
-            window.BoxColliderComponent = window.BoxColliderComponent;
-            window.SphereColliderComponent = window.SphereColliderComponent;
-            window.PhysicsMaterialComponent = window.PhysicsMaterialComponent;
-            window.TweenComponent = window.TweenComponent;
-            window.AnimatorComponent = window.AnimatorComponent;
-            
-            console.log('Phase 2 components added to ECS');
-        }
-        
-        function createPhysicsDemoInECS() {
-            // Create physics demo entities using proper ECS components
-            const demo = {
-                objects: [],
-                currentMode: 1,
-                spawnTimer: 0,
-                spawnInterval: 1.0,
-                
-                initialize: function() {
-                    // Add a simple physics system to the existing ECS
-                    this.addPhysicsSystemToECS();
-                    this.createGround();
-                    this.createWalls();
-                    this.setMode(1);
-                    console.log('Physics demo created in existing ECS with proper components');
-                },
-                
-                addPhysicsSystemToECS: function() {
-                    // Add a simple physics system that processes RigidbodyComponent
-                    if (!world.physicsSystem) {
-                        world.physicsSystem = {
-                            update: function(deltaTime) {
-                                world.entities.forEach(entity => {
-                                    const rigidbody = entity.getComponent('RigidbodyComponent');
-                                    const transform = entity.getComponent('Transform');
-                                    
-                                    if (rigidbody && transform && !rigidbody.isKinematic) {
-                                        // Apply gravity
-                                        if (rigidbody.useGravity) {
-                                            rigidbody.velocity.y -= 9.81 * deltaTime;
-                                        }
-                                        
-                                        // Update position
-                                        transform.x += rigidbody.velocity.x * deltaTime;
-                                        transform.y += rigidbody.velocity.y * deltaTime;
-                                        transform.z += rigidbody.velocity.z * deltaTime;
-                                        
-                                        // Simple ground collision
-                                        if (transform.y < 0) {
-                                            transform.y = 0;
-                                            rigidbody.velocity.y = Math.abs(rigidbody.velocity.y) * 0.7; // Bounce with restitution
-                                        }
-                                    }
-                                });
-                            }
-                        };
-                        console.log('✅ Physics system added to ECS');
-                    }
-                },
-                
-                createGround: function() {
-                    const ground = world.createEntity();
-                    
-                    // Add Transform component
-                    const transform = new Transform(0, -1, 0);
-                    ground.addComponent(transform);
-                    
-                    // Add Renderable component
-                    const renderable = new Renderable(
-                        new THREE.BoxGeometry(40, 2, 40),
-                        new THREE.MeshLambertMaterial({ color: 0x8B4513 })
-                    );
-                    ground.addComponent(renderable);
-                    
-                    // Add proper RigidbodyComponent (kinematic ground)
-                    const rigidbody = new window.RigidbodyComponent();
-                    rigidbody.isKinematic = true;
-                    rigidbody.mass = 0;
-                    rigidbody.useGravity = false;
-                    ground.addComponent(rigidbody);
-                    
-                    // Add BoxColliderComponent
-                    const collider = new window.BoxColliderComponent();
-                    collider.setSize(40, 2, 40);
-                    ground.addComponent(collider);
-                    
-                    console.log('✅ Ground created with proper physics components');
-                },
-                
-                createWalls: function() {
-                    const wallPositions = [
-                        { pos: [0, 5, 20], size: [40, 10, 2] },   // Back
-                        { pos: [0, 5, -20], size: [40, 10, 2] },  // Front  
-                        { pos: [20, 5, 0], size: [2, 10, 40] },   // Right
-                        { pos: [-20, 5, 0], size: [2, 10, 40] }   // Left
-                    ];
-                    
-                    wallPositions.forEach((wall, index) => {
-                        const entity = world.createEntity();
-                        
-                        // Add Transform component
-                        const transform = new Transform(wall.pos[0], wall.pos[1], wall.pos[2]);
-                        entity.addComponent(transform);
-                        
-                        // Add Renderable component
-                        const renderable = new Renderable(
-                            new THREE.BoxGeometry(...wall.size),
-                            new THREE.MeshLambertMaterial({ 
-                                color: 0x666666,
-                                transparent: true,
-                                opacity: 0.3
-                            })
-                        );
-                        entity.addComponent(renderable);
-                        
-                        // Add proper RigidbodyComponent (kinematic walls)
-                        const rigidbody = new window.RigidbodyComponent();
-                        rigidbody.isKinematic = true;
-                        rigidbody.mass = 0;
-                        rigidbody.useGravity = false;
-                        entity.addComponent(rigidbody);
-                        
-                        // Add BoxColliderComponent
-                        const collider = new window.BoxColliderComponent();
-                        collider.setSize(...wall.size);
-                        entity.addComponent(collider);
-                    });
-                    console.log('✅ Walls created with proper physics components');
-                },
-                
-                setMode: function(mode) {
-                    this.currentMode = mode;
-                    // Clear existing dynamic physics objects
-                    this.objects.forEach(obj => {
-                        if (obj.getComponent('RigidbodyComponent') && !obj.getComponent('RigidbodyComponent').isKinematic) {
-                            world.destroyEntity(obj);
-                        }
-                    });
-                    this.objects = [];
-                    
-                    // Create initial objects for the mode
-                    for (let i = 0; i < 3; i++) {
-                        this.spawnBall();
-                    }
-                },
-                
-                spawnBall: function() {
-                    const ball = world.createEntity();
-                    
-                    // Add Transform component
-                    const transform = new Transform(
-                        (Math.random() - 0.5) * 30, 
-                        10 + Math.random() * 10, 
-                        (Math.random() - 0.5) * 30
-                    );
-                    ball.addComponent(transform);
-                    
-                    // Add Renderable component
-                    const renderable = new Renderable(
-                        new THREE.SphereGeometry(0.5, 16, 16),
-                        new THREE.MeshLambertMaterial({ 
-                            color: [0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0xff44ff, 0x44ffff][Math.floor(Math.random() * 6)]
-                        })
-                    );
-                    ball.addComponent(renderable);
-                    
-                    // Add proper RigidbodyComponent (dynamic ball)
-                    const rigidbody = new window.RigidbodyComponent();
-                    rigidbody.isKinematic = false;
-                    rigidbody.mass = 1;
-                    rigidbody.useGravity = true;
-                    rigidbody.velocity = new THREE.Vector3(0, 0, 0);
-                    ball.addComponent(rigidbody);
-                    
-                    // Add SphereColliderComponent
-                    const collider = new window.SphereColliderComponent();
-                    collider.setRadius(0.5);
-                    ball.addComponent(collider);
-                    
-                    this.objects.push(ball);
-                    console.log('✅ Ball spawned with proper physics components:', {
-                        'Transform': !!ball.getComponent('Transform'),
-                        'Renderable': !!ball.getComponent('Renderable'),
-                        'RigidbodyComponent': !!ball.getComponent('RigidbodyComponent'),
-                        'SphereColliderComponent': !!ball.getComponent('SphereColliderComponent')
-                    });
-                },
-                
-                update: function(deltaTime) {
-                    // Update physics using the proper physics system
-                    if (world.physicsSystem) {
-                        world.physicsSystem.update(deltaTime);
-                    }
-                    
-                    // Remove balls that fall too far
-                    this.objects = this.objects.filter(obj => {
-                        const transform = obj.getComponent('Transform');
-                        if (transform && transform.y < -20) {
-                            world.destroyEntity(obj);
-                            return false;
-                        }
-                        return true;
-                    });
-                },
-                
-                onKeyPress: function(key) {
-                    if (key === ' ') {
-                        this.spawnBall();
-                        console.log('🏀 Spawned ball with proper physics components');
-                    }
-                }
-            };
-            
-            return demo;
-        }
-        
-        function createAnimationDemoInECS() {
-            // Similar structure for animation demo
-            return {
-                initialize: function() {
-                    console.log('Animation demo would be created in ECS here');
-                },
-                update: function(deltaTime) {},
-                onKeyPress: function(key) {}
-            };
-        }
-        
-        function showPhase2UI(demoType) {
-            // Update UI to show Phase 2 controls while keeping ECS inspector
-            document.getElementById('ui').style.display = 'block';
-            document.getElementById('inspector').style.display = 'block';
-            
-            // Add Phase 2 info overlay
-            addPhase2DemoInfo(demoType, currentPhase2Demo);
-            
-            // Add input handling
-            window.addEventListener('keydown', handlePhase2Input);
-        }
-        
-        function switchToECSDemo() {
-            // Clean up Phase 2 demo
-            if (currentPhase2Demo) {
-                currentPhase2Demo = null;
-            }
-            
-            // Remove Phase 2 event listeners
-            window.removeEventListener('keydown', handlePhase2Input);
-            
-            // Remove demo info
-            const demoInfo = document.getElementById('phase2-demo-info');
-            if (demoInfo) {
-                demoInfo.remove();
-            }
-            
-            // Restore original ECS entities if we backed them up
-            if (window.ecsBackupState) {
-                world.entities = window.ecsBackupState.entities.slice();
-                selectedEntity = window.ecsBackupState.selectedEntity;
-                window.ecsBackupState = null;
-            } else {
-                // If no backup, restart fresh
-                clearAll();
-                // Recreate initial entities
-                for (let i = 0; i < 5; i++) {
-                    createEntity();
-                }
-            }
-            
-            // Make sure UI is visible
-            document.getElementById('ui').style.display = 'block';
-            document.getElementById('inspector').style.display = 'block';
-            
-            console.log('✅ Switched back to ECS demo');
-        }
-        
-        function handlePhase2Input(event) {
-            if (currentPhase2Demo && currentPhase2Demo.onKeyPress) {
-                // Convert event.code to the format expected by demos
-                let key = event.key;
-                if (event.code === 'Space') key = ' ';
-                console.log('🎮 Key pressed:', event.code, '→', key);
-                currentPhase2Demo.onKeyPress(key);
-            }
-        }
-        
-        function handlePhase2Click(event) {
-            if (!currentGameEngine || !currentPhase2Demo) return;
-            
-            // Simple click handling - just pass the event to the demo
-            if (currentPhase2Demo.onClick) {
-                currentPhase2Demo.onClick(event);
-            }
-        }
-        
-        function addPhase2DemoInfo(demoType, demo) {
-            // Remove existing info
-            const existingInfo = document.getElementById('phase2-demo-info');
-            if (existingInfo) {
-                existingInfo.remove();
-            }
-            
-            // Create new info panel
-            const infoPanel = document.createElement('div');
-            infoPanel.id = 'phase2-demo-info';
-            infoPanel.style.cssText = `
-                position: absolute;
-                top: 10px;
-                left: 10px;
-                background: rgba(0, 0, 0, 0.8);
-                color: white;
-                padding: 15px;
-                border-radius: 5px;
-                border: 2px solid #4CAF50;
-                font-family: monospace;
-                font-size: 12px;
-                z-index: 1000;
-                max-width: 300px;
-            `;
-            
-            const demoName = demoType.charAt(0).toUpperCase() + demoType.slice(1);
-            const controls = getPhase2DemoControls(demoType);
-            
-            infoPanel.innerHTML = `
-                <h3 style="margin: 0 0 10px 0; color: #4CAF50;">🎮 ${demoName} Demo</h3>
-                <p style="margin: 0 0 10px 0; font-size: 11px; color: #ccc;">Phase 2 ECS Engine Demo</p>
-                <div style="margin-bottom: 10px;">
-                    <button onclick="resetToECSDemo()" style="padding: 5px 10px; background: #F44336; color: white; border: none; border-radius: 3px; cursor: pointer; font-family: monospace;">← Back to ECS Demo</button>
-                </div>
-                <div style="font-size: 10px; color: #888;">
-                    <strong>Controls:</strong><br>
-                    ${controls}
-                </div>
-            `;
-            
-            document.body.appendChild(infoPanel);
-        }
-        
-        function getPhase2DemoControls(demoType) {
-            if (demoType === 'physics') {
-                return `
-                    • 1-5: Switch demo modes<br>
-                    • Space: Spawn ball<br>
-                    • Click: Apply impulse<br>
-                    • G: Toggle gravity<br>
-                    • C: Clear objects<br>
-                    • M: Next mode<br>
-                    • R: Reset mode<br>
-                    • H: Help
-                `;
-            } else if (demoType === 'animation') {
-                return `
-                    • 1-5: Switch demo types<br>
-                    • Space: Pause/Resume<br>
-                    • ↑/↓: Speed up/down<br>
-                    • Click: Select object<br>
-                    • M: Next demo<br>
-                    • R: Restart demo<br>
-                    • H: Help
-                `;
-            }
-            return 'See console for controls (press H)';
-        }
+        // Physics and animation components are now integrated directly into ECS
+        // Users can add physics/animation components via the inspector using the + button
         
         // Initialize Lucide icons when they're loaded
         window.addEventListener('load', () => {
