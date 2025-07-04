@@ -17,7 +17,7 @@ A state-of-the-art Entity Component System (ECS) game engine built for the Never
    ```
 
 2. **Open in Browser**:
-   Navigate to `http://localhost:8000/v003/` and select a demo
+   Navigate to `http://localhost:8000/v003/` to access the integrated ECS demo
 
 ## 🏗️ Architecture Overview
 
@@ -30,37 +30,35 @@ A state-of-the-art Entity Component System (ECS) game engine built for the Never
 ### Phase 1 Systems (Implemented)
 - **TransformSystem**: Position, rotation, scale with matrix caching
 - **RenderingSystem**: Three.js integration with frustum culling and LOD
-- **InputSystem**: Keyboard, mouse, gamepad with command pattern
-- **CameraSystem**: Isometric projection with smooth following
+- **MovementSystem**: Entity movement with boundary collision
+- **VisualSystem**: Dynamic material properties and effects
+- **LifetimeSystem**: Entity lifecycle management
+- **HealthSystem**: Health-based visual feedback
 
-## 🎮 Available Demos
+### Phase 2 Systems (Implemented)
+- **PhysicsSystem**: Gravity, forces, collision detection, and dynamics
+- **AnimationSystem**: Tweening, state machines, and complex sequences
 
-### Core ECS Demo
-Tests fundamental ECS functionality:
-- Entity creation and destruction
-- Component management
-- System performance
-- Query optimization
+## 🎮 Integrated ECS Demo
 
-**Controls:**
-- `WASD`: Move player
-- `T`: Create temporary entity
-- `C`: Focus on random cube
-- `P`: Focus on player
-- `R`: Reset rotations
+The main demo (`index.html`) showcases all ECS functionality in one unified interface:
 
-### Rendering Demo
-Advanced rendering features:
-- Level of Detail (LOD) system
-- Instanced mesh rendering (500+ objects)
-- Dynamic lighting and shadows
-- Performance optimization
+### Entity Management
+- **Create Entity**: Add new entities with random components
+- **Component Inspector**: Add/remove any component via + button
+- **Real-time Updates**: Watch component values change live
+- **Selection System**: Click entities to inspect and visualize
 
-**Controls:**
-- `W`: Toggle wireframe
-- `S`: Toggle shadows
-- `[/]`: Adjust LOD bias
-- `L`: Focus on random light
+### Available Components
+- **Core**: Transform, Renderable, Movement, Health, Lifetime, VisualComponent
+- **Physics**: RigidbodyComponent, BoxColliderComponent, SphereColliderComponent, PhysicsMaterialComponent  
+- **Animation**: TweenComponent, AnimatorComponent
+
+### Features
+- **Physics Simulation**: Gravity, bouncing, collision detection with ground
+- **Component Visualization**: Wireframe colliders, animation helpers
+- **Performance Monitoring**: Real-time stats and entity counts
+- **Component Activation**: Toggle components on/off to see effects
 
 ## 🛠️ Development Tools
 
