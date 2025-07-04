@@ -474,13 +474,18 @@ Click an entity to select it. Click components to toggle on/off.
             loadPhase2Components(() => {
                 console.log('✅ Phase 2 components are now available in the ECS inspector');
                 
-                // Create initial entities AFTER components are loaded
-                console.log('🎯 Creating initial entities with all components...');
-                for (let i = 0; i < 5; i++) {
-                    createEntity();
-                }
-                
-                console.log('ECS Demo initialized with', world.entities.length, 'entities with all components');
+                // Load Phase 3 components (party & character systems)
+                loadPhase3Components(() => {
+                    console.log('✅ Phase 3 components are now available in the ECS inspector');
+                    
+                    // Create initial entities AFTER all components are loaded
+                    console.log('🎯 Creating initial entities with all components...');
+                    for (let i = 0; i < 5; i++) {
+                        createEntity();
+                    }
+                    
+                    console.log('ECS Demo initialized with', world.entities.length, 'entities with all components');
+                });
             });
             
             // Start game loop immediately
@@ -575,7 +580,7 @@ Click an entity to select it. Click components to toggle on/off.
         }
         
         function addComponentToEntity(entity) {
-            const componentTypes = ['Movement', 'Health', 'Lifetime', 'RigidbodyComponent', 'BoxColliderComponent', 'SphereColliderComponent', 'TweenComponent', 'AnimatorComponent'];
+            const componentTypes = ['Movement', 'Health', 'Lifetime', 'RigidbodyComponent', 'BoxColliderComponent', 'SphereColliderComponent', 'TweenComponent', 'AnimatorComponent', 'VisualComponent', 'PartyComponent', 'CharacterComponent', 'AIComponent', 'CombatComponent', 'InventoryComponent'];
             const availableTypes = componentTypes.filter(type => !entity.hasComponent(type));
             
             if (availableTypes.length === 0) {
@@ -629,6 +634,34 @@ Click an entity to select it. Click components to toggle on/off.
                 case 'VisualComponent':
                     component = new VisualComponent();
                     console.log('🎨 Added visual styling component');
+                    break;
+                case 'PartyComponent':
+                    component = new PartyComponent();
+                    // Auto-add this entity to the party
+                    component.addMember(entity.id);
+                    console.log('👥 Added party management component');
+                    break;
+                case 'CharacterComponent':
+                    component = new CharacterComponent();
+                    component.name = `Hero ${entity.id}`;
+                    component.level = Math.floor(Math.random() * 5) + 1;
+                    console.log('⚔️ Added character stats component');
+                    break;
+                case 'AIComponent':
+                    component = new AIComponent();
+                    const behaviors = ['follow', 'guard', 'patrol', 'aggressive'];
+                    component.behaviorType = behaviors[Math.floor(Math.random() * behaviors.length)];
+                    console.log(`🤖 Added AI component (${component.behaviorType})`);
+                    break;
+                case 'CombatComponent':
+                    component = new CombatComponent();
+                    component.attackPower = Math.floor(Math.random() * 20) + 10;
+                    console.log('⚔️ Added combat component');
+                    break;
+                case 'InventoryComponent':
+                    component = new InventoryComponent();
+                    component.currency = Math.floor(Math.random() * 100);
+                    console.log('🎒 Added inventory component');
                     break;
             }
             
@@ -1136,7 +1169,7 @@ Click an entity to select it. Click components to toggle on/off.
                 addBtn.innerHTML = '<i data-lucide="plus" style="width: 14px; height: 14px;"></i>';
                 addBtn.title = 'Add Component';
                 
-                const componentTypes = ['Movement', 'Health', 'Lifetime', 'RigidbodyComponent', 'BoxColliderComponent', 'SphereColliderComponent', 'TweenComponent', 'AnimatorComponent', 'VisualComponent'];
+                const componentTypes = ['Movement', 'Health', 'Lifetime', 'RigidbodyComponent', 'BoxColliderComponent', 'SphereColliderComponent', 'TweenComponent', 'AnimatorComponent', 'VisualComponent', 'PartyComponent', 'CharacterComponent', 'AIComponent', 'CombatComponent', 'InventoryComponent'];
                 const availableTypes = componentTypes.filter(type => !entity.hasComponent(type));
                 addBtn.disabled = availableTypes.length === 0;
                 
@@ -1241,6 +1274,24 @@ Click an entity to select it. Click components to toggle on/off.
                         if (component.transparent) modes.push('transp');
                         if (!component.visible) modes.push('hidden');
                         details = modes.length > 0 ? `(${modes.join(', ')})` : '(default)';
+                    } else if (componentType === 'PartyComponent') {
+                        const memberCount = component.members.length;
+                        const leader = component.activeLeader;
+                        details = `(${memberCount}/${component.maxSize} members, leader: ${leader})`;
+                    } else if (componentType === 'CharacterComponent') {
+                        const health = `${component.currentHealth}/${component.maxHealth}`;
+                        details = `(Lv.${component.level}, HP: ${health})`;
+                    } else if (componentType === 'AIComponent') {
+                        const state = component.currentState || 'idle';
+                        details = `(${component.behaviorType}, ${state})`;
+                    } else if (componentType === 'CombatComponent') {
+                        const state = component.combatState || 'idle';
+                        const power = component.attackPower;
+                        details = `(ATK: ${power}, ${state})`;
+                    } else if (componentType === 'InventoryComponent') {
+                        const itemCount = component.slots.filter(slot => slot !== null).length;
+                        const gold = component.currency;
+                        details = `(${itemCount}/20 items, ${gold} gold)`;
                     }
                     
                     const componentSpan = document.createElement('span');
@@ -1279,6 +1330,23 @@ Click an entity to select it. Click components to toggle on/off.
             // Update physics system if available
             if (world.physicsSystem) {
                 world.physicsSystem.update(deltaTime);
+            }
+            
+            // Update Phase 3 systems if available
+            if (world.partySystem) {
+                world.partySystem.update(deltaTime);
+            }
+            if (world.characterSystem) {
+                world.characterSystem.update(deltaTime);
+            }
+            if (world.aiSystem) {
+                world.aiSystem.update(deltaTime);
+            }
+            if (world.combatSystem) {
+                world.combatSystem.update(deltaTime);
+            }
+            if (world.inventorySystem) {
+                world.inventorySystem.update(deltaTime);
             }
             
             
@@ -1435,6 +1503,632 @@ Click an entity to select it. Click components to toggle on/off.
                 };
                 console.log('✅ Proper PhysicsSystem integrated into existing ECS with collision detection');
             }
+        }
+        
+        // Phase 3: Party & Character Systems
+        
+        // === Phase 3 Components ===
+        class PartyComponent {
+            constructor() {
+                this.members = []; // Array of entity IDs
+                this.activeLeader = 0; // Index of current leader
+                this.maxSize = 3;
+                this.formation = 'line'; // 'line', 'triangle', 'column'
+                this.spacing = 2.0; // Distance between party members
+                this.followDistance = 1.5; // How close followers stay to leader
+                this.active = true;
+            }
+            
+            addMember(entityId) {
+                if (this.members.length < this.maxSize && !this.members.includes(entityId)) {
+                    this.members.push(entityId);
+                    return true;
+                }
+                return false;
+            }
+            
+            removeMember(entityId) {
+                const index = this.members.indexOf(entityId);
+                if (index !== -1) {
+                    this.members.splice(index, 1);
+                    if (this.activeLeader >= this.members.length) {
+                        this.activeLeader = Math.max(0, this.members.length - 1);
+                    }
+                    return true;
+                }
+                return false;
+            }
+            
+            getLeader() {
+                return this.members[this.activeLeader] || null;
+            }
+            
+            switchLeader(newLeaderIndex) {
+                if (newLeaderIndex >= 0 && newLeaderIndex < this.members.length) {
+                    this.activeLeader = newLeaderIndex;
+                    return true;
+                }
+                return false;
+            }
+        }
+        
+        class CharacterComponent {
+            constructor() {
+                this.name = 'Hero';
+                this.level = 1;
+                this.experience = 0;
+                this.experienceToNext = 100;
+                
+                // Core stats
+                this.stats = {
+                    strength: 10,
+                    dexterity: 10,
+                    intelligence: 10,
+                    vitality: 10
+                };
+                
+                // Derived stats
+                this.maxHealth = 100;
+                this.currentHealth = 100;
+                this.maxMana = 50;
+                this.currentMana = 50;
+                this.moveSpeed = 5.0;
+                this.attackPower = 15;
+                this.defense = 5;
+                
+                // Equipment slots
+                this.equipment = {
+                    weapon: null,
+                    armor: null,
+                    accessory: null
+                };
+                
+                // Abilities
+                this.abilities = [];
+                this.activeAbility = null;
+                
+                this.active = true;
+            }
+            
+            levelUp() {
+                this.level++;
+                this.experience = 0;
+                this.experienceToNext = Math.floor(this.experienceToNext * 1.5);
+                
+                // Increase stats
+                this.stats.strength += 2;
+                this.stats.dexterity += 2;
+                this.stats.intelligence += 1;
+                this.stats.vitality += 3;
+                
+                this.recalculateStats();
+            }
+            
+            addExperience(amount) {
+                this.experience += amount;
+                while (this.experience >= this.experienceToNext) {
+                    this.levelUp();
+                }
+            }
+            
+            recalculateStats() {
+                this.maxHealth = 100 + (this.stats.vitality * 10);
+                this.maxMana = 50 + (this.stats.intelligence * 5);
+                this.attackPower = 15 + (this.stats.strength * 2);
+                this.defense = 5 + (this.stats.vitality * 1);
+                this.moveSpeed = 5.0 + (this.stats.dexterity * 0.1);
+            }
+        }
+        
+        class AIComponent {
+            constructor() {
+                this.behaviorType = 'follow'; // 'follow', 'guard', 'patrol', 'aggressive'
+                this.currentState = 'idle';
+                this.target = null; // Target entity ID
+                this.lastKnownTargetPosition = null;
+                this.detectionRadius = 5.0;
+                this.attackRadius = 1.5;
+                this.patrolPoints = []; // Array of Vector3 positions
+                this.currentPatrolIndex = 0;
+                this.stateTimer = 0;
+                this.decisionCooldown = 0.5; // How often to make new decisions
+                this.lastDecisionTime = 0;
+                this.active = true;
+            }
+            
+            setState(newState) {
+                this.currentState = newState;
+                this.stateTimer = 0;
+            }
+            
+            setTarget(entityId) {
+                this.target = entityId;
+            }
+            
+            addPatrolPoint(position) {
+                this.patrolPoints.push(position.clone());
+            }
+        }
+        
+        class CombatComponent {
+            constructor() {
+                this.attackPower = 15;
+                this.attackSpeed = 1.0; // Attacks per second
+                this.attackRange = 1.5;
+                this.lastAttackTime = 0;
+                this.combatState = 'idle'; // 'idle', 'attacking', 'blocking', 'stunned'
+                this.statusEffects = []; // Array of active status effects
+                this.immunities = []; // Array of immunity types
+                this.weaknesses = []; // Array of weakness types
+                this.criticalChance = 0.05; // 5% chance
+                this.criticalMultiplier = 2.0;
+                this.active = true;
+            }
+            
+            canAttack() {
+                const now = performance.now() / 1000;
+                return (now - this.lastAttackTime) >= (1.0 / this.attackSpeed) && 
+                       this.combatState !== 'stunned';
+            }
+            
+            attack() {
+                if (this.canAttack()) {
+                    this.lastAttackTime = performance.now() / 1000;
+                    this.combatState = 'attacking';
+                    
+                    // Calculate damage with critical chance
+                    let damage = this.attackPower;
+                    if (Math.random() < this.criticalChance) {
+                        damage *= this.criticalMultiplier;
+                        return { damage, isCritical: true };
+                    }
+                    
+                    return { damage, isCritical: false };
+                }
+                return null;
+            }
+            
+            addStatusEffect(effect) {
+                this.statusEffects.push({
+                    type: effect.type,
+                    duration: effect.duration,
+                    value: effect.value,
+                    startTime: performance.now() / 1000
+                });
+            }
+        }
+        
+        class InventoryComponent {
+            constructor() {
+                this.slots = new Array(20).fill(null); // 20 inventory slots
+                this.maxWeight = 100;
+                this.currentWeight = 0;
+                this.currency = 0; // Gold or other currency
+                this.active = true;
+            }
+            
+            addItem(item, quantity = 1) {
+                // Find first empty slot
+                for (let i = 0; i < this.slots.length; i++) {
+                    if (this.slots[i] === null) {
+                        this.slots[i] = {
+                            item: item,
+                            quantity: quantity
+                        };
+                        this.currentWeight += item.weight * quantity;
+                        return true;
+                    }
+                }
+                return false; // Inventory full
+            }
+            
+            removeItem(slotIndex, quantity = 1) {
+                if (this.slots[slotIndex] !== null) {
+                    const stack = this.slots[slotIndex];
+                    const removeQty = Math.min(quantity, stack.quantity);
+                    
+                    this.currentWeight -= stack.item.weight * removeQty;
+                    stack.quantity -= removeQty;
+                    
+                    if (stack.quantity <= 0) {
+                        this.slots[slotIndex] = null;
+                    }
+                    
+                    return removeQty;
+                }
+                return 0;
+            }
+            
+            hasSpace() {
+                return this.slots.some(slot => slot === null);
+            }
+        }
+        
+        // === Phase 3 Systems ===
+        function addPhase3SystemsToECS() {
+            console.log('🎯 Adding Phase 3 systems to ECS...');
+            
+            // PartySystem
+            if (!world.partySystem) {
+                world.partySystem = {
+                    update: function(deltaTime) {
+                        world.entities.forEach(entity => {
+                            const party = entity.getComponent('PartyComponent');
+                            if (!party || party.active === false) return;
+                            
+                            this.updatePartyFormation(entity, party);
+                            this.updateFollowerPositions(entity, party, deltaTime);
+                        });
+                    },
+                    
+                    updatePartyFormation: function(partyEntity, party) {
+                        const leader = world.entities.get(party.getLeader());
+                        if (!leader) return;
+                        
+                        const leaderTransform = leader.getComponent('Transform');
+                        if (!leaderTransform) return;
+                        
+                        // Update formation positions for followers
+                        for (let i = 0; i < party.members.length; i++) {
+                            if (i === party.activeLeader) continue; // Skip leader
+                            
+                            const follower = world.entities.get(party.members[i]);
+                            if (!follower) continue;
+                            
+                            const followerTransform = follower.getComponent('Transform');
+                            if (!followerTransform) continue;
+                            
+                            // Calculate formation position
+                            const formationPos = this.calculateFormationPosition(
+                                leaderTransform, i, party.formation, party.spacing
+                            );
+                            
+                            // Set follower target position (will be handled by AI)
+                            const ai = follower.getComponent('AIComponent');
+                            if (ai) {
+                                ai.target = party.getLeader();
+                                ai.lastKnownTargetPosition = formationPos;
+                            }
+                        }
+                    },
+                    
+                    calculateFormationPosition: function(leaderTransform, memberIndex, formation, spacing) {
+                        const pos = { x: leaderTransform.x, y: leaderTransform.y, z: leaderTransform.z };
+                        
+                        switch (formation) {
+                            case 'line':
+                                pos.x -= spacing * (memberIndex + 1);
+                                break;
+                            case 'triangle':
+                                const side = memberIndex % 2 === 0 ? -1 : 1;
+                                pos.x += side * spacing * Math.ceil(memberIndex / 2);
+                                pos.z -= spacing * Math.ceil(memberIndex / 2);
+                                break;
+                            case 'column':
+                                pos.z -= spacing * (memberIndex + 1);
+                                break;
+                        }
+                        
+                        return pos;
+                    },
+                    
+                    updateFollowerPositions: function(partyEntity, party, deltaTime) {
+                        // Smooth movement toward formation positions
+                        // This would integrate with movement/AI systems
+                    }
+                };
+                console.log('✅ PartySystem added to ECS');
+            }
+            
+            // CharacterSystem  
+            if (!world.characterSystem) {
+                world.characterSystem = {
+                    update: function(deltaTime) {
+                        world.entities.forEach(entity => {
+                            const character = entity.getComponent('CharacterComponent');
+                            if (!character || character.active === false) return;
+                            
+                            this.updateCharacterStats(character);
+                            this.processStatusEffects(character, deltaTime);
+                        });
+                    },
+                    
+                    updateCharacterStats: function(character) {
+                        // Recalculate derived stats if needed
+                        character.recalculateStats();
+                    },
+                    
+                    processStatusEffects: function(character, deltaTime) {
+                        const combat = character.entity?.getComponent('CombatComponent');
+                        if (!combat) return;
+                        
+                        const now = performance.now() / 1000;
+                        combat.statusEffects = combat.statusEffects.filter(effect => {
+                            const elapsed = now - effect.startTime;
+                            return elapsed < effect.duration;
+                        });
+                    }
+                };
+                console.log('✅ CharacterSystem added to ECS');
+            }
+            
+            // AISystem
+            if (!world.aiSystem) {
+                world.aiSystem = {
+                    update: function(deltaTime) {
+                        world.entities.forEach(entity => {
+                            const ai = entity.getComponent('AIComponent');
+                            if (!ai || ai.active === false) return;
+                            
+                            const now = performance.now() / 1000;
+                            if ((now - ai.lastDecisionTime) >= ai.decisionCooldown) {
+                                this.processAI(entity, ai, deltaTime);
+                                ai.lastDecisionTime = now;
+                            }
+                            
+                            ai.stateTimer += deltaTime;
+                        });
+                    },
+                    
+                    processAI: function(entity, ai, deltaTime) {
+                        const transform = entity.getComponent('Transform');
+                        if (!transform) return;
+                        
+                        switch (ai.behaviorType) {
+                            case 'follow':
+                                this.processFollowBehavior(entity, ai, transform);
+                                break;
+                            case 'patrol':
+                                this.processPatrolBehavior(entity, ai, transform);
+                                break;
+                            case 'guard':
+                                this.processGuardBehavior(entity, ai, transform);
+                                break;
+                            case 'aggressive':
+                                this.processAggressiveBehavior(entity, ai, transform);
+                                break;
+                        }
+                    },
+                    
+                    processFollowBehavior: function(entity, ai, transform) {
+                        if (!ai.target) return;
+                        
+                        const targetEntity = world.entities.get(ai.target);
+                        if (!targetEntity) return;
+                        
+                        const targetTransform = targetEntity.getComponent('Transform');
+                        if (!targetTransform) return;
+                        
+                        // Calculate distance to target
+                        const dx = targetTransform.x - transform.x;
+                        const dz = targetTransform.z - transform.z;
+                        const distance = Math.sqrt(dx * dx + dz * dz);
+                        
+                        // Move toward target if too far
+                        const movement = entity.getComponent('Movement');
+                        if (movement && distance > 2.0) {
+                            const moveSpeed = 2.0;
+                            movement.velocity.x = (dx / distance) * moveSpeed;
+                            movement.velocity.z = (dz / distance) * moveSpeed;
+                            ai.setState('moving');
+                        } else if (movement) {
+                            movement.velocity.x = 0;
+                            movement.velocity.z = 0;
+                            ai.setState('idle');
+                        }
+                    },
+                    
+                    processPatrolBehavior: function(entity, ai, transform) {
+                        // Patrol between waypoints
+                        if (ai.patrolPoints.length === 0) return;
+                        
+                        const targetPoint = ai.patrolPoints[ai.currentPatrolIndex];
+                        const dx = targetPoint.x - transform.x;
+                        const dz = targetPoint.z - transform.z;
+                        const distance = Math.sqrt(dx * dx + dz * dz);
+                        
+                        if (distance < 1.0) {
+                            // Reached waypoint, move to next
+                            ai.currentPatrolIndex = (ai.currentPatrolIndex + 1) % ai.patrolPoints.length;
+                        } else {
+                            // Move toward current waypoint
+                            const movement = entity.getComponent('Movement');
+                            if (movement) {
+                                const moveSpeed = 1.5;
+                                movement.velocity.x = (dx / distance) * moveSpeed;
+                                movement.velocity.z = (dz / distance) * moveSpeed;
+                            }
+                        }
+                    },
+                    
+                    processGuardBehavior: function(entity, ai, transform) {
+                        // Stay in place and watch for threats
+                        const movement = entity.getComponent('Movement');
+                        if (movement) {
+                            movement.velocity.x = 0;
+                            movement.velocity.z = 0;
+                        }
+                        ai.setState('guarding');
+                    },
+                    
+                    processAggressiveBehavior: function(entity, ai, transform) {
+                        // Look for targets and attack
+                        if (!ai.target) {
+                            // Find nearest enemy (for now, just find any other entity)
+                            let nearestEntity = null;
+                            let nearestDistance = ai.detectionRadius;
+                            
+                            world.entities.forEach((otherEntity, id) => {
+                                if (otherEntity.id === entity.id) return;
+                                
+                                const otherTransform = otherEntity.getComponent('Transform');
+                                if (!otherTransform) return;
+                                
+                                const dx = otherTransform.x - transform.x;
+                                const dz = otherTransform.z - transform.z;
+                                const distance = Math.sqrt(dx * dx + dz * dz);
+                                
+                                if (distance < nearestDistance) {
+                                    nearestEntity = otherEntity;
+                                    nearestDistance = distance;
+                                }
+                            });
+                            
+                            if (nearestEntity) {
+                                ai.setTarget(nearestEntity.id);
+                            }
+                        } else {
+                            // Chase and attack target
+                            this.processFollowBehavior(entity, ai, transform);
+                            
+                            const targetEntity = world.entities.get(ai.target);
+                            if (targetEntity) {
+                                const targetTransform = targetEntity.getComponent('Transform');
+                                if (targetTransform) {
+                                    const dx = targetTransform.x - transform.x;
+                                    const dz = targetTransform.z - transform.z;
+                                    const distance = Math.sqrt(dx * dx + dz * dz);
+                                    
+                                    if (distance <= ai.attackRadius) {
+                                        const combat = entity.getComponent('CombatComponent');
+                                        if (combat && combat.canAttack()) {
+                                            const attackResult = combat.attack();
+                                            if (attackResult) {
+                                                console.log(`🗡️ Entity ${entity.id} attacks for ${attackResult.damage} damage${attackResult.isCritical ? ' (CRITICAL!)' : ''}`);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                };
+                console.log('✅ AISystem added to ECS');
+            }
+            
+            // CombatSystem
+            if (!world.combatSystem) {
+                world.combatSystem = {
+                    update: function(deltaTime) {
+                        world.entities.forEach(entity => {
+                            const combat = entity.getComponent('CombatComponent');
+                            if (!combat || combat.active === false) return;
+                            
+                            this.updateCombatState(combat, deltaTime);
+                            this.processStatusEffects(combat, deltaTime);
+                            this.processCombatCooldowns(combat, deltaTime);
+                        });
+                    },
+                    
+                    updateCombatState: function(combat, deltaTime) {
+                        // Reset combat state after attacks
+                        if (combat.combatState === 'attacking') {
+                            const now = performance.now() / 1000;
+                            if ((now - combat.lastAttackTime) > 0.5) { // 0.5s attack animation
+                                combat.combatState = 'idle';
+                            }
+                        }
+                    },
+                    
+                    processStatusEffects: function(combat, deltaTime) {
+                        const now = performance.now() / 1000;
+                        combat.statusEffects = combat.statusEffects.filter(effect => {
+                            const elapsed = now - effect.startTime;
+                            if (elapsed >= effect.duration) {
+                                console.log(`✨ Status effect ${effect.type} expired`);
+                                return false;
+                            }
+                            return true;
+                        });
+                    },
+                    
+                    processCombatCooldowns: function(combat, deltaTime) {
+                        // Handle ability cooldowns and other timers
+                        // This would be expanded with more complex combat mechanics
+                    },
+                    
+                    dealDamage: function(attackerEntity, targetEntity, damage) {
+                        const targetCharacter = targetEntity.getComponent('CharacterComponent');
+                        const targetHealth = targetEntity.getComponent('Health');
+                        
+                        if (targetCharacter) {
+                            targetCharacter.currentHealth -= damage;
+                            console.log(`💥 ${targetEntity.id} takes ${damage} damage (${targetCharacter.currentHealth}/${targetCharacter.maxHealth} HP)`);
+                            
+                            if (targetCharacter.currentHealth <= 0) {
+                                console.log(`💀 Entity ${targetEntity.id} has been defeated!`);
+                                // Could trigger death/destruction logic here
+                            }
+                        } else if (targetHealth) {
+                            targetHealth.current -= damage;
+                            console.log(`💥 ${targetEntity.id} takes ${damage} damage (${targetHealth.current}/${targetHealth.max} HP)`);
+                        }
+                    }
+                };
+                console.log('✅ CombatSystem added to ECS');
+            }
+            
+            // InventorySystem
+            if (!world.inventorySystem) {
+                world.inventorySystem = {
+                    update: function(deltaTime) {
+                        world.entities.forEach(entity => {
+                            const inventory = entity.getComponent('InventoryComponent');
+                            if (!inventory || inventory.active === false) return;
+                            
+                            this.updateInventoryWeight(inventory);
+                        });
+                    },
+                    
+                    updateInventoryWeight: function(inventory) {
+                        let totalWeight = 0;
+                        inventory.slots.forEach(slot => {
+                            if (slot !== null) {
+                                totalWeight += (slot.item.weight || 1) * slot.quantity;
+                            }
+                        });
+                        inventory.currentWeight = totalWeight;
+                    },
+                    
+                    transferItem: function(fromInventory, toInventory, fromSlot, toSlot) {
+                        const item = fromInventory.slots[fromSlot];
+                        if (!item) return false;
+                        
+                        if (toInventory.slots[toSlot] === null) {
+                            toInventory.slots[toSlot] = item;
+                            fromInventory.slots[fromSlot] = null;
+                            console.log(`📦 Transferred ${item.item.name || 'item'} to new slot`);
+                            return true;
+                        }
+                        return false;
+                    },
+                    
+                    createRandomItem: function() {
+                        const items = [
+                            { name: 'Sword', weight: 3, value: 50, type: 'weapon' },
+                            { name: 'Shield', weight: 5, value: 30, type: 'armor' },
+                            { name: 'Potion', weight: 1, value: 10, type: 'consumable' },
+                            { name: 'Gold Coin', weight: 0.1, value: 1, type: 'currency' },
+                            { name: 'Magic Ring', weight: 0.5, value: 100, type: 'accessory' }
+                        ];
+                        return items[Math.floor(Math.random() * items.length)];
+                    }
+                };
+                console.log('✅ InventorySystem added to ECS');
+            }
+            
+            console.log('🎯 Phase 3 systems integration complete');
+        }
+        
+        // Load Phase 3 components and systems
+        function loadPhase3Components(callback) {
+            console.log('📦 Loading Phase 3 components for ECS...');
+            
+            // Add Phase 3 systems to existing ECS
+            addPhase3SystemsToECS();
+            
+            console.log('✅ Phase 3 components and systems loaded');
+            if (callback) callback();
         }
         
         

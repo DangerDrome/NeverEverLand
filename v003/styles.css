@@ -341,6 +341,27 @@ body {
     background: #FF5722;
 }
 
+/* Phase 3 components */
+.component.partycomponent {
+    background: #FFC107;
+}
+
+.component.charactercomponent {
+    background: #4CAF50;
+}
+
+.component.aicomponent {
+    background: #607D8B;
+}
+
+.component.combatcomponent {
+    background: #F44336;
+}
+
+.component.inventorycomponent {
+    background: #9C27B0;
+}
+
 /* Resize handle */
 #inspector::after {
     content: '';
