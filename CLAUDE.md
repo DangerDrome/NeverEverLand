@@ -71,6 +71,11 @@ python -m http.server 8000
 npx serve
 ```
 
+## Development Guidelines
+
+- **Server Usage**: 
+  - never use a server, always use index.html 
+
 ## Testing
 
 No formal test suite exists. Testing is done through:
