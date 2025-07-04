@@ -27,7 +27,7 @@ Click an entity to select it. Click components to toggle on/off.
             <div id="status">
                 <div>Entities: <span id="entityCount">0</span></div>
                 <div>Components: <span id="componentCount">0</span></div>
-                <div>Systems: <span id="systemCount">4</span></div>
+                <div>Systems: <span id="systemCount">22</span></div>
                 <div>Queries: <span id="queryCount">0</span></div>
                 <div>Performance: <span id="performance">--</span></div>
             </div>
@@ -2809,7 +2809,6 @@ Click an entity to select it. Click components to toggle on/off.
                         // This would integrate with movement/AI systems
                     }
                 };
-                console.log('✅ PartySystem added to ECS');
             }
             
             // CharacterSystem  
@@ -2841,7 +2840,6 @@ Click an entity to select it. Click components to toggle on/off.
                         });
                     }
                 };
-                console.log('✅ CharacterSystem added to ECS');
             }
             
             // AISystem
@@ -2995,7 +2993,6 @@ Click an entity to select it. Click components to toggle on/off.
                         }
                     }
                 };
-                console.log('✅ AISystem added to ECS');
             }
             
             // CombatSystem
@@ -3057,7 +3054,6 @@ Click an entity to select it. Click components to toggle on/off.
                         }
                     }
                 };
-                console.log('✅ CombatSystem added to ECS');
             }
             
             // InventorySystem
@@ -3106,7 +3102,6 @@ Click an entity to select it. Click components to toggle on/off.
                         return items[Math.floor(Math.random() * items.length)];
                     }
                 };
-                console.log('✅ InventorySystem added to ECS');
             }
             
             console.log('🎯 Phase 3 systems integration complete');
@@ -3189,7 +3184,6 @@ Click an entity to select it. Click components to toggle on/off.
                         }
                     }
                 };
-                console.log('✅ VillageSystem added to ECS');
             }
             
             // BuildingSystem
@@ -3259,7 +3253,6 @@ Click an entity to select it. Click components to toggle on/off.
                         return false;
                     }
                 };
-                console.log('✅ BuildingSystem added to ECS');
             }
             
             // ResourceSystem
@@ -3318,7 +3311,6 @@ Click an entity to select it. Click components to toggle on/off.
                         }
                     }
                 };
-                console.log('✅ ResourceSystem added to ECS');
             }
             
             // WorkerSystem
@@ -3400,7 +3392,6 @@ Click an entity to select it. Click components to toggle on/off.
                         return false;
                     }
                 };
-                console.log('✅ WorkerSystem added to ECS');
             }
             
             // EconomySystem
@@ -3452,7 +3443,6 @@ Click an entity to select it. Click components to toggle on/off.
                         return basePrice * amount * reputationModifier;
                     }
                 };
-                console.log('✅ EconomySystem added to ECS');
             }
             
             console.log('🏗️ Phase 4 systems integration complete');
@@ -3527,7 +3517,6 @@ Click an entity to select it. Click components to toggle on/off.
                         }
                     }
                 };
-                console.log('✅ QuestSystem added to ECS');
             }
             
             // Dialogue System - manages conversation flow
@@ -3592,7 +3581,6 @@ Click an entity to select it. Click components to toggle on/off.
                         return nextNode;
                     }
                 };
-                console.log('✅ DialogueSystem added to ECS');
             }
             
             // NPC System - advanced NPC behaviors and scheduling
@@ -3660,7 +3648,6 @@ Click an entity to select it. Click components to toggle on/off.
                         }
                     }
                 };
-                console.log('✅ NPCSystem added to ECS');
             }
             
             // Event System - handles random and scripted world events
@@ -3756,7 +3743,6 @@ Click an entity to select it. Click components to toggle on/off.
                         });
                     }
                 };
-                console.log('✅ EventSystem added to ECS');
             }
             
             console.log('🎯 Phase 5 systems integration complete');
@@ -3831,7 +3817,6 @@ Click an entity to select it. Click components to toggle on/off.
                 entity.sphereColliderHelper = sphereHelper;
                 scene.add(sphereHelper);
                 
-                console.log(`🔵 Added sphere collider visualization for entity ${entity.id}`);
             }
             
             // Visualize BoxColliderComponent
@@ -3854,7 +3839,6 @@ Click an entity to select it. Click components to toggle on/off.
                 entity.boxColliderHelper = boxHelper;
                 scene.add(boxHelper);
                 
-                console.log(`🟦 Added box collider visualization for entity ${entity.id}`);
             }
             
             // Visualize TweenComponent
@@ -3878,7 +3862,6 @@ Click an entity to select it. Click components to toggle on/off.
                 entity.tweenHelper = ringHelper;
                 scene.add(ringHelper);
                 
-                console.log(`🟠 Added tween visualization for entity ${entity.id}`);
             }
             
             // Visualize AnimatorComponent
@@ -3901,7 +3884,6 @@ Click an entity to select it. Click components to toggle on/off.
                 entity.animatorHelper = animatorHelper;
                 scene.add(animatorHelper);
                 
-                console.log(`🎭 Added animator visualization for entity ${entity.id}`);
             }
             
             // Visualize PartyComponent
@@ -4733,7 +4715,6 @@ Click an entity to select it. Click components to toggle on/off.
             const wasActive = component.active !== false;
             component.active = !wasActive;
             
-            console.log(`🔄 ${wasActive ? 'Disabled' : 'Enabled'} ${componentType} for entity ${entity.id}`);
             
             // If this is the selected entity, update its visualizations immediately
             if (entity === selectedEntity) {
