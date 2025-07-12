@@ -4,6 +4,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { NeverEverlandUI } from './NeverEverlandUI.js';
 import { SelectionManager } from './SelectionManager.js';
 import { AdaptiveGrid } from './AdaptiveGrid.js';
+import { TileMapSystem } from './TileMapSystem.js';
+import { TileRenderer } from './TileRenderer.js';
 
 class GameEngine {
     constructor() {
@@ -214,6 +216,10 @@ class GameEngine {
         
         // Initialize selection manager after renderer is ready
         this.selectionManager = new SelectionManager(this);
+        
+        // Initialize tile system
+        this.tileRenderer = new TileRenderer(this.scene);
+        this.tileMapSystem = new TileMapSystem(this.scene, this.camera, this.adaptiveGrid, this.selectionManager, this.tileRenderer);
         
         // Initial focus will happen when model loads (see line 166)
     }

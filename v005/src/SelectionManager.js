@@ -21,6 +21,9 @@ export class SelectionManager {
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
         
+        // Selection enabled state
+        this.enabled = true;
+        
         // Create 2D overlay canvas for selection brackets
         this.createOverlayCanvas();
         
@@ -98,7 +101,7 @@ export class SelectionManager {
     
     onMouseDown(event) {
         // Only handle left mouse button for drag selection
-        if (event.button !== 0) return;
+        if (event.button !== 0 || !this.enabled) return;
         
         // Store drag start position
         const rect = this.renderer.domElement.getBoundingClientRect();
@@ -128,7 +131,7 @@ export class SelectionManager {
     
     onMouseUp(event) {
         // Only handle left mouse button
-        if (event.button !== 0) return;
+        if (event.button !== 0 || !this.enabled) return;
         
         if (this.isDragging) {
             // Finish drag selection
@@ -333,6 +336,8 @@ export class SelectionManager {
     }
     
     onMouseMove(event) {
+        if (!this.enabled) return;
+        
         const rect = this.renderer.domElement.getBoundingClientRect();
         
         if (this.isDragging) {
@@ -614,6 +619,24 @@ export class SelectionManager {
         if (options.width) this.bracketWidth = options.width;
         if (options.length) this.bracketLength = options.length;
         if (options.padding) this.bracketPadding = options.padding;
+    }
+    
+    // Enable/disable selection functionality
+    setEnabled(enabled) {
+        this.enabled = enabled;
+        if (!enabled) {
+            // Clear any active selection
+            this.clearSelection();
+            // Hide overlay canvas
+            if (this.canvas) {
+                this.canvas.style.display = 'none';
+            }
+        } else {
+            // Show overlay canvas
+            if (this.canvas) {
+                this.canvas.style.display = 'block';
+            }
+        }
     }
     
     // Cleanup

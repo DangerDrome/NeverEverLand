@@ -4,7 +4,9 @@
       "Bash(diff:*)",
       "Bash(cp:*)",
       "Bash(rm:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(python3:*)",
+      "Bash(grep:*)"
     ],
     "deny": []
   }

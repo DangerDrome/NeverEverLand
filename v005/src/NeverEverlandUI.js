@@ -12,6 +12,7 @@ import { ResponsiveUIManager } from './ResponsiveUIManager.js';
 import { PauseMenu } from './ui/PauseMenu.js';
 import { ItemDetailModal } from './ui/ItemDetailModal.js';
 import { DebugPanel } from './ui/DebugPanel.js';
+import { TilePalette } from './ui/TilePalette.js';
 import { PanelDragManager } from './ui/PanelDragManager.js';
 import './core.js'; // Import core.js to make UI global available
 
@@ -66,6 +67,14 @@ export class NeverEverlandUI {
         if (debugPanel.element) {
           debugPanel.element.style.display = 
             debugPanel.element.style.display === 'none' ? 'block' : 'none';
+        }
+      }
+      // Toggle tile palette with F4
+      if (event.key === 'F4') {
+        event.preventDefault();
+        const tilePalette = this.components.get('tilePalette');
+        if (tilePalette) {
+          tilePalette.toggleVisibility();
         }
       }
     });
@@ -166,6 +175,11 @@ export class NeverEverlandUI {
       this.gameEngine.camera,
       this.gameEngine.renderer
     ));
+
+    // Tile Palette (only if tile system is available)
+    if (this.gameEngine.tileMapSystem) {
+      this.components.set('tilePalette', new TilePalette(this.container, this.gameEngine.tileMapSystem));
+    }
 
     // Initialize StyleUI icons
     window.UI.icons();
