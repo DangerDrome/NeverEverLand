@@ -74,18 +74,19 @@ export class TileTypes {
             rotatable: true
         });
         
-        // Tree tile
+        // Tree tile - now uses cone geometry with random height
         this.registerTileType('tree', {
             name: 'Tree',
             category: 'nature',
-            geometry: 'cylinder',
-            material: 'wood',
-            size: { width: 0.3, height: 2, depth: 0.3 },
-            color: 0x8BC34A,
+            geometry: 'cone',
+            material: 'tree',
+            size: { width: 1.2, height: 2.5, depth: 1.2 }, // Base size, will be randomized
+            color: 0x2E7D32,
             texture: null,
             solid: true,
             walkable: false,
-            rotatable: false
+            rotatable: false,
+            randomHeight: { min: 1, max: 4 } // Random height range in meters
         });
         
         // House foundation
@@ -158,8 +159,11 @@ export class TileTypes {
         // Cube geometry for walls and structures
         this.geometries.set('cube', new THREE.BoxGeometry(1, 1, 1));
         
-        // Cylinder geometry for trees and posts
+        // Cylinder geometry for posts
         this.geometries.set('cylinder', new THREE.CylinderGeometry(0.5, 0.5, 1, 8));
+        
+        // Cone geometry for trees
+        this.geometries.set('cone', new THREE.ConeGeometry(0.5, 1, 8));
         
         // Sphere geometry for decorative elements
         this.geometries.set('sphere', new THREE.SphereGeometry(0.5, 8, 6));
@@ -203,10 +207,18 @@ export class TileTypes {
             flatShading: true
         }));
         
-        // Wood material for trees with flat shading
+        // Wood material with flat shading
         this.materials.set('wood', new THREE.MeshPhongMaterial({ 
-            color: 0x8BC34A,
+            color: 0x8D6E63,
             shininess: 5,
+            specular: 0x111111,
+            flatShading: true
+        }));
+        
+        // Tree material (dark green pine) with flat shading
+        this.materials.set('tree', new THREE.MeshPhongMaterial({ 
+            color: 0x2E7D32,
+            shininess: 10,
             specular: 0x111111,
             flatShading: true
         }));
@@ -223,7 +235,7 @@ export class TileTypes {
     /**
      * Get geometry for a tile type
      */
-    getGeometry(tileTypeId) {
+    getGeometry(tileTypeId, applyRandomScale = true) {
         const tileType = this.getTileType(tileTypeId);
         if (!tileType) return null;
         
@@ -238,7 +250,14 @@ export class TileTypes {
         
         // Clone and scale geometry based on tile size
         const geometry = baseGeometry.clone();
-        const { width, height, depth } = tileType.size;
+        let { width, height, depth } = tileType.size;
+        
+        // Apply random height for trees only if requested
+        if (applyRandomScale && tileType.randomHeight && tileTypeId === 'tree') {
+            const { min, max } = tileType.randomHeight;
+            height = min + Math.random() * (max - min);
+        }
+        
         geometry.scale(width, height, depth);
         
         return geometry;
@@ -302,6 +321,13 @@ export class TileTypes {
     getTileHeightOffset(tileTypeId) {
         const tileType = this.getTileType(tileTypeId);
         if (!tileType) return 0;
+        
+        // For trees with random height, use average height
+        if (tileType.randomHeight && tileTypeId === 'tree') {
+            const { min, max } = tileType.randomHeight;
+            const avgHeight = (min + max) / 2;
+            return avgHeight / 2;
+        }
         
         // Return half height to position tile bottom at grid level
         return tileType.size.height / 2;

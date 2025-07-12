@@ -210,10 +210,18 @@ export class NeverEverlandUI {
     this.performanceMonitor.measureUIUpdate(() => {
       // Update minimap
       const minimap = this.components.get('minimap');
+      
+      // Get tiles from tileMapSystem if available
+      let tiles = null;
+      if (this.gameEngine.tileMapSystem) {
+        tiles = this.gameEngine.tileMapSystem.tiles;
+      }
+      
       minimap.render(
         this.gameEngine.player.position,
         this.gameEngine.getVisibleEntities(),
-        this.gameEngine.mapBounds
+        this.gameEngine.mapBounds,
+        tiles
       );
       
       // Update damage numbers positions

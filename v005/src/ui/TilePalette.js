@@ -79,23 +79,46 @@ export class TilePalette {
     createEditModeSection(parent) {
         const section = document.createElement('div');
         section.style.display = 'flex';
-        section.style.alignItems = 'center';
+        section.style.flexDirection = 'column';
         section.style.gap = 'var(--space-2)';
         
-        // Edit mode toggle
+        // Mode selection row
+        const modeRow = document.createElement('div');
+        modeRow.style.display = 'flex';
+        modeRow.style.gap = 'var(--space-2)';
+        
+        // Tile edit toggle
         this.editModeToggle = window.UI.button('Enable Tile Edit', {
             variant: 'primary',
             size: 'sm',
             onclick: () => this.toggleEditMode()
         });
         
+        // Voxel mode toggle
+        this.voxelModeToggle = window.UI.button('🧊 Voxel Mode', {
+            variant: 'outline',
+            size: 'sm',
+            onclick: () => this.toggleVoxelMode()
+        });
+        
+        modeRow.appendChild(this.editModeToggle);
+        modeRow.appendChild(this.voxelModeToggle);
+        
+        // Status row
+        const statusRow = document.createElement('div');
+        statusRow.style.display = 'flex';
+        statusRow.style.justifyContent = 'space-between';
+        statusRow.style.alignItems = 'center';
+        
         // Edit mode status indicator
         this.editModeStatus = document.createElement('span');
         this.editModeStatus.className = 'tag tag-dim';
         this.editModeStatus.textContent = 'Edit Mode: OFF';
         
-        section.appendChild(this.editModeToggle);
-        section.appendChild(this.editModeStatus);
+        statusRow.appendChild(this.editModeStatus);
+        
+        section.appendChild(modeRow);
+        section.appendChild(statusRow);
         parent.appendChild(section);
     }
     
@@ -431,6 +454,15 @@ export class TilePalette {
         const isEditMode = this.tileMapSystem.isEditMode();
         this.tileMapSystem.setEditMode(!isEditMode);
         this.updateEditModeUI();
+    }
+    
+    toggleVoxelMode() {
+        // Access voxel world through global game engine
+        if (window.gameEngine && window.gameEngine.voxelWorld) {
+            window.gameEngine.voxelWorld.toggleVoxelMode();
+        } else {
+            console.warn('VoxelWorld not available');
+        }
     }
     
     /**

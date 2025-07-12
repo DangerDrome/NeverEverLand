@@ -34,7 +34,8 @@ export class TileMapSystem {
         // Input handling
         this.isPlacing = false;
         this.isRemoving = false;
-        this.lastPlacedPosition = null;
+        this.dragPlacedPositions = new Set(); // Track positions placed during current drag
+        this.lastMouseWorldPos = null; // Track last mouse position for interpolation
         
         // Preview tile
         this.previewTile = null;
@@ -136,10 +137,13 @@ export class TileMapSystem {
         if (e.button === 0) { // Left click - place tile
             console.log('Starting tile placement');
             this.isPlacing = true;
+            this.dragPlacedPositions.clear(); // Clear positions from previous drag
+            this.lastMouseWorldPos = null; // Reset last position
             this.placeTileAtCursor(e);
         } else if (e.button === 2) { // Right click - remove tile
             console.log('Starting tile removal');
             this.isRemoving = true;
+            this.lastMouseWorldPos = null; // Reset last position
             this.removeTileAtCursor(e);
         }
     }
@@ -178,7 +182,8 @@ export class TileMapSystem {
         
         this.isPlacing = false;
         this.isRemoving = false;
-        this.lastPlacedPosition = null;
+        this.dragPlacedPositions.clear(); // Clear drag positions
+        this.lastMouseWorldPos = null; // Reset last position
     }
     
     /**
@@ -213,15 +218,16 @@ export class TileMapSystem {
     placeTileAtCursor(e) {
         const worldPos = this.getWorldPositionFromMouse(e);
         if (worldPos) {
-            // Get grid position for comparison
-            const gridPos = this.adaptiveGrid.getGridCoordinates(worldPos);
-            const gridKey = `${gridPos.x},${gridPos.z}`;
-            
-            // Only place if we haven't already placed at this position during this drag
-            if (this.lastPlacedPosition !== gridKey) {
+            // If we have a last position and are dragging, interpolate between positions
+            if (this.lastMouseWorldPos && this.isPlacing) {
+                this.placeTilesAlongLine(this.lastMouseWorldPos, worldPos);
+            } else {
+                // Just place a single tile
                 this.placeTile(this.selectedTileType, worldPos, this.currentRotation);
-                this.lastPlacedPosition = gridKey;
             }
+            
+            // Update last position
+            this.lastMouseWorldPos = worldPos.clone();
         }
     }
     
@@ -231,15 +237,16 @@ export class TileMapSystem {
     removeTileAtCursor(e) {
         const worldPos = this.getWorldPositionFromMouse(e);
         if (worldPos) {
-            // Get grid position for comparison
-            const gridPos = this.adaptiveGrid.getGridCoordinates(worldPos);
-            const gridKey = `${gridPos.x},${gridPos.z}`;
-            
-            // Only remove if we haven't already removed at this position during this drag
-            if (this.lastPlacedPosition !== gridKey) {
+            // If we have a last position and are dragging, interpolate between positions
+            if (this.lastMouseWorldPos && this.isRemoving) {
+                this.removeTilesAlongLine(this.lastMouseWorldPos, worldPos);
+            } else {
+                // Just remove a single tile
                 this.removeTile(worldPos);
-                this.lastPlacedPosition = gridKey;
             }
+            
+            // Update last position
+            this.lastMouseWorldPos = worldPos.clone();
         }
     }
     
@@ -277,6 +284,70 @@ export class TileMapSystem {
     }
     
     /**
+     * Place tiles along a line between two world positions
+     * This helps fill gaps when the mouse moves quickly
+     */
+    placeTilesAlongLine(startPos, endPos) {
+        const tileGridSpacing = 1.0;
+        
+        // Get grid coordinates for start and end
+        const startGridX = Math.floor(startPos.x / tileGridSpacing);
+        const startGridZ = Math.floor(startPos.z / tileGridSpacing);
+        const endGridX = Math.floor(endPos.x / tileGridSpacing);
+        const endGridZ = Math.floor(endPos.z / tileGridSpacing);
+        
+        // Use Bresenham's line algorithm to get all grid cells along the line
+        const gridPositions = this.getGridCellsAlongLine(
+            startGridX, startGridZ,
+            endGridX, endGridZ
+        );
+        
+        // Place a tile at each grid position
+        for (const gridPos of gridPositions) {
+            const worldPos = new THREE.Vector3(
+                gridPos.x * tileGridSpacing + tileGridSpacing * 0.5,
+                0,
+                gridPos.z * tileGridSpacing + tileGridSpacing * 0.5
+            );
+            this.placeTile(this.selectedTileType, worldPos, this.currentRotation);
+        }
+    }
+    
+    /**
+     * Get all grid cells along a line using Bresenham's algorithm
+     */
+    getGridCellsAlongLine(x0, z0, x1, z1) {
+        const cells = [];
+        
+        const dx = Math.abs(x1 - x0);
+        const dz = Math.abs(z1 - z0);
+        const sx = x0 < x1 ? 1 : -1;
+        const sz = z0 < z1 ? 1 : -1;
+        let err = dx - dz;
+        
+        let x = x0;
+        let z = z0;
+        
+        while (true) {
+            cells.push({ x, z });
+            
+            if (x === x1 && z === z1) break;
+            
+            const e2 = 2 * err;
+            if (e2 > -dz) {
+                err -= dz;
+                x += sx;
+            }
+            if (e2 < dx) {
+                err += dx;
+                z += sz;
+            }
+        }
+        
+        return cells;
+    }
+    
+    /**
      * Place a tile at the specified world position
      */
     placeTile(tileTypeId, worldPosition, rotation = 0) {
@@ -290,11 +361,11 @@ export class TileMapSystem {
         
         console.log('Grid position:', {x: gridX, z: gridZ}, 'Key:', key);
         
-        // Check if position is the same as last placed (for continuous placement)
-        if (this.lastPlacedPosition && this.lastPlacedPosition === key) {
-            return;
+        // During dragging, prevent placing multiple tiles at the same position in the same drag
+        // but allow replacing tiles that were already there before the drag started
+        if (this.isPlacing && this.dragPlacedPositions.has(key)) {
+            return; // Skip if we already placed here during this drag
         }
-        this.lastPlacedPosition = key;
         
         // Remove existing tile at this position if there is one
         if (this.tiles.has(key)) {
@@ -325,9 +396,40 @@ export class TileMapSystem {
             };
             
             this.tiles.set(key, tileData);
+            
+            // Track this position as placed during the current drag
+            if (this.isPlacing) {
+                this.dragPlacedPositions.add(key);
+            }
+            
             console.log(`Placed ${tileTypeId} tile at (${gridX}, ${gridZ})`);
         } else {
             console.error('Failed to get instance ID from TileRenderer');
+        }
+    }
+    
+    /**
+     * Remove tiles along a line between two world positions
+     * This helps remove all tiles when the mouse moves quickly
+     */
+    removeTilesAlongLine(startPos, endPos) {
+        const tileGridSpacing = 1.0;
+        
+        // Get grid coordinates for start and end
+        const startGridX = Math.floor(startPos.x / tileGridSpacing);
+        const startGridZ = Math.floor(startPos.z / tileGridSpacing);
+        const endGridX = Math.floor(endPos.x / tileGridSpacing);
+        const endGridZ = Math.floor(endPos.z / tileGridSpacing);
+        
+        // Use Bresenham's line algorithm to get all grid cells along the line
+        const gridPositions = this.getGridCellsAlongLine(
+            startGridX, startGridZ,
+            endGridX, endGridZ
+        );
+        
+        // Remove a tile at each grid position
+        for (const gridPos of gridPositions) {
+            this.removeTileInternal(gridPos);
         }
     }
     

@@ -28,7 +28,7 @@ export class TileRenderer {
         
         // Configuration
         this.maxInstancesPerType = 1000; // Maximum instances per tile type
-        this.frustumCulling = true;
+        this.frustumCulling = false; // Disabled by default to prevent disappearing tiles
         
         this.init();
     }
@@ -67,7 +67,7 @@ export class TileRenderer {
             return;
         }
         
-        const geometry = tileTypes.getGeometry(tileTypeId);
+        const geometry = tileTypes.getGeometry(tileTypeId, false); // Get base geometry without random scaling
         const material = tileTypes.getMaterial(tileTypeId);
         
         if (!geometry || !material) {
@@ -87,6 +87,9 @@ export class TileRenderer {
         instancedMesh.count = 0; // Start with no instances
         instancedMesh.name = `instanced_${tileTypeId}`;
         
+        // Disable frustum culling to prevent tiles from disappearing
+        instancedMesh.frustumCulled = false;
+        
         // Add metadata
         instancedMesh.userData = {
             tileType: tileTypeId,
@@ -100,6 +103,7 @@ export class TileRenderer {
         // Create a group to hold edge lines for this tile type
         const edgeGroup = new THREE.Group();
         edgeGroup.name = `edges_${tileTypeId}`;
+        edgeGroup.frustumCulled = false; // Disable culling for edge lines too
         layer.add(edgeGroup);
         this.instancedEdges.set(tileTypeId, edgeGroup);
         
@@ -135,16 +139,34 @@ export class TileRenderer {
         const matrix = new THREE.Matrix4();
         const tileType = tileTypes.getTileType(tileTypeId);
         
+        // Calculate random scale for trees
+        let scaleY = 1;
+        let heightOffset = tileTypes.getTileHeightOffset(tileTypeId);
+        
+        if (tileType.randomHeight && tileTypeId === 'tree') {
+            const { min, max } = tileType.randomHeight;
+            const randomHeight = min + Math.random() * (max - min);
+            scaleY = randomHeight / tileType.size.height;
+            heightOffset = randomHeight / 2; // Adjust offset for actual height
+        }
+        
         // Position with height offset
         const worldPos = position.clone();
-        worldPos.y += tileTypes.getTileHeightOffset(tileTypeId);
+        worldPos.y += heightOffset;
         
-        // Apply rotation if supported
+        // Apply rotation and scale
         if (tileTypes.isRotatable(tileTypeId)) {
             matrix.makeRotationY(rotation);
+            matrix.scale(new THREE.Vector3(1, scaleY, 1));
             matrix.setPosition(worldPos);
         } else {
-            matrix.makeTranslation(worldPos.x, worldPos.y, worldPos.z);
+            // For non-rotatable objects like trees, apply scale then translation
+            if (scaleY !== 1) {
+                matrix.makeScale(1, scaleY, 1);
+                matrix.setPosition(worldPos);
+            } else {
+                matrix.makeTranslation(worldPos.x, worldPos.y, worldPos.z);
+            }
         }
         
         // Set instance matrix
@@ -159,7 +181,8 @@ export class TileRenderer {
             id: instanceId,
             position: position.clone(),
             rotation: rotation,
-            matrix: matrix.clone()
+            matrix: matrix.clone(),
+            scaleY: scaleY
         };
         
         this.instances.get(tileTypeId).set(instanceId, instanceData);
@@ -167,7 +190,9 @@ export class TileRenderer {
         // Add edge lines for this instance
         const edgeGroup = this.instancedEdges.get(tileTypeId);
         if (edgeGroup) {
-            const geometry = tileTypes.getGeometry(tileTypeId);
+            // Get base geometry without random scaling for edge lines
+            const geometry = tileTypes.getGeometry(tileTypeId, false);
+            
             const edgeGeometry = new THREE.EdgesGeometry(geometry);
             const edgeMaterial = new THREE.LineBasicMaterial({ 
                 color: 0x000000,
@@ -177,11 +202,21 @@ export class TileRenderer {
             });
             const edgeLines = new THREE.LineSegments(edgeGeometry, edgeMaterial);
             edgeLines.position.copy(worldPos);
+            
+            // Apply the same scale as the instance
+            if (scaleY !== 1) {
+                edgeLines.scale.y = scaleY;
+            }
+            
             if (tileTypes.isRotatable(tileTypeId)) {
                 edgeLines.rotation.y = rotation;
             }
+            
             edgeLines.userData.instanceId = instanceId;
             edgeGroup.add(edgeLines);
+            
+            // Clean up geometry
+            geometry.dispose();
         }
         
         return instanceId;
@@ -386,6 +421,9 @@ export class TileRenderer {
         this.frustumCulling = enabled;
         this.instancedMeshes.forEach(mesh => {
             mesh.frustumCulled = enabled;
+        });
+        this.instancedEdges.forEach(edgeGroup => {
+            edgeGroup.frustumCulled = enabled;
         });
     }
     

@@ -6,6 +6,7 @@ import { SelectionManager } from './SelectionManager.js';
 import { AdaptiveGrid } from './AdaptiveGrid.js';
 import { TileMapSystem } from './TileMapSystem.js';
 import { TileRenderer } from './TileRenderer.js';
+import { VoxelWorld } from './VoxelWorld.js';
 
 class GameEngine {
     constructor() {
@@ -83,20 +84,6 @@ class GameEngine {
             powerPreference: this.renderer.capabilities.powerPreference
         });
         
-        // Check if we're being throttled
-        let lastCheck = performance.now();
-        let frameCount = 0;
-        const checkThrottle = () => {
-            frameCount++;
-            if (frameCount === 10) {
-                const elapsed = performance.now() - lastCheck;
-                const fps = (1000 / (elapsed / 10));
-                console.log(`RAF check: ${fps.toFixed(1)} FPS - ${fps < 35 ? 'THROTTLED!' : 'OK'}`);
-            } else if (frameCount < 10) {
-                requestAnimationFrame(checkThrottle);
-            }
-        };
-        requestAnimationFrame(checkThrottle);
         
         // Try to prevent throttling
         this.renderer.domElement.style.transform = 'translateZ(0)'; // Force GPU acceleration
@@ -107,33 +94,14 @@ class GameEngine {
 
         // Axes helper removed - now displayed in Control Panel
 
-        // Add 1 meter reference cube
-        const referenceCubeGeometry = new THREE.BoxGeometry(1, 1, 1);
-        const referenceCubeMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0xff00ff, 
-            wireframe: true,
-            opacity: 0.5,
-            transparent: true
-        });
-        this.referenceCube = new THREE.Mesh(referenceCubeGeometry, referenceCubeMaterial);
-        this.referenceCube.position.set(5, 0.5, 5); // Position it at ground level
-        this.scene.add(this.referenceCube);
-        
-        // Add label for the reference cube
-        const edges = new THREE.EdgesGeometry(referenceCubeGeometry);
-        const edgesMaterial = new THREE.LineBasicMaterial({ color: 0xff00ff });
-        const edgesMesh = new THREE.LineSegments(edges, edgesMaterial);
-        this.referenceCube.add(edgesMesh);
-        
-        // Add some additional test objects for selection
-        this.createTestObjects();
+        // Test objects removed - use tile system instead
 
         // Add ambient light for better visibility
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
         this.scene.add(ambientLight);
 
-        // Add directional light
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.4);
+        // Add directional light for face shading differences
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
         directionalLight.position.set(5, 10, 5);
         this.scene.add(directionalLight);
 
@@ -180,12 +148,7 @@ class GameEngine {
             },
             (error) => {
                 console.error('Error loading GLTF model:', error);
-                // Fallback to cube if model fails to load
-                const geometry = new THREE.BoxGeometry();
-                const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-                this.cube = new THREE.Mesh(geometry, material);
-                this.cube.position.y = 0.5;
-                this.scene.add(this.cube);
+                // No fallback geometry - use tile system instead
             }
         );
 
@@ -221,59 +184,13 @@ class GameEngine {
         this.tileRenderer = new TileRenderer(this.scene);
         this.tileMapSystem = new TileMapSystem(this.scene, this.camera, this.adaptiveGrid, this.selectionManager, this.tileRenderer);
         
+        // Initialize voxel system
+        this.voxelWorld = new VoxelWorld(this.scene, this.camera, this.renderer);
+        this.voxelWorld.setTileMapSystem(this.tileMapSystem);
+        
         // Initial focus will happen when model loads (see line 166)
     }
     
-    createTestObjects() {
-        // Create a variety of test objects for selection
-        
-        // Sphere
-        const sphereGeometry = new THREE.SphereGeometry(0.5, 32, 16);
-        const sphereMaterial = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
-        const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-        sphere.position.set(-3, 0.5, -3);
-        sphere.name = 'TestSphere';
-        this.scene.add(sphere);
-        
-        // Cylinder
-        const cylinderGeometry = new THREE.CylinderGeometry(0.5, 0.5, 2, 32);
-        const cylinderMaterial = new THREE.MeshPhongMaterial({ color: 0x0000ff });
-        const cylinder = new THREE.Mesh(cylinderGeometry, cylinderMaterial);
-        cylinder.position.set(3, 1, -3);
-        cylinder.name = 'TestCylinder';
-        this.scene.add(cylinder);
-        
-        // Torus
-        const torusGeometry = new THREE.TorusGeometry(0.6, 0.2, 16, 100);
-        const torusMaterial = new THREE.MeshPhongMaterial({ color: 0xffff00 });
-        const torus = new THREE.Mesh(torusGeometry, torusMaterial);
-        torus.position.set(-3, 0.8, 3);
-        torus.name = 'TestTorus';
-        this.scene.add(torus);
-        
-        // Cone
-        const coneGeometry = new THREE.ConeGeometry(0.5, 1.5, 32);
-        const coneMaterial = new THREE.MeshPhongMaterial({ color: 0xff00ff });
-        const cone = new THREE.Mesh(coneGeometry, coneMaterial);
-        cone.position.set(3, 0.75, 3);
-        cone.name = 'TestCone';
-        this.scene.add(cone);
-        
-        // Group of small cubes
-        const group = new THREE.Group();
-        group.name = 'CubeGroup';
-        for (let i = 0; i < 3; i++) {
-            const cubeGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
-            const cubeMaterial = new THREE.MeshPhongMaterial({ 
-                color: new THREE.Color().setHSL(i / 3, 1, 0.5) 
-            });
-            const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-            cube.position.set(i * 0.5 - 0.5, 0.15, 0);
-            group.add(cube);
-        }
-        group.position.set(0, 0, -5);
-        this.scene.add(group);
-    }
     
     setupCameraControls() {
         // Mouse wheel zoom
@@ -433,10 +350,6 @@ class GameEngine {
                 box.expandByObject(this.model);
             }
             
-            // Include the reference cube
-            if (this.referenceCube) {
-                box.expandByObject(this.referenceCube);
-            }
             
             // Include a reasonable area around origin if box is too small
             box.expandByPoint(new THREE.Vector3(-10, 0, -10));
@@ -520,10 +433,6 @@ class GameEngine {
         this.fpsTime += delta;
         
         if (this.fpsTime >= 1.0) {
-            const fps = this.frameCount / this.fpsTime;
-            const gridSpacing = this.adaptiveGrid ? this.adaptiveGrid.getCurrentGridSpacing() : 1;
-            const zoom = this.frustumSize.toFixed(1);
-            console.log(`FPS: ${fps.toFixed(1)}, Mode: ${this.useRAF ? 'RAF' : 'setTimeout'}, Delta: ${deltaMs.toFixed(2)}ms, Zoom: ${zoom}m, Grid: ${gridSpacing}m`);
             this.frameCount = 0;
             this.fpsTime = 0;
         }
@@ -552,18 +461,20 @@ class GameEngine {
         }
         */
 
-        // Rotate model or cube with delta time
+        // Rotate model with delta time (unless voxelizing)
         const rotationSpeed = 1; // radians per second
-        if (this.model) {
+        if (!this.stopModelRotation && this.model) {
             this.model.rotation.y += rotationSpeed * delta;
-        } else if (this.cube) {
-            this.cube.rotation.x += rotationSpeed * delta;
-            this.cube.rotation.y += rotationSpeed * delta;
         }
 
         // Update adaptive grid
         if (this.adaptiveGrid) {
             this.adaptiveGrid.update();
+        }
+
+        // Update voxel world
+        if (this.voxelWorld) {
+            this.voxelWorld.update(delta);
         }
 
         // Always render
@@ -582,6 +493,9 @@ class GameEngine {
 const gameEngine = new GameEngine();
 const ui = new NeverEverlandUI(gameEngine);
 gameEngine.setUI(ui);
+
+// Make game engine globally accessible for UI components
+window.gameEngine = gameEngine;
 
 // Example usage:
 ui.showDamage(120, new THREE.Vector3(0, 1, 0));

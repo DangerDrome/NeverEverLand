@@ -6,7 +6,11 @@
       "Bash(rm:*)",
       "Bash(mkdir:*)",
       "Bash(python3:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:tympanus.net)",
+      "WebFetch(domain:threejs.org)"
     ],
     "deny": []
   }
