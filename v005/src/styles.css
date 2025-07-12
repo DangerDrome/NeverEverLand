@@ -1,0 +1,243 @@
+body {
+    margin: 0;
+    overflow: hidden;
+    background-color: var(--bg-layer-0);
+}
+
+/* Ensure panels are interactive */
+.panel {
+    pointer-events: auto;
+}
+
+/* Panel actions container */
+.panel-actions {
+    display: flex;
+    gap: var(--space-1);
+    align-items: center;
+}
+
+/* Rotate chevron when panel is collapsed */
+.panel-collapsed .panel-toggle .lucide {
+    transform: rotate(-90deg);
+    transition: transform var(--transition-fast);
+}
+
+
+/* Debug panel styling */
+.debug-panel {
+    pointer-events: auto;
+}
+
+.debug-panel .panel-body {
+    padding: var(--space-3);
+}
+
+.debug-section {
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: var(--space-3);
+}
+
+.debug-section:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.debug-section h4 {
+    font-size: var(--font-size-xs);
+    letter-spacing: 0.05em;
+}
+
+#game-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+}
+
+canvas {
+    display: block;
+}
+
+.game-ui-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none; /* Allow clicks to pass through */
+}
+
+.status-bars-panel {
+    pointer-events: auto;
+}
+
+/* Removed .health-text and .mana-text as they are now part of .progress-bar */
+
+.grid {
+    display: grid;
+    grid-gap: var(--space-1); /* Smaller gap for compact layout */
+    background-color: var(--bg-layer-3);
+    padding: var(--space-2); /* Less padding */
+    border-radius: var(--radius-md);
+    pointer-events: auto;
+}
+
+.inventory-panel .grid {
+    /* Auto-fit grid to content */
+    width: max-content;
+    height: max-content;
+    max-width: 400px; /* Reasonable max width - about 8 columns */
+}
+
+.grid-slot,
+.inventory-slot {
+    width: 45px; /* Smaller slots for compact grid */
+    height: 45px; /* Smaller slots for compact grid */
+    background-color: var(--bg-layer-2);
+    border: 1px solid var(--border-color);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative; /* For quantity positioning */
+}
+
+.inventory-panel {
+    pointer-events: auto;
+}
+
+.hotbar-panel {
+    pointer-events: auto;
+}
+
+.hotbar-panel .grid {
+    display: flex;
+    flex-direction: row;
+    gap: var(--space-1);
+}
+
+.hotbar-slot {
+    width: 45px;
+    height: 45px;
+    background-color: var(--bg-layer-2);
+    border: 1px solid var(--border-color);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+}
+
+.hotbar-item {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.inventory-item {
+    width: 100%;
+    height: 100%;
+    cursor: move;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.inventory-item img,
+.inventory-item .lucide {
+    max-width: 80%;
+    max-height: 80%;
+    object-fit: contain;
+}
+
+.inventory-item .lucide,
+.hotbar-item .lucide {
+    width: 28px;
+    height: 28px;
+    stroke: var(--text-primary);
+}
+
+.item-quantity {
+    position: absolute;
+    bottom: var(--space-0-5); /* Using StyleUI spacing */
+    right: var(--space-0-5); /* Using StyleUI spacing */
+    color: var(--text-primary); /* Using StyleUI text color */
+    font-size: var(--font-size-2xs); /* Using StyleUI font size */
+    background-color: var(--overlay-medium); /* Using StyleUI overlay color */
+    padding: var(--space-0-5) var(--space-1); /* Using StyleUI spacing */
+    border-radius: var(--radius-sm); /* Using StyleUI border radius */
+}
+
+.damage-number {
+    position: absolute;
+    color: var(--text-primary);
+    font-size: var(--text-xl);
+    font-weight: var(--font-bold);
+    text-shadow: 1px 1px 2px var(--overlay-backdrop); /* Using StyleUI overlay color */
+    pointer-events: none;
+}
+
+.minimap-panel {
+    pointer-events: auto;
+    z-index: 10;
+}
+
+.minimap {
+    border: 2px solid var(--border-color); /* Using StyleUI border */
+    border-radius: var(--radius-md); /* Using StyleUI border radius */
+    pointer-events: none;
+}
+
+/* Enhanced progress bars */
+.progress {
+    width: 200px;
+    height: 24px; /* Bigger height */
+    background-color: var(--bg-layer-2);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+    position: relative;
+}
+
+/* Progress bar content styling */
+.progress-bar {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-medium);
+    padding: 0 var(--space-2);
+    position: relative;
+    overflow: hidden;
+}
+
+/* StyleUI handles the candy cane stripe animation with progress-bar-animated class */
+/* Make stripes slightly darker */
+.progress-bar-striped {
+    background-image: linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.25) 25%,
+        transparent 25%,
+        transparent 50%,
+        rgba(255, 255, 255, 0.25) 50%,
+        rgba(255, 255, 255, 0.25) 75%,
+        transparent 75%,
+        transparent
+    ) !important;
+}
+
+/* Progress wrapper for bar and tag */
+.progress-wrapper {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+/* Tag styles are handled by StyleUI - removed duplicate styles */
+/* Make tag text darker for better readability */
+.tag-error,
+.tag-info,
+.tag-success,
+.tag-warning {
+    color: rgba(0, 0, 0, 0.8) !important;
+}
