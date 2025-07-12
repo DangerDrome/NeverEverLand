@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>NeverEverLand v004 - 3D to Pixel Art Demo</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: monospace;
+            background: #111;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-crisp-edges;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h3>3D → Pixel Art Renderer</h3>
+        <p>Dimetric camera + Pixelation + Dithering</p>
+        <div id="stats" style="margin-top: 10px; font-size: 12px;">
+            <div>FPS: <span id="fps">0</span></div>
+            <div>Draw Calls: <span id="drawCalls">0</span></div>
+            <div>Triangles: <span id="triangles">0</span></div>
+            <div>Resolution: <span id="resolution">0x0</span></div>
+        </div>
+    </div>
+    
+    <!-- Three.js -->
+    <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
+    <!-- dat.GUI -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.9/dat.gui.min.js"></script>
+    
+    <!-- Main Demo -->
+    <script>
+        // Wait for page to load
+        window.addEventListener('DOMContentLoaded', () => {
+            // Load main.js after libraries are ready
+            const script = document.createElement('script');
+            script.src = 'main.js';
+            document.body.appendChild(script);
+        });
+    </script>
+</body>
+</html>

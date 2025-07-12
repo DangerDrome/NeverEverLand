@@ -2,11 +2,30 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 🚨 CRITICAL: NEVER PUT CODE IN INDEX.HTML 🚨
+
+**ABSOLUTE RULE FOR v003**: The v003 folder uses a MODULAR ARCHITECTURE with ES6 modules. 
+
+**NEVER** add components, systems, or any substantial code to index.html. The HTML file should ONLY contain:
+- Basic HTML structure
+- Script imports
+- Initial setup/bootstrapping
+- Small initialization code (< 50 lines)
+
+**ALWAYS** create proper files:
+- Components go in `/v003/components/ComponentName.js`
+- Systems go in `/v003/systems/SystemName.js`
+- Use ES6 import/export syntax
+- Follow the existing modular pattern
+
+**WHY**: Adding code to index.html creates a monolithic mess, breaks modularity, makes debugging horrible, and defeats the entire purpose of the ECS architecture.
+
 ## Project Overview
 
-NeverEverLand is a Three.js-based isometric game engine with two main versions:
+NeverEverLand is a Three.js-based isometric game engine with three main versions:
 - **v001**: Class-based architecture with comprehensive features including post-processing effects
 - **v002**: Modular approach with WFC (Wave Function Collapse) terrain generation, player movement, and minimap
+- **v003**: Entity Component System (ECS) architecture with proper modular file structure
 
 ## Architecture
 
@@ -75,6 +94,10 @@ npx serve
 
 - **Server Usage**: 
   - never use a server, always use index.html 
+- **CORS Bypass**:
+  - Use Python's SimpleHTTPServer
+  - Use `npx serve`
+  - Disable browser security for local development
 
 ## Testing
 
@@ -107,13 +130,31 @@ Use Three.js raycasting for mouse interaction with the grid system. See `v002/ma
 │   ├── CameraControls.js   # Input handling
 │   ├── PixelationEffect.js # Post-processing effects
 │   └── index.html          # Entry point
-└── v002/                    # Modular version
-    ├── main.js             # Game loop and coordination
-    ├── Player.js           # Player character system
-    ├── WaveFunctionCollapse.js # Terrain generation
-    ├── Minimap.js          # Minimap rendering
-    ├── TileGrid.js         # Enhanced grid with instancing
-    └── index.html          # Entry point
+├── v002/                    # Modular version
+│   ├── main.js             # Game loop and coordination
+│   ├── Player.js           # Player character system
+│   ├── WaveFunctionCollapse.js # Terrain generation
+│   ├── Minimap.js          # Minimap rendering
+│   ├── TileGrid.js         # Enhanced grid with instancing
+│   └── index.html          # Entry point
+└── v003/                    # ECS Architecture (MODULAR - DO NOT PUT CODE IN HTML!)
+    ├── index.html          # ONLY initialization and imports
+    ├── components/         # Component definitions (one per file)
+    │   ├── TransformComponent.js
+    │   ├── RenderableComponent.js
+    │   ├── PhysicsComponent.js
+    │   └── [ComponentName].js
+    ├── systems/            # System implementations (one per file)
+    │   ├── TransformSystem.js
+    │   ├── RenderingSystem.js
+    │   ├── PhysicsSystem.js
+    │   └── [SystemName].js
+    ├── core/               # ECS core functionality
+    │   ├── Entity.js
+    │   ├── Component.js
+    │   ├── System.js
+    │   └── World.js
+    └── GameEngine.js       # Main engine class
 ```
 
 ## Browser Compatibility
