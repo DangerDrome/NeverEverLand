@@ -6,7 +6,7 @@ import { SelectionManager } from './SelectionManager.js';
 import { AdaptiveGrid } from './AdaptiveGrid.js';
 import { TileMapSystem } from './TileMapSystem.js';
 import { TileRenderer } from './TileRenderer.js';
-import { VoxelWorld } from './VoxelWorld.js';
+import { HybridVoxelWorld } from './HybridVoxelWorld.js';
 
 class GameEngine {
     constructor() {
@@ -184,9 +184,13 @@ class GameEngine {
         this.tileRenderer = new TileRenderer(this.scene);
         this.tileMapSystem = new TileMapSystem(this.scene, this.camera, this.adaptiveGrid, this.selectionManager, this.tileRenderer);
         
-        // Initialize voxel system
-        this.voxelWorld = new VoxelWorld(this.scene, this.camera, this.renderer);
+        // Initialize hybrid voxel system
+        this.voxelWorld = new HybridVoxelWorld(this.scene, this.camera, this.renderer);
         this.voxelWorld.setTileMapSystem(this.tileMapSystem);
+        
+        // Connect tile system to hybrid voxel world
+        this.tileMapSystem.setHybridVoxelWorld(this.voxelWorld);
+        this.tileMapSystem.setHybridMode(true); // Enable hybrid mode by default
         
         // Initial focus will happen when model loads (see line 166)
     }
@@ -497,8 +501,42 @@ gameEngine.setUI(ui);
 // Make game engine globally accessible for UI components
 window.gameEngine = gameEngine;
 
+// Debug helpers
+window.debugVoxels = () => {
+    const vw = gameEngine.voxelWorld;
+    console.log('VoxelWorld debug info:');
+    console.log('- Tile chunks:', vw.tileChunks.size);
+    console.log('- Tile instances:', vw.tileInstances.size);
+    console.log('- Tile templates:', vw.tileTemplates.size);
+    console.log('- Mesh update queue:', vw.meshUpdateQueue.length);
+    console.log('- Tile chunks:', Array.from(vw.tileChunks.keys()));
+    console.log('- Material:', vw.voxelMaterial);
+    
+    // Check if chunks have meshes
+    vw.tileChunks.forEach((chunk, key) => {
+        console.log(`Chunk ${key}: has mesh = ${!!chunk.mesh}, needs rebuild = ${chunk.needsRebuild()}`);
+        if (chunk.mesh) {
+            console.log(`  - Visible: ${chunk.mesh.visible}`);
+            console.log(`  - Vertices: ${chunk.mesh.geometry.attributes.position.count}`);
+            console.log(`  - Material: ${chunk.mesh.material.type}`);
+            console.log(`  - Position:`, chunk.mesh.position);
+            console.log(`  - In scene: ${chunk.mesh.parent === vw.scene}`);
+        }
+    });
+    
+    // Force rebuild a chunk to test
+    console.log('\nForcing rebuild of first tile chunk...');
+    const firstChunk = vw.tileChunks.values().next().value;
+    if (firstChunk) {
+        firstChunk.isDirty = true; // Mark chunk as dirty to trigger rebuild
+        vw.queueChunkMeshUpdate(firstChunk);
+        vw.processMeshUpdates();
+    }
+};
+
 // Example usage:
 ui.showDamage(120, new THREE.Vector3(0, 1, 0));
+// Debug: Check voxel world
 
 // Demonstrate state updates
 let currentHealth = 100;

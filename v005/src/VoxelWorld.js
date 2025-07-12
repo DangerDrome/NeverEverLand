@@ -39,6 +39,13 @@ export class VoxelWorld {
         this.lastFrameTime = 0;
         this.meshUpdateQueue = [];
         
+        // Edge rendering settings
+        this.edgeSettings = {
+            enabled: true,
+            width: 0.03,
+            darkness: 0.4
+        };
+        
         this.init();
     }
     
@@ -55,6 +62,49 @@ export class VoxelWorld {
      */
     createMaterial() {
         this.voxelMaterial = this.mesher.createMaterial();
+        
+        // Update material with scene lighting if available
+        if (this.scene) {
+            this.updateMaterialLighting();
+        }
+    }
+    
+    /**
+     * Update material lighting from scene
+     */
+    updateMaterialLighting() {
+        if (!this.voxelMaterial || !this.voxelMaterial.updateLighting) return;
+        
+        let ambientIntensity = 0.4;
+        let directionalLight = null;
+        
+        // Find lights in scene
+        this.scene.traverse((child) => {
+            if (child.isAmbientLight) {
+                ambientIntensity = child.intensity;
+            } else if (child.isDirectionalLight && !directionalLight) {
+                directionalLight = child;
+            }
+        });
+        
+        this.voxelMaterial.updateLighting(ambientIntensity, directionalLight);
+    }
+    
+    /**
+     * Update edge rendering settings
+     */
+    setEdgeSettings(settings) {
+        Object.assign(this.edgeSettings, settings);
+        
+        // Update material if it's our custom edge material
+        if (this.voxelMaterial && this.voxelMaterial.setEdgeWidth) {
+            if (settings.width !== undefined) {
+                this.voxelMaterial.setEdgeWidth(settings.width);
+            }
+            if (settings.darkness !== undefined) {
+                this.voxelMaterial.setEdgeDarkness(settings.darkness);
+            }
+        }
     }
     
     /**

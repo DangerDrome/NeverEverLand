@@ -10,7 +10,8 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:tympanus.net)",
-      "WebFetch(domain:threejs.org)"
+      "WebFetch(domain:threejs.org)",
+      "Bash(find:*)"
     ],
     "deny": []
   }

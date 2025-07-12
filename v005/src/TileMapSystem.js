@@ -13,6 +13,10 @@ export class TileMapSystem {
         this.selectionManager = selectionManager;
         this.tileRenderer = tileRenderer;
         
+        // Hybrid voxel world reference (will be set later)
+        this.hybridVoxelWorld = null;
+        this.useHybridMode = false;
+        
         // Tile storage - Map<string, TileData>
         // Key format: "x,z" (y-coordinate handled by tile type height)
         this.tiles = new Map();
@@ -348,6 +352,21 @@ export class TileMapSystem {
     }
     
     /**
+     * Set hybrid voxel world reference
+     */
+    setHybridVoxelWorld(hybridVoxelWorld) {
+        this.hybridVoxelWorld = hybridVoxelWorld;
+    }
+    
+    /**
+     * Enable/disable hybrid mode
+     */
+    setHybridMode(enabled) {
+        this.useHybridMode = enabled && this.hybridVoxelWorld !== null;
+        console.log(`Hybrid mode: ${this.useHybridMode ? 'enabled' : 'disabled'}`);
+    }
+    
+    /**
      * Place a tile at the specified world position
      */
     placeTile(tileTypeId, worldPosition, rotation = 0) {
@@ -382,29 +401,52 @@ export class TileMapSystem {
         
         console.log('World position for tile:', worldPos);
         
-        // Use TileRenderer to add the tile instance
-        const instanceId = this.tileRenderer.addTileInstance(tileTypeId, worldPos, rotation);
-        
-        console.log('Instance ID from TileRenderer:', instanceId);
-        
-        if (instanceId !== null) {
-            const tileData = {
-                type: tileTypeId,
-                position: { x: gridX, z: gridZ },
-                rotation: rotation,
-                instanceId: instanceId
-            };
+        // Use hybrid voxel world if enabled
+        if (this.useHybridMode && this.hybridVoxelWorld) {
+            const success = this.hybridVoxelWorld.placeTile(tileTypeId, worldPos.x, worldPos.z, rotation);
             
-            this.tiles.set(key, tileData);
-            
-            // Track this position as placed during the current drag
-            if (this.isPlacing) {
-                this.dragPlacedPositions.add(key);
+            if (success) {
+                const tileData = {
+                    type: tileTypeId,
+                    position: { x: gridX, z: gridZ },
+                    rotation: rotation,
+                    instanceId: null // No instance ID in hybrid mode
+                };
+                
+                this.tiles.set(key, tileData);
+                
+                // Track this position as placed during the current drag
+                if (this.isPlacing) {
+                    this.dragPlacedPositions.add(key);
+                }
+                
+                console.log(`Placed ${tileTypeId} tile using hybrid system at (${gridX}, ${gridZ})`);
             }
-            
-            console.log(`Placed ${tileTypeId} tile at (${gridX}, ${gridZ})`);
         } else {
-            console.error('Failed to get instance ID from TileRenderer');
+            // Use traditional tile renderer
+            const instanceId = this.tileRenderer.addTileInstance(tileTypeId, worldPos, rotation);
+            
+            console.log('Instance ID from TileRenderer:', instanceId);
+            
+            if (instanceId !== null) {
+                const tileData = {
+                    type: tileTypeId,
+                    position: { x: gridX, z: gridZ },
+                    rotation: rotation,
+                    instanceId: instanceId
+                };
+                
+                this.tiles.set(key, tileData);
+                
+                // Track this position as placed during the current drag
+                if (this.isPlacing) {
+                    this.dragPlacedPositions.add(key);
+                }
+                
+                console.log(`Placed ${tileTypeId} tile at (${gridX}, ${gridZ})`);
+            } else {
+                console.error('Failed to get instance ID from TileRenderer');
+            }
         }
     }
     
@@ -452,9 +494,16 @@ export class TileMapSystem {
         const tileData = this.tiles.get(key);
         
         if (tileData) {
-            // Remove instance from TileRenderer
-            if (this.tileRenderer && tileData.instanceId !== undefined) {
-                this.tileRenderer.removeTileInstance(tileData.type, tileData.instanceId);
+            // Use hybrid voxel world if enabled
+            if (this.useHybridMode && this.hybridVoxelWorld) {
+                const worldX = gridPos.x + 0.5;
+                const worldZ = gridPos.z + 0.5;
+                this.hybridVoxelWorld.removeTile(worldX, worldZ);
+            } else {
+                // Remove instance from TileRenderer
+                if (this.tileRenderer && tileData.instanceId !== undefined) {
+                    this.tileRenderer.removeTileInstance(tileData.type, tileData.instanceId);
+                }
             }
             
             // Remove from storage
@@ -703,35 +752,64 @@ export class TileMapSystem {
         }
         
         try {
-            // Create a semi-transparent preview tile
-            const geometry = tileTypes.getGeometry(this.selectedTileType);
-            const baseMaterial = tileTypes.getMaterial(this.selectedTileType);
-            
-            if (!geometry || !baseMaterial) {
-                console.error('Failed to get geometry or material for tile type:', this.selectedTileType);
-                return;
+            // For hybrid mode, create a voxel-based preview
+            if (this.useHybridMode && this.hybridVoxelWorld) {
+                // Get template bounds from hybrid world
+                const template = this.hybridVoxelWorld.tileTemplates.get(this.selectedTileType);
+                if (!template) {
+                    console.error('No template found for tile type:', this.selectedTileType);
+                    return;
+                }
+                
+                // Create a box that represents the tile's voxel bounds
+                // Now that voxels are generated at the correct 25cm scale, preview should match
+                const voxelScale = this.hybridVoxelWorld.TILE_VOXEL_SIZE; // 0.25m
+                const width = template.bounds.width * voxelScale;
+                const height = template.bounds.height * voxelScale;
+                const depth = template.bounds.depth * voxelScale;
+                
+                const geometry = new THREE.BoxGeometry(width, height, depth);
+                const material = new THREE.MeshStandardMaterial({
+                    color: template.color,
+                    transparent: true,
+                    opacity: 0.6,
+                    emissive: 0x00ff00,
+                    emissiveIntensity: 0.3,
+                    side: THREE.DoubleSide
+                });
+                
+                this.previewTile = new THREE.Mesh(geometry, material);
+                this.previewTile.name = 'preview_tile';
+                this.previewTile.visible = false;
+                this.previewTile.renderOrder = 999;
+                this.previewTile.frustumCulled = false;
+            } else {
+                // Use traditional preview for non-hybrid mode
+                const geometry = tileTypes.getGeometry(this.selectedTileType, false); // No random scaling
+                const baseMaterial = tileTypes.getMaterial(this.selectedTileType);
+                
+                if (!geometry || !baseMaterial) {
+                    console.error('Failed to get geometry or material for tile type:', this.selectedTileType);
+                    return;
+                }
+                
+                const material = new THREE.MeshStandardMaterial({
+                    color: baseMaterial.color,
+                    transparent: true,
+                    opacity: 0.6,
+                    emissive: 0x00ff00,
+                    emissiveIntensity: 0.3,
+                    side: THREE.DoubleSide
+                });
+                
+                this.previewTile = new THREE.Mesh(geometry, material);
+                this.previewTile.name = 'preview_tile';
+                this.previewTile.visible = false;
+                this.previewTile.renderOrder = 999;
+                this.previewTile.frustumCulled = false;
             }
             
-            // Create a new material that supports emissive
-            const material = new THREE.MeshStandardMaterial({
-                color: baseMaterial.color,
-                transparent: true,
-                opacity: 0.6,
-                emissive: 0x00ff00,
-                emissiveIntensity: 0.3,
-                side: THREE.DoubleSide
-            });
-            
-            this.previewTile = new THREE.Mesh(geometry, material);
-            this.previewTile.name = 'preview_tile';
-            this.previewTile.visible = false;
-            this.previewTile.renderOrder = 999; // Render on top
-            this.previewTile.frustumCulled = false; // Always render
-            
-            // Make sure the material needs update
-            this.previewTile.material.needsUpdate = true;
-            
-            // Add to scene but not to render layers
+            // Add to scene
             this.scene.add(this.previewTile);
             console.log('Preview tile created successfully');
         } catch (error) {
@@ -757,9 +835,21 @@ export class TileMapSystem {
             gridZ * tileGridSpacing + tileGridSpacing * 0.5
         );
         
-        // Update position with height offset
+        // Update position with proper height offset for hybrid mode
         this.previewTile.position.copy(snappedPos);
-        this.previewTile.position.y = tileTypes.getTileHeightOffset(this.selectedTileType);
+        
+        if (this.useHybridMode && this.hybridVoxelWorld) {
+            // For hybrid mode, voxels are placed from y=0
+            // We need to lift the preview by half its height so it sits on top of the grid
+            const template = this.hybridVoxelWorld.tileTemplates.get(this.selectedTileType);
+            if (template) {
+                const height = template.bounds.height * this.hybridVoxelWorld.TILE_VOXEL_SIZE;
+                this.previewTile.position.y = height / 2;
+            }
+        } else {
+            // Use traditional height offset
+            this.previewTile.position.y = tileTypes.getTileHeightOffset(this.selectedTileType);
+        }
         
         // Update rotation
         this.previewTile.rotation.y = this.currentRotation;

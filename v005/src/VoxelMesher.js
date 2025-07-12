@@ -6,6 +6,8 @@
  */
 
 import * as THREE from 'three';
+import { VoxelEdgeMaterial } from './VoxelEdgeMaterial.js';
+import { SimpleVoxelMaterial } from './SimpleVoxelMaterial.js';
 
 export class VoxelMesher {
     static FACE_DIRECTIONS = [
@@ -40,8 +42,10 @@ export class VoxelMesher {
     
     /**
      * Generate mesh for a voxel chunk using greedy meshing
+     * @param {VoxelChunk} chunk - The chunk to generate mesh for
+     * @param {number} voxelScale - Scale of each voxel in meters (default 0.05 for 5cm)
      */
-    generateMesh(chunk) {
+    generateMesh(chunk, voxelScale = 0.05) {
         const positions = [];
         const normals = [];
         const uvs = [];
@@ -56,7 +60,7 @@ export class VoxelMesher {
             const greedyFaces = this.performGreedyMeshing(faces, faceDir);
             
             for (const face of greedyFaces) {
-                this.addFaceToMesh(face, faceDir, positions, normals, uvs, colors, indices, indexOffset);
+                this.addFaceToMesh(face, faceDir, positions, normals, uvs, colors, indices, indexOffset, voxelScale);
                 indexOffset += 4;
             }
         }
@@ -188,12 +192,12 @@ export class VoxelMesher {
     /**
      * Add face geometry to mesh arrays
      */
-    addFaceToMesh(face, faceDir, positions, normals, uvs, colors, indices, indexOffset) {
+    addFaceToMesh(face, faceDir, positions, normals, uvs, colors, indices, indexOffset, voxelScale = 0.05) {
         const { dir, axis, u: uAxis, v: vAxis } = VoxelMesher.FACE_DIRECTIONS[faceDir];
         const pos = face.position;
         
         // Calculate face corners
-        const corners = this.getFaceCorners(pos, face.width, face.height, axis, uAxis, vAxis, dir);
+        const corners = this.getFaceCorners(pos, face.width, face.height, axis, uAxis, vAxis, dir, voxelScale);
         
         // Add positions
         for (const corner of corners) {
@@ -252,12 +256,12 @@ export class VoxelMesher {
     /**
      * Calculate face corner positions
      */
-    getFaceCorners(pos, width, height, axis, uAxis, vAxis, dir) {
+    getFaceCorners(pos, width, height, axis, uAxis, vAxis, dir, voxelScale = 0.05) {
         const corners = [];
         let [x, y, z] = pos;
         
-        // Scale all coordinates by 0.05 to make voxels 5cm instead of 1m
-        const scale = 0.05;
+        // Scale all coordinates by voxelScale
+        const scale = voxelScale;
         
         // Define the four corners with proper outward-facing normals
         if (dir[0] === 1) { // +X face (right) - looking from +X direction
@@ -328,25 +332,16 @@ export class VoxelMesher {
      * Create material for voxel rendering
      */
     createMaterial(textureUrl = null) {
-        const material = new THREE.MeshLambertMaterial({
-            vertexColors: true, // Enable vertex colors
-            transparent: false,
-            alphaTest: 0.1,
-            side: THREE.DoubleSide // Keep double-sided until winding is fixed
-        });
+        // Use simple material for now to ensure visibility
+        const material = new SimpleVoxelMaterial();
         
-        if (textureUrl) {
-            const loader = new THREE.TextureLoader();
-            const texture = loader.load(textureUrl);
-            texture.magFilter = THREE.NearestFilter;
-            texture.minFilter = THREE.NearestFilter;
-            texture.wrapS = THREE.ClampToEdgeWrapping;
-            texture.wrapT = THREE.ClampToEdgeWrapping;
-            material.map = texture;
-        } else {
-            // Default colored material
-            material.color.setHex(0x7CB342);
-        }
+        console.log('Created simple voxel material:', material);
+        
+        // TODO: Switch back to edge material once we fix the issue
+        // const material = new VoxelEdgeMaterial({
+        //     edgeWidth: 0.05,
+        //     edgeDarkness: 0.6
+        // });
         
         return material;
     }
