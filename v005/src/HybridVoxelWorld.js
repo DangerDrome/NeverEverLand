@@ -7,6 +7,8 @@
 
 import { VoxelWorld } from './VoxelWorld.js';
 import { VoxelChunk } from './VoxelChunk.js';
+import { VoxelEdgeGeometry } from './VoxelEdgeGeometry.js';
+import { LSystem } from './LSystem.js';
 import * as THREE from 'three';
 
 export class HybridVoxelWorld extends VoxelWorld {
@@ -14,9 +16,9 @@ export class HybridVoxelWorld extends VoxelWorld {
         super(scene, camera, renderer);
         
         // Hybrid system configuration
-        this.TILE_VOXEL_SIZE = 0.25; // 25cm voxels for tiles
+        this.TILE_VOXEL_SIZE = 0.06; // 6cm voxels for tiles
         this.DETAIL_VOXEL_SIZE = 0.05; // 5cm voxels for detailed editing
-        this.VOXELS_PER_TILE = Math.round(1.0 / this.TILE_VOXEL_SIZE); // 4 voxels per meter
+        this.VOXELS_PER_TILE = Math.round(1.0 / this.TILE_VOXEL_SIZE); // ~17 voxels per meter
         
         // Tile template storage
         this.tileTemplates = new Map(); // tileTypeId -> voxel template data
@@ -28,6 +30,9 @@ export class HybridVoxelWorld extends VoxelWorld {
         
         // Performance optimization
         this.surfaceCache = new Map(); // Cache detected surfaces for optimization
+        
+        // L-system for tree generation
+        this.lSystem = new LSystem();
         
         this.initializeTileTemplates();
     }
@@ -61,13 +66,33 @@ export class HybridVoxelWorld extends VoxelWorld {
             voxelData: [],
             bounds: { width: 0, height: 0, depth: 0 },
             color: new THREE.Color(tileType.color),
-            rotatable: tileType.rotatable
+            rotatable: tileType.rotatable,
+            randomHeight: tileType.randomHeight || null
         };
         
+        // For tiles with random height, we'll generate at placement time
+        if (tileType.randomHeight) {
+            // Store the base template info but don't generate voxels yet
+            template.baseSize = { ...tileType.size };
+            template.geometry = tileType.geometry;
+            this.tileTemplates.set(tileType.id, template);
+            return;
+        }
+        
+        // Use larger voxel size for large objects to improve performance
+        const maxDimension = Math.max(tileType.size.width, tileType.size.height, tileType.size.depth);
+        let voxelSize = this.TILE_VOXEL_SIZE;
+        
+        // For objects larger than 2m, use 12cm voxels instead of 6cm
+        if (maxDimension > 2.0) {
+            voxelSize = 0.12;
+            template.largeVoxelSize = voxelSize;
+        }
+        
         // Convert tile dimensions to voxel counts
-        const voxelWidth = Math.ceil(tileType.size.width / this.TILE_VOXEL_SIZE);
-        const voxelHeight = Math.ceil(tileType.size.height / this.TILE_VOXEL_SIZE);
-        const voxelDepth = Math.ceil(tileType.size.depth / this.TILE_VOXEL_SIZE);
+        const voxelWidth = Math.ceil(tileType.size.width / voxelSize);
+        const voxelHeight = Math.ceil(tileType.size.height / voxelSize);
+        const voxelDepth = Math.ceil(tileType.size.depth / voxelSize);
         
         template.bounds = { 
             width: voxelWidth, 
@@ -140,6 +165,123 @@ export class HybridVoxelWorld extends VoxelWorld {
     }
     
     /**
+     * Generate irregular cone voxel pattern (more natural tree shape)
+     */
+    generateIrregularConeVoxels(width, height, depth) {
+        const voxels = [];
+        const centerX = width / 2;
+        const centerZ = depth / 2;
+        const baseRadius = Math.min(width, depth) / 2;
+        
+        for (let y = 0; y < height; y++) {
+            const layerProgress = y / height;
+            const layerRadius = baseRadius * (1 - layerProgress);
+            
+            // Add some randomness to the radius at each layer
+            const radiusVariation = 0.2;
+            const actualRadius = layerRadius * (1 + (Math.random() - 0.5) * radiusVariation);
+            
+            for (let x = 0; x < width; x++) {
+                for (let z = 0; z < depth; z++) {
+                    const dx = x - centerX + 0.5;
+                    const dz = z - centerZ + 0.5;
+                    const distance = Math.sqrt(dx * dx + dz * dz);
+                    
+                    // Add some noise to the edge
+                    const edgeNoise = Math.random() * 0.5;
+                    
+                    if (distance <= actualRadius + edgeNoise) {
+                        voxels.push({ x, y, z, filled: true });
+                    }
+                }
+            }
+        }
+        return voxels;
+    }
+    
+    /**
+     * Generate wide cone voxel pattern (bushy tree)
+     */
+    generateWideConeVoxels(width, height, depth) {
+        const voxels = [];
+        const centerX = width / 2;
+        const centerZ = depth / 2;
+        const baseRadius = Math.min(width, depth) / 2;
+        
+        for (let y = 0; y < height; y++) {
+            const layerProgress = y / height;
+            // Use a curved profile instead of linear for a bushier look
+            const layerRadius = baseRadius * (1 - layerProgress * layerProgress * 0.8);
+            
+            for (let x = 0; x < width; x++) {
+                for (let z = 0; z < depth; z++) {
+                    const dx = x - centerX + 0.5;
+                    const dz = z - centerZ + 0.5;
+                    const distance = Math.sqrt(dx * dx + dz * dz);
+                    
+                    if (distance <= layerRadius) {
+                        voxels.push({ x, y, z, filled: true });
+                    }
+                }
+            }
+        }
+        return voxels;
+    }
+    
+    /**
+     * Generate tree with trunk
+     */
+    generateTreeWithTrunk(width, height, depth, trunkHeight, foliageType) {
+        const voxels = [];
+        const centerX = width / 2;
+        const centerZ = depth / 2;
+        
+        // Generate trunk (cylinder)
+        const trunkRadius = Math.max(1, Math.min(width, depth) / 6); // Trunk is 1/6 of tree width
+        for (let y = 0; y < trunkHeight; y++) {
+            for (let x = 0; x < width; x++) {
+                for (let z = 0; z < depth; z++) {
+                    const dx = x - centerX + 0.5;
+                    const dz = z - centerZ + 0.5;
+                    const distance = Math.sqrt(dx * dx + dz * dz);
+                    
+                    if (distance <= trunkRadius) {
+                        voxels.push({ x, y, z, filled: true, isTrunk: true });
+                    }
+                }
+            }
+        }
+        
+        // Generate foliage starting from trunk height
+        const foliageHeight = height - trunkHeight;
+        let foliageVoxels;
+        
+        switch (foliageType) {
+            case 'irregular':
+                foliageVoxels = this.generateIrregularConeVoxels(width, foliageHeight, depth);
+                break;
+            case 'wide':
+                foliageVoxels = this.generateWideConeVoxels(width, foliageHeight, depth);
+                break;
+            default:
+                foliageVoxels = this.generateConeVoxels(width, foliageHeight, depth);
+        }
+        
+        // Offset foliage voxels to start at trunk height
+        foliageVoxels.forEach(voxel => {
+            voxels.push({
+                x: voxel.x,
+                y: voxel.y + trunkHeight,
+                z: voxel.z,
+                filled: true,
+                isTrunk: false
+            });
+        });
+        
+        return voxels;
+    }
+    
+    /**
      * Generate cylinder voxel pattern
      */
     generateCylinderVoxels(width, height, depth) {
@@ -195,10 +337,21 @@ export class HybridVoxelWorld extends VoxelWorld {
      * Place a tile using the hybrid system
      */
     placeTile(tileTypeId, worldX, worldZ, rotation = 0) {
-        const template = this.tileTemplates.get(tileTypeId);
+        let template = this.tileTemplates.get(tileTypeId);
         if (!template) {
             console.warn(`No template found for tile type: ${tileTypeId}`);
             return false;
+        }
+        
+        // Handle random height tiles (like trees)
+        if (template.randomHeight) {
+            // Generate a new template with random height
+            const minHeight = template.randomHeight.min;
+            const maxHeight = template.randomHeight.max;
+            const randomHeight = minHeight + Math.random() * (maxHeight - minHeight);
+            
+            // Create a temporary template with the random height
+            template = this.generateRandomHeightTemplate(template, randomHeight);
         }
         
         // Store tile instance reference
@@ -215,26 +368,125 @@ export class HybridVoxelWorld extends VoxelWorld {
         // We need to center the tile on the grid square
         // worldX/worldZ are at grid center (e.g., 0.5, 0.5 for grid 0,0)
         // So we need to offset by half the tile size
+        const voxelSize = template.largeVoxelSize || this.TILE_VOXEL_SIZE;
         const halfWidth = template.bounds.width / 2;
         const halfDepth = template.bounds.depth / 2;
         
         // Calculate the bottom-left voxel position
-        const voxelX = Math.floor((worldX - halfWidth * this.TILE_VOXEL_SIZE) / this.TILE_VOXEL_SIZE);
-        const voxelZ = Math.floor((worldZ - halfDepth * this.TILE_VOXEL_SIZE) / this.TILE_VOXEL_SIZE);
+        const voxelX = Math.floor((worldX - halfWidth * voxelSize) / voxelSize);
+        const voxelZ = Math.floor((worldZ - halfDepth * voxelSize) / voxelSize);
         
-        // Place template voxels
-        this.placeTemplateVoxels(template, voxelX, 0, voxelZ, rotation);
+        // Place template voxels with the correct voxel size
+        this.placeTemplateVoxels(template, voxelX, 0, voxelZ, rotation, voxelSize);
         
         return true;
     }
     
     /**
+     * Generate a template with random height
+     */
+    generateRandomHeightTemplate(baseTemplate, height) {
+        // Use 12cm voxels for trees to improve performance
+        const voxelSize = 0.12;
+        
+        // Generate random color variation for tree foliage
+        const baseColor = baseTemplate.color.clone();
+        const colorVariation = 0.2; // 20% variation
+        const hsl = {};
+        baseColor.getHSL(hsl);
+        
+        // Vary the hue slightly (more yellow or more blue)
+        hsl.h += (Math.random() - 0.5) * 0.05; // ±5% hue shift
+        // Vary the saturation (more or less vibrant)
+        hsl.s *= 1 + (Math.random() - 0.5) * colorVariation;
+        // Vary the lightness (darker or lighter)
+        hsl.l *= 1 + (Math.random() - 0.5) * colorVariation;
+        
+        // Clamp values
+        hsl.s = Math.max(0, Math.min(1, hsl.s));
+        hsl.l = Math.max(0.2, Math.min(0.8, hsl.l));
+        
+        const foliageColor = new THREE.Color();
+        foliageColor.setHSL(hsl.h, hsl.s, hsl.l);
+        
+        // Generate random trunk color (browns)
+        const baseBrown = new THREE.Color(0x8B4513); // Saddle brown
+        const brownHsl = {};
+        baseBrown.getHSL(brownHsl);
+        
+        // Vary brown color
+        brownHsl.h += (Math.random() - 0.5) * 0.02; // Slight hue variation
+        brownHsl.s *= 1 + (Math.random() - 0.5) * 0.3; // More saturation variation
+        brownHsl.l *= 1 + (Math.random() - 0.5) * 0.4; // Significant lightness variation (light to dark wood)
+        
+        // Clamp brown values
+        brownHsl.s = Math.max(0, Math.min(1, brownHsl.s));
+        brownHsl.l = Math.max(0.15, Math.min(0.6, brownHsl.l));
+        
+        const trunkColor = new THREE.Color();
+        trunkColor.setHSL(brownHsl.h, brownHsl.s, brownHsl.l);
+        
+        const template = {
+            ...baseTemplate,
+            voxelData: [],
+            bounds: { width: 0, height: 0, depth: 0 },
+            largeVoxelSize: voxelSize,
+            color: foliageColor,
+            trunkColor: trunkColor
+        };
+        
+        // Calculate voxel dimensions with new height
+        const voxelWidth = Math.ceil(baseTemplate.baseSize.width / voxelSize);
+        const voxelHeight = Math.ceil(height / voxelSize);
+        const voxelDepth = Math.ceil(baseTemplate.baseSize.depth / voxelSize);
+        
+        // Random trunk height (15-30% of tree height)
+        const trunkHeightRatio = 0.15 + Math.random() * 0.15;
+        const trunkHeight = Math.ceil(voxelHeight * trunkHeightRatio);
+        
+        template.bounds = { 
+            width: voxelWidth, 
+            height: voxelHeight, 
+            depth: voxelDepth 
+        };
+        
+        // Generate voxels based on geometry type with random variations
+        switch (baseTemplate.geometry) {
+            case 'cone':
+                // Add shape variations for trees
+                const shapeVariant = Math.random();
+                if (shapeVariant < 0.3) {
+                    // 30% chance of irregular cone (natural tree)
+                    template.voxelData = this.generateTreeWithTrunk(voxelWidth, voxelHeight, voxelDepth, trunkHeight, 'irregular');
+                } else if (shapeVariant < 0.5) {
+                    // 20% chance of wider cone (bushy tree)
+                    template.voxelData = this.generateTreeWithTrunk(voxelWidth, voxelHeight, voxelDepth, trunkHeight, 'wide');
+                } else {
+                    // 50% chance of normal cone
+                    template.voxelData = this.generateTreeWithTrunk(voxelWidth, voxelHeight, voxelDepth, trunkHeight, 'normal');
+                }
+                break;
+            case 'cylinder':
+                template.voxelData = this.generateCylinderVoxels(voxelWidth, voxelHeight, voxelDepth);
+                break;
+            default:
+                template.voxelData = this.generateBoxVoxels(voxelWidth, voxelHeight, voxelDepth);
+        }
+        
+        return template;
+    }
+    
+    /**
      * Place template voxels into the world
      */
-    placeTemplateVoxels(template, baseX, baseY, baseZ, rotation) {
-        const color = template.color;
-        console.log(`Placing template voxels for ${template.id} at base (${baseX}, ${baseY}, ${baseZ})`);
-        console.log(`Template has ${template.voxelData.length} voxels, bounds:`, template.bounds);
+    placeTemplateVoxels(template, baseX, baseY, baseZ, rotation, voxelSize = this.TILE_VOXEL_SIZE) {
+        const foliageColor = template.color;
+        const trunkColor = template.trunkColor || new THREE.Color(0x8B4513); // Default brown if not set
+        
+        if (!template.voxelData || template.voxelData.length === 0) {
+            console.error('Template has no voxel data!');
+            return;
+        }
         
         let placedCount = 0;
         template.voxelData.forEach(voxel => {
@@ -265,16 +517,41 @@ export class HybridVoxelWorld extends VoxelWorld {
                 z += centerZ;
             }
             
-            // Place in tile chunk (25cm resolution)
-            const worldX = baseX + Math.floor(x);
-            const worldY = baseY + voxel.y;
-            const worldZ = baseZ + Math.floor(z);
+            // Determine color based on voxel type
+            const voxelColor = voxel.isTrunk ? trunkColor : foliageColor;
             
-            this.setTileVoxel(worldX, worldY, worldZ, 1, color);
+            // Place in tile chunk
+            // If this template uses a different voxel size, we need to convert coordinates
+            if (voxelSize !== this.TILE_VOXEL_SIZE) {
+                // Convert from template voxel coordinates to world coordinates, then to tile voxel coordinates
+                const worldPosX = (baseX * voxelSize + Math.floor(x) * voxelSize) / this.TILE_VOXEL_SIZE;
+                const worldPosY = (baseY * voxelSize + voxel.y * voxelSize) / this.TILE_VOXEL_SIZE;
+                const worldPosZ = (baseZ * voxelSize + Math.floor(z) * voxelSize) / this.TILE_VOXEL_SIZE;
+                
+                // Place multiple smaller voxels to fill the larger voxel space
+                const scale = Math.round(voxelSize / this.TILE_VOXEL_SIZE);
+                for (let dx = 0; dx < scale; dx++) {
+                    for (let dy = 0; dy < scale; dy++) {
+                        for (let dz = 0; dz < scale; dz++) {
+                            this.setTileVoxel(
+                                Math.floor(worldPosX) + dx,
+                                Math.floor(worldPosY) + dy,
+                                Math.floor(worldPosZ) + dz,
+                                1, voxelColor
+                            );
+                        }
+                    }
+                }
+            } else {
+                // Standard placement for matching voxel sizes
+                const worldX = baseX + Math.floor(x);
+                const worldY = baseY + voxel.y;
+                const worldZ = baseZ + Math.floor(z);
+                
+                this.setTileVoxel(worldX, worldY, worldZ, 1, voxelColor);
+            }
             placedCount++;
         });
-        
-        console.log(`Placed ${placedCount} voxels for template ${template.id}`);
     }
     
     /**
@@ -391,10 +668,10 @@ export class HybridVoxelWorld extends VoxelWorld {
      * Override processMeshUpdates to handle both chunk types
      */
     processMeshUpdates() {
-        const maxUpdatesPerFrame = 10;
+        const maxUpdatesPerFrame = 2; // Reduced for smoother interaction
         let processed = 0;
         
-        console.log(`Processing mesh updates, queue length: ${this.meshUpdateQueue.length}`);
+        // console.log(`Processing mesh updates, queue length: ${this.meshUpdateQueue.length}`);
         
         // Process tile chunks first
         while (this.meshUpdateQueue.length > 0 && processed < maxUpdatesPerFrame) {
@@ -494,13 +771,10 @@ export class HybridVoxelWorld extends VoxelWorld {
             console.log('Chunk mesh position:', worldPos);
             console.log('Chunk mesh material:', this.voxelMaterial);
             
-            // No need to scale since we're generating at the correct size
-            // chunk.mesh.scale.set(1, 1, 1);
-            
             this.scene.add(chunk.mesh);
             chunk.markClean();
             
-            console.log('Tile chunk mesh added to scene');
+            console.log('Tile chunk mesh and edges added to scene');
         } else {
             console.warn('No geometry generated for tile chunk');
         }

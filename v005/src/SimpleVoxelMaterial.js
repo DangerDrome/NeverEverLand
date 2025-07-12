@@ -1,5 +1,5 @@
 /**
- * SimpleVoxelMaterial.js - Simple material for testing voxel rendering
+ * SimpleVoxelMaterial.js - Simple material for voxel rendering
  */
 
 import * as THREE from 'three';

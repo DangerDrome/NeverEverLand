@@ -47,7 +47,7 @@ export class VoxelPalette {
             icon: 'box',
             collapsible: true,
             closable: true,
-            startCollapsed: false
+            startCollapsed: true
         });
         
         this.element.style.position = 'fixed';

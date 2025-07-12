@@ -761,12 +761,21 @@ export class TileMapSystem {
                     return;
                 }
                 
-                // Create a box that represents the tile's voxel bounds
-                // Now that voxels are generated at the correct 25cm scale, preview should match
-                const voxelScale = this.hybridVoxelWorld.TILE_VOXEL_SIZE; // 0.25m
-                const width = template.bounds.width * voxelScale;
-                const height = template.bounds.height * voxelScale;
-                const depth = template.bounds.depth * voxelScale;
+                // Handle tiles with random height (like trees)
+                let width, height, depth;
+                if (template.randomHeight && template.baseSize) {
+                    // Use base size for preview with average height
+                    const avgHeight = (template.randomHeight.min + template.randomHeight.max) / 2;
+                    width = template.baseSize.width;
+                    height = avgHeight;
+                    depth = template.baseSize.depth;
+                } else {
+                    // Use template bounds for regular tiles
+                    const voxelScale = template.largeVoxelSize || this.hybridVoxelWorld.TILE_VOXEL_SIZE;
+                    width = template.bounds.width * voxelScale;
+                    height = template.bounds.height * voxelScale;
+                    depth = template.bounds.depth * voxelScale;
+                }
                 
                 const geometry = new THREE.BoxGeometry(width, height, depth);
                 const material = new THREE.MeshStandardMaterial({
@@ -843,7 +852,14 @@ export class TileMapSystem {
             // We need to lift the preview by half its height so it sits on top of the grid
             const template = this.hybridVoxelWorld.tileTemplates.get(this.selectedTileType);
             if (template) {
-                const height = template.bounds.height * this.hybridVoxelWorld.TILE_VOXEL_SIZE;
+                let height;
+                if (template.randomHeight && template.baseSize) {
+                    // Use average height for preview
+                    height = (template.randomHeight.min + template.randomHeight.max) / 2;
+                } else {
+                    const voxelScale = template.largeVoxelSize || this.hybridVoxelWorld.TILE_VOXEL_SIZE;
+                    height = template.bounds.height * voxelScale;
+                }
                 this.previewTile.position.y = height / 2;
             }
         } else {

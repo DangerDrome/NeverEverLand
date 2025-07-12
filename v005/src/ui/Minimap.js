@@ -81,12 +81,12 @@ export class Minimap {
     
     // Debug: log tiles count occasionally
     if (Math.random() < 0.01) {
-      console.log('Minimap tiles count:', tiles.size);
-      if (tiles.size > 0) {
-        const firstTile = tiles.entries().next().value;
-        console.log('First tile:', firstTile);
-        console.log('Player pos:', playerPos);
-      }
+      // console.log('Minimap tiles count:', tiles.size);
+      // if (tiles.size > 0) {
+      //   const firstTile = tiles.entries().next().value;
+      //   console.log('First tile:', firstTile);
+      //   console.log('Player pos:', playerPos);
+      // }
     }
     
     // Iterate through tiles

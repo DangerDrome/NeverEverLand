@@ -58,7 +58,7 @@ export class TilePalette {
             icon: 'grid-3x3',
             collapsible: true,
             closable: true,
-            startCollapsed: true
+            startCollapsed: false
         });
         
         this.element.className += ' tile-palette-panel';

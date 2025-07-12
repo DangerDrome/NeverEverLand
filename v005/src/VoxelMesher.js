@@ -7,7 +7,10 @@
 
 import * as THREE from 'three';
 import { VoxelEdgeMaterial } from './VoxelEdgeMaterial.js';
+import { VoxelEdgeMaterialFixed } from './VoxelEdgeMaterialFixed.js';
 import { SimpleVoxelMaterial } from './SimpleVoxelMaterial.js';
+import { EdgeMaterial } from './EdgeMaterial.js';
+import { VoxelEdgeTextureMaterial } from './VoxelEdgeTextureMaterial.js';
 
 export class VoxelMesher {
     static FACE_DIRECTIONS = [
@@ -209,11 +212,16 @@ export class VoxelMesher {
             normals.push(dir[0], dir[1], dir[2]);
         }
         
-        // Add UVs with texture atlas coordinates
-        const textureIndex = this.getTextureIndex(face.voxelType, faceDir);
-        const uvCoords = this.getAtlasUVs(textureIndex, face.width, face.height);
+        // Add UVs - use face-relative coordinates for edge effect
+        // These go from 0 to 1 across each face for proper edge detection
+        const faceUvs = [
+            [0, 0],
+            [1, 0],
+            [1, 1],
+            [0, 1]
+        ];
         
-        for (const uv of uvCoords) {
+        for (const uv of faceUvs) {
             uvs.push(uv[0], uv[1]);
         }
         
@@ -332,16 +340,10 @@ export class VoxelMesher {
      * Create material for voxel rendering
      */
     createMaterial(textureUrl = null) {
-        // Use simple material for now to ensure visibility
+        // Use simple material for now
         const material = new SimpleVoxelMaterial();
         
         console.log('Created simple voxel material:', material);
-        
-        // TODO: Switch back to edge material once we fix the issue
-        // const material = new VoxelEdgeMaterial({
-        //     edgeWidth: 0.05,
-        //     edgeDarkness: 0.6
-        // });
         
         return material;
     }
