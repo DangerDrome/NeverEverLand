@@ -24,6 +24,11 @@ export class TilePalette {
         this.setupEventListeners();
         this.updateTileSelection();
         
+        // Initial badge update after a short delay
+        setTimeout(() => {
+            this.updateTileCountBadges();
+        }, 100);
+        
         console.log('TilePalette initialized');
     }
     
@@ -331,6 +336,16 @@ export class TilePalette {
             const tileButton = this.createTileButton(tileType);
             this.tileGrid.appendChild(tileButton);
         });
+        
+        // Initialize Lucide icons for the new tile buttons
+        if (window.lucide && window.lucide.createIcons) {
+            setTimeout(() => {
+                window.lucide.createIcons();
+            }, 50);
+        }
+        
+        // Initialize count badges
+        this.updateTileCountBadges();
     }
     
     /**
@@ -339,6 +354,7 @@ export class TilePalette {
     createTileButton(tileType) {
         const button = document.createElement('div');
         button.className = 'tile-button';
+        button.dataset.tileType = tileType.id; // Store tile type for easy lookup
         button.style.width = '60px';
         button.style.height = '60px';
         button.style.border = '2px solid var(--border-color)';
@@ -351,6 +367,12 @@ export class TilePalette {
         button.style.justifyContent = 'center';
         button.style.transition = 'all var(--transition-fast)';
         button.style.position = 'relative';
+        
+        // Add StyleUI icon based on tile type
+        const icon = this.createTileIcon(tileType);
+        if (icon) {
+            button.appendChild(icon);
+        }
         
         // Add tile name
         const nameLabel = document.createElement('div');
@@ -367,26 +389,8 @@ export class TilePalette {
         nameLabel.style.right = '2px';
         button.appendChild(nameLabel);
         
-        // Add keyboard shortcut indicator
-        const allTypes = tileTypes.getTileTypes();
-        const index = allTypes.findIndex(t => t.id === tileType.id);
-        if (index >= 0 && index < 9) {
-            const shortcut = document.createElement('div');
-            shortcut.textContent = (index + 1).toString();
-            shortcut.style.position = 'absolute';
-            shortcut.style.top = '2px';
-            shortcut.style.right = '2px';
-            shortcut.style.fontSize = 'var(--font-size-2xs)';
-            shortcut.style.backgroundColor = 'var(--overlay-backdrop)';
-            shortcut.style.color = 'var(--text-primary)';
-            shortcut.style.width = '16px';
-            shortcut.style.height = '16px';
-            shortcut.style.borderRadius = '50%';
-            shortcut.style.display = 'flex';
-            shortcut.style.alignItems = 'center';
-            shortcut.style.justifyContent = 'center';
-            button.appendChild(shortcut);
-        }
+        // Add tile count indicator (will be updated later)
+        // Don't add it here - let updateTileCountBadges handle it
         
         // Hover effects
         button.addEventListener('mouseenter', () => {
@@ -416,6 +420,83 @@ export class TilePalette {
     }
     
     /**
+     * Get count of tiles of a specific type in the scene
+     */
+    getTileCountByType(tileTypeId) {
+        let count = 0;
+        this.tileMapSystem.tiles.forEach(tile => {
+            if (tile.tileType === tileTypeId) {
+                count++;
+            }
+        });
+        return count;
+    }
+    
+    createTileIcon(tileType) {
+        let iconName = null;
+        
+        // Map tile types to StyleUI icons
+        switch (tileType.id) {
+            case 'grass':
+                iconName = 'leaf';
+                break;
+            case 'stone':
+                iconName = 'mountain';
+                break;
+            case 'water':
+                iconName = 'droplets';
+                break;
+            case 'wall':
+                iconName = 'square';
+                break;
+            case 'tree':
+                iconName = 'tree-pine';
+                break;
+            case 'ltree':
+                iconName = 'trees';
+                break;
+            case 'foundation':
+                iconName = 'home';
+                break;
+            default:
+                // Check category for fallback icons
+                switch (tileType.category) {
+                    case 'terrain':
+                        iconName = 'map';
+                        break;
+                    case 'structure':
+                        iconName = 'building';
+                        break;
+                    case 'nature':
+                        iconName = 'flower';
+                        break;
+                    default:
+                        iconName = 'square';
+                }
+        }
+        
+        if (iconName) {
+            const iconElement = document.createElement('i');
+            iconElement.setAttribute('data-lucide', iconName);
+            iconElement.style.cssText = `
+                width: 24px;
+                height: 24px;
+                color: rgba(255, 255, 255, 0.9);
+                filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                pointer-events: none;
+            `;
+            
+            return iconElement;
+        }
+        
+        return null;
+    }
+    
+    /**
      * Select a category
      */
     selectCategory(category) {
@@ -432,6 +513,13 @@ export class TilePalette {
         
         // Update tile grid
         this.updateTileGrid();
+        
+        // Initialize Lucide icons for tile previews
+        if (window.lucide && window.lucide.createIcons) {
+            setTimeout(() => {
+                window.lucide.createIcons();
+            }, 100); // Small delay to ensure all elements are rendered
+        }
     }
     
     /**
@@ -443,6 +531,13 @@ export class TilePalette {
         
         // Update tile grid to show selection
         this.updateTileGrid();
+        
+        // Re-initialize Lucide icons after grid update
+        if (window.lucide && window.lucide.createIcons) {
+            setTimeout(() => {
+                window.lucide.createIcons();
+            }, 100);
+        }
         
         console.log(`Selected tile: ${tileTypes.getTileType(tileTypeId).name}`);
     }
@@ -560,6 +655,50 @@ export class TilePalette {
     }
     
     /**
+     * Update only the count badges without recreating the grid
+     */
+    updateTileCountBadges() {
+        const tileButtons = this.tileGrid.querySelectorAll('.tile-button');
+        
+        tileButtons.forEach(button => {
+            const tileTypeId = button.dataset.tileType;
+            if (!tileTypeId) return;
+            
+            const count = this.getTileCountByType(tileTypeId);
+            
+            // Find or create badge
+            let badge = button.querySelector('.tile-count-badge');
+            
+            if (count > 0) {
+                if (!badge) {
+                    badge = document.createElement('div');
+                    badge.className = 'tile-count-badge';
+                    badge.style.position = 'absolute';
+                    badge.style.top = '2px';
+                    badge.style.right = '2px';
+                    badge.style.fontSize = 'var(--font-size-2xs)';
+                    badge.style.backgroundColor = 'var(--primary)';
+                    badge.style.color = 'var(--text-on-primary)';
+                    badge.style.minWidth = '18px';
+                    badge.style.height = '18px';
+                    badge.style.borderRadius = '9px';
+                    badge.style.display = 'flex';
+                    badge.style.alignItems = 'center';
+                    badge.style.justifyContent = 'center';
+                    badge.style.padding = '0 4px';
+                    badge.style.fontWeight = 'bold';
+                    badge.style.zIndex = '10';
+                    button.appendChild(badge);
+                }
+                badge.textContent = count.toString();
+            } else if (badge) {
+                // Remove badge if count is 0
+                badge.remove();
+            }
+        });
+    }
+    
+    /**
      * Update tile selection from external source
      */
     updateTileSelection() {
@@ -571,17 +710,36 @@ export class TilePalette {
      * Setup event listeners
      */
     setupEventListeners() {
+        // Debounce timer for grid updates
+        this.updateDebounceTimer = null;
+        
         // Listen for tile map changes to update count
         const originalPlaceTile = this.tileMapSystem.placeTile.bind(this.tileMapSystem);
         this.tileMapSystem.placeTile = (...args) => {
             originalPlaceTile(...args);
             this.updateTileCount();
+            
+            // Debounce grid updates to avoid constant recreation during drag
+            if (this.updateDebounceTimer) {
+                clearTimeout(this.updateDebounceTimer);
+            }
+            this.updateDebounceTimer = setTimeout(() => {
+                this.updateTileCountBadges(); // Only update badges, not entire grid
+            }, 100);
         };
         
         const originalRemoveTile = this.tileMapSystem.removeTileInternal.bind(this.tileMapSystem);
         this.tileMapSystem.removeTileInternal = (...args) => {
             originalRemoveTile(...args);
             this.updateTileCount();
+            
+            // Debounce grid updates
+            if (this.updateDebounceTimer) {
+                clearTimeout(this.updateDebounceTimer);
+            }
+            this.updateDebounceTimer = setTimeout(() => {
+                this.updateTileCountBadges(); // Only update badges, not entire grid
+            }, 100);
         };
     }
     

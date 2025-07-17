@@ -7,6 +7,7 @@ import { AdaptiveGrid } from './AdaptiveGrid.js';
 import { TileMapSystem } from './TileMapSystem.js';
 import { TileRenderer } from './TileRenderer.js';
 import { HybridVoxelWorld } from './HybridVoxelWorld.js';
+import { PostProcessingManager } from './PostProcessingManager.js';
 
 class GameEngine {
     constructor() {
@@ -66,6 +67,7 @@ class GameEngine {
         
         // Selection manager will be initialized after renderer is set up
         this.selectionManager = null;
+        this.postProcessingManager = null;
 
         this.init();
     }
@@ -179,6 +181,9 @@ class GameEngine {
         
         // Initialize selection manager after renderer is ready
         this.selectionManager = new SelectionManager(this);
+        
+        // Initialize post-processing manager
+        this.postProcessingManager = new PostProcessingManager(this.renderer, this.scene, this.camera);
         
         // Initialize tile system
         this.tileRenderer = new TileRenderer(this.scene);
@@ -394,6 +399,11 @@ class GameEngine {
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         
+        // Update post-processing size
+        if (this.postProcessingManager) {
+            this.postProcessingManager.setSize(window.innerWidth, window.innerHeight);
+        }
+        
         // Also resize selection manager canvas
         if (this.selectionManager) {
             this.selectionManager.resizeCanvas();
@@ -481,8 +491,12 @@ class GameEngine {
             this.voxelWorld.update(delta);
         }
 
-        // Always render
-        this.renderer.render(this.scene, this.camera);
+        // Render with post-processing
+        if (this.postProcessingManager) {
+            this.postProcessingManager.render();
+        } else {
+            this.renderer.render(this.scene, this.camera);
+        }
         
         if (this.ui) {
             this.ui.update();

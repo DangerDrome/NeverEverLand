@@ -14,6 +14,7 @@ import { ItemDetailModal } from './ui/ItemDetailModal.js';
 import { DebugPanel } from './ui/DebugPanel.js';
 import { TilePalette } from './ui/TilePalette.js';
 import { PanelDragManager } from './ui/PanelDragManager.js';
+import { RenderingPanel } from './ui/RenderingPanel.js';
 import './core.js'; // Import core.js to make UI global available
 
 export class NeverEverlandUI {
@@ -179,6 +180,11 @@ export class NeverEverlandUI {
     // Tile Palette (only if tile system is available)
     if (this.gameEngine.tileMapSystem) {
       this.components.set('tilePalette', new TilePalette(this.container, this.gameEngine.tileMapSystem));
+    }
+    
+    // Rendering Panel (only if post-processing is available)
+    if (this.gameEngine.postProcessingManager) {
+      this.components.set('renderingPanel', new RenderingPanel(this.container, this.gameEngine));
     }
 
     // Initialize StyleUI icons

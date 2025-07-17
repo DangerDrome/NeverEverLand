@@ -367,15 +367,38 @@ export class TileMapSystem {
     }
     
     /**
+     * Helper method to get grid coordinates from world position
+     */
+    worldToGrid(worldPosition) {
+        const tileGridSpacing = 1.0;
+        return {
+            x: Math.floor(worldPosition.x / tileGridSpacing),
+            z: Math.floor(worldPosition.z / tileGridSpacing)
+        };
+    }
+    
+    /**
+     * Helper method to get world position (center) from grid coordinates
+     */
+    gridToWorld(gridX, gridZ) {
+        const tileGridSpacing = 1.0;
+        return new THREE.Vector3(
+            gridX * tileGridSpacing + tileGridSpacing * 0.5,
+            0,
+            gridZ * tileGridSpacing + tileGridSpacing * 0.5
+        );
+    }
+    
+    /**
      * Place a tile at the specified world position
      */
     placeTile(tileTypeId, worldPosition, rotation = 0) {
         console.log('placeTile called with:', tileTypeId, worldPosition, rotation);
         
-        // Get grid coordinates using 1-meter grid (snap to square centers)
-        const tileGridSpacing = 1.0;
-        const gridX = Math.floor(worldPosition.x / tileGridSpacing);
-        const gridZ = Math.floor(worldPosition.z / tileGridSpacing);
+        // Get grid coordinates using helper method
+        const gridCoords = this.worldToGrid(worldPosition);
+        const gridX = gridCoords.x;
+        const gridZ = gridCoords.z;
         const key = `${gridX},${gridZ}`;
         
         console.log('Grid position:', {x: gridX, z: gridZ}, 'Key:', key);
@@ -393,11 +416,7 @@ export class TileMapSystem {
         }
         
         // Create new tile data - convert grid coordinates to world position at square center
-        const worldPos = new THREE.Vector3(
-            gridX * tileGridSpacing + tileGridSpacing * 0.5,
-            0,
-            gridZ * tileGridSpacing + tileGridSpacing * 0.5
-        );
+        const worldPos = this.gridToWorld(gridX, gridZ);
         
         console.log('World position for tile:', worldPos);
         
@@ -770,11 +789,11 @@ export class TileMapSystem {
                     height = avgHeight;
                     depth = template.baseSize.depth;
                 } else {
-                    // Use template bounds for regular tiles
-                    const voxelScale = template.largeVoxelSize || this.hybridVoxelWorld.TILE_VOXEL_SIZE;
-                    width = template.bounds.width * voxelScale;
-                    height = template.bounds.height * voxelScale;
-                    depth = template.bounds.depth * voxelScale;
+                    // Use the actual tile size from TileTypes, not voxel approximation
+                    const tileType = tileTypes.getTileType(this.selectedTileType);
+                    width = tileType.size.width;
+                    height = tileType.size.height;
+                    depth = tileType.size.depth;
                 }
                 
                 const geometry = new THREE.BoxGeometry(width, height, depth);
@@ -832,17 +851,9 @@ export class TileMapSystem {
     updatePreviewTile(worldPosition) {
         if (!this.previewTile || !this.editMode) return;
         
-        // Snap to 1-meter grid square centers (not intersections)
-        const tileGridSpacing = 1.0; // Always use 1 meter grid for tiles
-        const gridX = Math.floor(worldPosition.x / tileGridSpacing);
-        const gridZ = Math.floor(worldPosition.z / tileGridSpacing);
-        
-        // Convert grid coordinates to world position at square center
-        const snappedPos = new THREE.Vector3(
-            gridX * tileGridSpacing + tileGridSpacing * 0.5,
-            0,
-            gridZ * tileGridSpacing + tileGridSpacing * 0.5
-        );
+        // Use the same grid snapping logic as placement
+        const gridCoords = this.worldToGrid(worldPosition);
+        const snappedPos = this.gridToWorld(gridCoords.x, gridCoords.z);
         
         // Update position with proper height offset for hybrid mode
         this.previewTile.position.copy(snappedPos);

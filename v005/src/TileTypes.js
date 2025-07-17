@@ -88,6 +88,21 @@ export class TileTypes {
             rotatable: false,
             randomHeight: { min: 1, max: 4 } // Random height range in meters
         });
+
+        // L-System tree - uses custom L-system generation
+        this.registerTileType('ltree', {
+            name: 'L-Tree',
+            category: 'nature',
+            geometry: 'lsystem',
+            material: 'tree',
+            size: { width: 3, height: 4, depth: 3 }, // Larger area for branches
+            color: 0x2E7D32,
+            texture: null,
+            solid: true,
+            walkable: false,
+            rotatable: false,
+            randomHeight: { min: 3, max: 5 } // Height range for L-system trees
+        });
         
         // House foundation
         this.registerTileType('foundation', {

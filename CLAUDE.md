@@ -22,10 +22,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-NeverEverLand is a Three.js-based isometric game engine with three main versions:
+NeverEverLand is a Three.js-based isometric game engine with multiple versions:
 - **v001**: Class-based architecture with comprehensive features including post-processing effects
 - **v002**: Modular approach with WFC (Wave Function Collapse) terrain generation, player movement, and minimap
 - **v003**: Entity Component System (ECS) architecture with proper modular file structure
+- **v004**: Not specified in detail
+- **v005**: Hybrid voxel/tile system with advanced editing capabilities (current active version)
 
 ## Architecture
 
@@ -54,6 +56,14 @@ Both versions share these fundamental components:
 - FPS counter and performance monitoring
 - Larger grid size (224x224) with instanced rendering
 
+**v005** (`v005/src/main.js`):
+- **HybridVoxelWorld**: Dual-resolution voxel system (6cm tiles, 5cm detail voxels)
+- **TileMapSystem**: Grid-based tile placement with 1m x 1m cells
+- **L-System Trees**: Procedural tree generation with organic growth patterns
+- **StyleUI Framework**: Complete UI component library with panels, drag & drop
+- **Post-processing**: Pixelation and bloom effects
+- **Voxel Editing**: Real-time voxel placement/removal with chunked rendering
+
 ## Key Features
 
 ### Isometric Projection
@@ -66,9 +76,15 @@ Both versions share these fundamental components:
 - **Mouse Wheel**: Zoom in/out
 - **Q/E**: Adjust pixelation strength (v001)
 - **P**: Toggle post-processing effects (v001)
-- **G**: Toggle grid overlay visibility (v002)
-- **R**: Regenerate terrain with WFC (v002)
-- **F**: Focus camera on player (v002)
+- **G**: Toggle grid overlay visibility (v002/v005)
+- **R**: Regenerate terrain with WFC (v002) / Rotate tile (v005)
+- **F**: Focus camera on selection (all versions)
+- **F3**: Toggle debug panel (v005)
+- **F4**: Toggle tile palette (v005)
+- **Escape**: Toggle pause menu (v005)
+- **Middle Mouse**: Pan camera (v005)
+- **Left Click**: Place tile/voxel (v005)
+- **Right Click**: Remove tile/voxel (v005)
 
 ### Performance Optimizations
 - Instanced mesh rendering for tiles (`v002/TileGrid.js:20`)
@@ -82,22 +98,15 @@ Since this is a client-side Three.js project, no build system is required. Open 
 
 - **v001**: Open `v001/index.html`
 - **v002**: Open `v002/index.html`
+- **v003**: Open `v003/index.html`
+- **v005**: Open `v005/index.html`
 
-For development, use a local server to avoid CORS issues:
-```bash
-python -m http.server 8000
-# or
-npx serve
-```
+For development, a local server is **ALWAYS** running at http://localhost:8000/
 
 ## Development Guidelines
 
-- **Server Usage**: 
-  - never use a server, always use index.html 
-- **CORS Bypass**:
-  - Use Python's SimpleHTTPServer
-  - Use `npx serve`
-  - Disable browser security for local development
+- **Local Server**: Always available at http://localhost:8000/
+- **v005 Entry Point**: http://localhost:8000/v005/index.html
 
 ## Testing
 
@@ -155,6 +164,16 @@ Use Three.js raycasting for mouse interaction with the grid system. See `v002/ma
     │   ├── System.js
     │   └── World.js
     └── GameEngine.js       # Main engine class
+└── v005/                    # Hybrid Voxel/Tile System (CURRENT ACTIVE VERSION)
+    ├── index.html          # Entry point
+    ├── src/                # All source code
+    │   ├── main.js         # Main game initialization
+    │   ├── HybridVoxelWorld.js # Hybrid voxel/tile rendering system
+    │   ├── TileMapSystem.js    # Tile placement and management
+    │   ├── VoxelWorld.js       # Core voxel engine
+    │   ├── LSystem.js          # L-system tree generation
+    │   └── ui/             # UI components using StyleUI framework
+    └── test_assets/        # 3D models and textures
 ```
 
 ## Browser Compatibility
@@ -171,3 +190,33 @@ In v001, access the game instance via `window.game` for debugging:
 - `window.game.tileGrid.getDimensions()` - Grid information
 
 In v002, access via `window.player` for player debugging.
+
+In v005, access via `window.gameEngine` for full engine access:
+- `window.gameEngine.voxelWorld` - Voxel world system
+- `window.gameEngine.tileMapSystem` - Tile map system
+- `window.debugVoxels()` - Debug voxel chunk information
+
+## v005 Architecture Details
+
+### Hybrid Voxel System
+The HybridVoxelWorld uses two voxel resolutions:
+- **Tile Voxels**: 6cm (0.06m) for placed tiles - stored in `tileChunks`
+- **Detail Voxels**: 5cm (0.05m) for voxel editing - stored in regular chunks
+- Tiles are 16x16 voxels (0.96m x 0.96m) to fit within 1m grid cells
+
+### Coordinate Systems
+- **Grid Coordinates**: Integer positions for 1m x 1m grid cells (0,0), (1,0), etc.
+- **World Coordinates**: Grid cell centers at (0.5, 0.5), (1.5, 0.5), etc.
+- **Voxel Coordinates**: Integer voxel positions based on voxel size
+
+### Important Voxel Placement Notes
+- Tile placement uses offsets to align with preview: `xOffset = 0.01, zOffset = 0.01`
+- Voxel templates use `Math.floor` for width/depth to keep tiles under 1m
+- Preview meshes use actual tile sizes from TileTypes, not voxel approximations
+
+### L-System Trees
+Trees use the organic formula: `X → F+[-F-XF-X][+FF][--XF[+X]][++F-X]`
+- Proper 3D turtle graphics with heading, left, up vectors
+- Trunk connectivity algorithms to prevent gaps
+- Height-based foliage density (40% at bottom, 80% at top)
+- Individual leaf color variations

@@ -90,9 +90,11 @@ export class HybridVoxelWorld extends VoxelWorld {
         }
         
         // Convert tile dimensions to voxel counts
-        const voxelWidth = Math.ceil(tileType.size.width / voxelSize);
+        // Use floor instead of ceil to keep tiles within 1m grid cells
+        // For 1m tiles: floor(1.0/0.06) = 16 voxels = 0.96m (slightly smaller to fit)
+        const voxelWidth = Math.floor(tileType.size.width / voxelSize);
         const voxelHeight = Math.ceil(tileType.size.height / voxelSize);
-        const voxelDepth = Math.ceil(tileType.size.depth / voxelSize);
+        const voxelDepth = Math.floor(tileType.size.depth / voxelSize);
         
         template.bounds = { 
             width: voxelWidth, 
@@ -373,11 +375,21 @@ export class HybridVoxelWorld extends VoxelWorld {
         const halfDepth = template.bounds.depth / 2;
         
         // Calculate the bottom-left voxel position
-        const voxelX = Math.floor((worldX - halfWidth * voxelSize) / voxelSize);
-        const voxelZ = Math.floor((worldZ - halfDepth * voxelSize) / voxelSize);
+        // Add 1cm offset on X and Z axes
+        const xOffset = 0.01;
+        const zOffset = 0.01;
+        const voxelX = Math.floor((worldX + xOffset - halfWidth * voxelSize) / voxelSize);
+        const voxelZ = Math.floor((worldZ + zOffset - halfDepth * voxelSize) / voxelSize);
         
         // Place template voxels with the correct voxel size
         this.placeTemplateVoxels(template, voxelX, 0, voxelZ, rotation, voxelSize);
+        
+        console.log('Tile placement:', {
+            worldX, worldZ,
+            voxelX, voxelZ,
+            voxelSize,
+            templateBounds: template.bounds
+        });
         
         return true;
     }
@@ -436,9 +448,9 @@ export class HybridVoxelWorld extends VoxelWorld {
         };
         
         // Calculate voxel dimensions with new height
-        const voxelWidth = Math.ceil(baseTemplate.baseSize.width / voxelSize);
+        const voxelWidth = Math.floor(baseTemplate.baseSize.width / voxelSize);
         const voxelHeight = Math.ceil(height / voxelSize);
-        const voxelDepth = Math.ceil(baseTemplate.baseSize.depth / voxelSize);
+        const voxelDepth = Math.floor(baseTemplate.baseSize.depth / voxelSize);
         
         // Random trunk height (15-30% of tree height)
         const trunkHeightRatio = 0.15 + Math.random() * 0.15;
@@ -465,6 +477,10 @@ export class HybridVoxelWorld extends VoxelWorld {
                     // 50% chance of normal cone
                     template.voxelData = this.generateTreeWithTrunk(voxelWidth, voxelHeight, voxelDepth, trunkHeight, 'normal');
                 }
+                break;
+            case 'lsystem':
+                // Use L-system for organic branching tree
+                template.voxelData = this.lSystem.generateTreeVoxels('organic', voxelWidth, voxelHeight, voxelDepth, trunkHeight);
                 break;
             case 'cylinder':
                 template.voxelData = this.generateCylinderVoxels(voxelWidth, voxelHeight, voxelDepth);
@@ -518,7 +534,38 @@ export class HybridVoxelWorld extends VoxelWorld {
             }
             
             // Determine color based on voxel type
-            const voxelColor = voxel.isTrunk ? trunkColor : foliageColor;
+            let voxelColor;
+            if (voxel.isTrunk) {
+                voxelColor = trunkColor;
+            } else if (voxel.isLeaf) {
+                // Varied leaf colors (only for L-system trees)
+                const leafColor = foliageColor.clone();
+                
+                // Apply individual leaf color variation if available
+                if (voxel.leafColorVariation) {
+                    const hsl = {};
+                    leafColor.getHSL(hsl);
+                    
+                    // Apply variations
+                    hsl.h = Math.max(0, Math.min(1, hsl.h + voxel.leafColorVariation.hueShift));
+                    hsl.s = Math.max(0, Math.min(1, hsl.s * voxel.leafColorVariation.saturationMult));
+                    hsl.l = Math.max(0.1, Math.min(0.9, hsl.l * voxel.leafColorVariation.lightnessMult));
+                    
+                    leafColor.setHSL(hsl.h, hsl.s, hsl.l);
+                } else {
+                    // Fallback: just make it brighter
+                    leafColor.multiplyScalar(1.2);
+                }
+                
+                voxelColor = leafColor;
+            } else if (voxel.isBranch) {
+                // Branch color - between trunk and leaf (only for L-system trees)
+                const branchColor = trunkColor.clone().lerp(foliageColor, 0.3);
+                voxelColor = branchColor;
+            } else {
+                // Default foliage color for regular trees
+                voxelColor = foliageColor;
+            }
             
             // Place in tile chunk
             // If this template uses a different voxel size, we need to convert coordinates
