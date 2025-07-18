@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { DimetricCamera } from '@core/Camera';
 import { DimetricGrid } from '@core/DimetricGrid';
 import { SimpleTileSystem } from '@core/SimpleTileSystem';
-import { VoxelType } from '@core/VoxelTypes';
+import { VoxelType, VOXEL_PROPERTIES } from '@core/VoxelTypes';
 import { 
   EditorState, 
   EditorConfig, 
@@ -52,11 +52,18 @@ export class TileEditor {
   private frameCount: number = 0;
   private fpsTime: number = 0;
   
+  // Placement mode
+  private stackMode: boolean = true;
+  
   // UI elements
   private coordinateDisplay: HTMLElement | null;
   private infoPanel: InfoPanel | null = null;
   private minimapPanel: MinimapPanel | null = null;
   private tilePalette: TilePalette | null = null;
+  
+  // Preview
+  private previewMesh: THREE.Mesh | null = null;
+  private previewMaterial: THREE.Material;
 
   constructor(container: HTMLElement, config?: Partial<EditorConfig>) {
     this.container = container;
@@ -167,6 +174,27 @@ export class TileEditor {
    */
   private initTileSystem(): void {
     this.tileSystem = new SimpleTileSystem(this.scene);
+    this.initPreview();
+  }
+  
+  /**
+   * Initialize preview mesh
+   */
+  private initPreview(): void {
+    // Create semi-transparent preview material
+    this.previewMaterial = new THREE.MeshPhongMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.5,
+      emissive: 0x444444,
+      emissiveIntensity: 0.3,
+    });
+    
+    // Create preview mesh (same geometry as tiles)
+    const geometry = new THREE.BoxGeometry(1, 0.1, 1);
+    this.previewMesh = new THREE.Mesh(geometry, this.previewMaterial);
+    this.previewMesh.visible = false;
+    this.scene.add(this.previewMesh);
   }
 
   /**
@@ -404,6 +432,28 @@ export class TileEditor {
         this.state.highlightedCell = gridCoord;
         this.grid.highlightCell(gridCoord);
         
+        // Update preview position
+        if (this.previewMesh && this.state.mode === EditorMode.Place) {
+          const worldHeight = this.tileSystem.getWorldHeight(gridCoord);
+          this.previewMesh.position.set(
+            gridCoord.x + 0.5,
+            worldHeight + 0.05,
+            gridCoord.z + 0.5
+          );
+          this.previewMesh.visible = true;
+          
+          // Update preview color based on selected voxel type
+          const voxelProps = VOXEL_PROPERTIES[this.selectedVoxelType];
+          if (voxelProps) {
+            this.previewMaterial.color.setHex(voxelProps.color);
+          }
+          
+          // Update height display for preview
+          this.updateHeightDisplay(gridCoord);
+        } else if (this.previewMesh) {
+          this.previewMesh.visible = false;
+        }
+        
         // Update coordinate display
         if (this.coordinateDisplay && this.config.showCoordinates) {
           const mode = this.state.mode === EditorMode.Place ? `Place ${VoxelType[this.selectedVoxelType]}` :
@@ -414,6 +464,11 @@ export class TileEditor {
     } else {
       this.grid.clearHighlight();
       this.state.highlightedCell = null;
+      
+      // Hide preview
+      if (this.previewMesh) {
+        this.previewMesh.visible = false;
+      }
     }
   }
 
@@ -470,11 +525,11 @@ export class TileEditor {
    * Place tile at grid position
    */
   private placeVoxel(gridCoord: GridCoordinate): void {
-    // Only place if no tile exists at this position
-    const existingTile = this.tileSystem.getTile(gridCoord);
-    if (existingTile === VoxelType.Air) {
-      this.tileSystem.placeTile(gridCoord, this.selectedVoxelType);
-    }
+    // Place based on stack mode
+    this.tileSystem.placeTile(gridCoord, this.selectedVoxelType, this.stackMode);
+    
+    // Update height display
+    this.updateHeightDisplay(gridCoord);
   }
 
   /**
@@ -482,6 +537,9 @@ export class TileEditor {
    */
   private removeVoxel(gridCoord: GridCoordinate): void {
     this.tileSystem.removeTile(gridCoord);
+    
+    // Update height display
+    this.updateHeightDisplay(gridCoord);
   }
   
   /**
@@ -595,6 +653,41 @@ export class TileEditor {
    */
   public setSelectedVoxelType(type: VoxelType): void {
     this.selectedVoxelType = type;
+    
+    // Update preview color
+    if (this.previewMesh) {
+      const voxelProps = VOXEL_PROPERTIES[type];
+      if (voxelProps) {
+        (this.previewMaterial as THREE.MeshPhongMaterial).color.setHex(voxelProps.color);
+      }
+    }
+  }
+  
+  /**
+   * Set stack mode (called by TilePalette)
+   */
+  public setStackMode(enabled: boolean): void {
+    this.stackMode = enabled;
+    console.log('Stack mode:', enabled ? 'ON' : 'OFF');
+  }
+  
+  /**
+   * Clear all tiles
+   */
+  public clearAllTiles(): void {
+    this.tileSystem.clear();
+    console.log('All tiles cleared');
+  }
+  
+  /**
+   * Update height display
+   */
+  private updateHeightDisplay(coord: GridCoordinate): void {
+    const heightDisplay = document.getElementById('height-display');
+    if (heightDisplay) {
+      const height = this.tileSystem.getWorldHeight(coord);
+      heightDisplay.textContent = `Height: ${height.toFixed(1)}m`;
+    }
   }
 
   /**

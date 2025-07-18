@@ -54,6 +54,17 @@ export class TilePalette {
     separator2.style.backgroundColor = 'var(--border-color)';
     content.appendChild(separator2);
     
+    // Create layer controls section
+    const layerSection = this.createLayerSection();
+    content.appendChild(layerSection);
+    
+    // Add another separator
+    const separator3 = document.createElement('div');
+    separator3.style.width = '1px';
+    separator3.style.height = '40px';
+    separator3.style.backgroundColor = 'var(--border-color)';
+    content.appendChild(separator3);
+    
     // Create test section
     const testSection = this.createTestSection();
     content.appendChild(testSection);
@@ -225,6 +236,57 @@ export class TilePalette {
       this.voxelButtons.set(type, button);
       section.appendChild(button);
     });
+    
+    return section;
+  }
+  
+  /**
+   * Create layer controls section
+   */
+  private createLayerSection(): HTMLElement {
+    const section = document.createElement('div');
+    section.style.display = 'flex';
+    section.style.alignItems = 'center';
+    section.style.gap = 'var(--space-2)';
+    
+    // Stack mode toggle
+    const stackToggle = window.UI.checkbox({
+      label: 'Stack',
+      checked: true,
+      onChange: (checked: boolean) => {
+        this.editor.setStackMode(checked);
+      }
+    });
+    section.appendChild(stackToggle.element);
+    
+    // Layer height display
+    const heightDisplay = document.createElement('span');
+    heightDisplay.className = 'tag tag-light-primary';
+    heightDisplay.style.fontSize = '10px';
+    heightDisplay.textContent = 'Height: 0m';
+    heightDisplay.id = 'height-display';
+    section.appendChild(heightDisplay);
+    
+    // Clear all button
+    const clearBtn = window.UI.button({
+      text: 'Clear',
+      variant: 'danger',
+      size: 'xs',
+      icon: 'trash-2',
+      onClick: () => {
+        if (window.UI.confirm) {
+          window.UI.confirm({
+            title: 'Clear All Blocks',
+            message: 'Are you sure you want to clear all blocks?',
+            type: 'danger',
+            onConfirm: () => {
+              this.editor.clearAllTiles();
+            }
+          });
+        }
+      }
+    });
+    section.appendChild(clearBtn.element);
     
     return section;
   }

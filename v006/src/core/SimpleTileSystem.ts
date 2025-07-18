@@ -11,6 +11,7 @@ export class SimpleTileSystem {
   private tileGeometry: THREE.BoxGeometry;
   private materials: Map<VoxelType, THREE.Material> = new Map();
   private layerHeight: number = 0.1; // Height of each layer
+  private maxLayers: number = 50; // Maximum height in layers
   
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -36,28 +37,56 @@ export class SimpleTileSystem {
   }
   
   /**
+   * Get the top layer at a coordinate
+   */
+  public getTopLayer(coord: GridCoordinate): number {
+    let topLayer = -1;
+    for (let layer = 0; layer < this.maxLayers; layer++) {
+      const key = `${coord.x},${coord.z},${layer}`;
+      if (this.tiles.has(key)) {
+        topLayer = layer;
+      }
+    }
+    return topLayer;
+  }
+
+  /**
    * Place a tile at grid coordinate
    */
-  public placeTile(coord: GridCoordinate, type: VoxelType): void {
-    // Remove existing tiles at this position
-    this.removeTile(coord);
-    
+  public placeTile(coord: GridCoordinate, type: VoxelType, stackOnTop: boolean = true): void {
     // Don't place air
     if (type === VoxelType.Air) return;
+    
+    let startLayer = 0;
+    
+    if (stackOnTop) {
+      // Find the top layer and place above it
+      const topLayer = this.getTopLayer(coord);
+      startLayer = topLayer + 1;
+      
+      // Check if we've reached max height
+      if (startLayer >= this.maxLayers) {
+        console.warn('Maximum height reached at', coord);
+        return;
+      }
+    } else {
+      // Replace existing tiles at this position
+      this.removeTile(coord);
+    }
     
     // Special handling for multi-layer tiles
     if (type === VoxelType.Grass) {
       // Grass: 3 layers (sand, dirt, grass)
-      this.placeSingleTile(coord, VoxelType.Sand, 0);  // Bottom layer
-      this.placeSingleTile(coord, VoxelType.Dirt, 1);  // Middle layer
-      this.placeSingleTile(coord, VoxelType.Grass, 2); // Top layer
+      this.placeSingleTile(coord, VoxelType.Sand, startLayer);
+      this.placeSingleTile(coord, VoxelType.Dirt, startLayer + 1);
+      this.placeSingleTile(coord, VoxelType.Grass, startLayer + 2);
     } else if (type === VoxelType.Dirt) {
       // Dirt: 2 layers (sand, dirt)
-      this.placeSingleTile(coord, VoxelType.Sand, 0);  // Bottom layer
-      this.placeSingleTile(coord, VoxelType.Dirt, 1);  // Top layer
+      this.placeSingleTile(coord, VoxelType.Sand, startLayer);
+      this.placeSingleTile(coord, VoxelType.Dirt, startLayer + 1);
     } else {
       // Normal single tile placement
-      this.placeSingleTile(coord, type, 0);
+      this.placeSingleTile(coord, type, startLayer);
     }
   }
   
@@ -86,16 +115,31 @@ export class SimpleTileSystem {
   /**
    * Remove a tile at grid coordinate
    */
-  public removeTile(coord: GridCoordinate): void {
-    // Remove all layers at this position
-    for (let layer = 0; layer < 3; layer++) {
-      const key = `${coord.x},${coord.z},${layer}`;
-      const mesh = this.tiles.get(key);
-      
-      if (mesh) {
-        this.scene.remove(mesh);
-        mesh.geometry.dispose();
-        this.tiles.delete(key);
+  public removeTile(coord: GridCoordinate, removeAll: boolean = false): void {
+    if (removeAll) {
+      // Remove all layers at this position
+      for (let layer = 0; layer < this.maxLayers; layer++) {
+        const key = `${coord.x},${coord.z},${layer}`;
+        const mesh = this.tiles.get(key);
+        
+        if (mesh) {
+          this.scene.remove(mesh);
+          mesh.geometry.dispose();
+          this.tiles.delete(key);
+        }
+      }
+    } else {
+      // Remove only the top layer
+      const topLayer = this.getTopLayer(coord);
+      if (topLayer >= 0) {
+        const key = `${coord.x},${coord.z},${topLayer}`;
+        const mesh = this.tiles.get(key);
+        
+        if (mesh) {
+          this.scene.remove(mesh);
+          mesh.geometry.dispose();
+          this.tiles.delete(key);
+        }
       }
     }
   }
@@ -104,15 +148,23 @@ export class SimpleTileSystem {
    * Get tile at coordinate (returns top-most tile type)
    */
   public getTile(coord: GridCoordinate): VoxelType {
-    // Check from top layer down
-    for (let layer = 2; layer >= 0; layer--) {
-      const key = `${coord.x},${coord.z},${layer}`;
+    const topLayer = this.getTopLayer(coord);
+    if (topLayer >= 0) {
+      const key = `${coord.x},${coord.z},${topLayer}`;
       const mesh = this.tiles.get(key);
       if (mesh) {
         return mesh.userData.type;
       }
     }
     return VoxelType.Air;
+  }
+  
+  /**
+   * Get the world height at a coordinate (for preview positioning)
+   */
+  public getWorldHeight(coord: GridCoordinate): number {
+    const topLayer = this.getTopLayer(coord);
+    return (topLayer + 1) * this.layerHeight;
   }
   
   /**
