@@ -20,6 +20,7 @@ export class SunControlPanel {
   private sunSphere: THREE.Mesh | null = null;
   private sunVector: THREE.Line | null = null;
   private sunAxes: THREE.AxesHelper | null = null;
+  private elevationArc: THREE.Line | null = null;
   private sunAngle: number = 45; // degrees
   private sunElevation: number = 60; // degrees
   private isDragging: boolean = false;
@@ -27,6 +28,9 @@ export class SunControlPanel {
   // Display elements
   private angleDisplay!: HTMLElement;
   private elevationDisplay!: HTMLElement;
+  
+  // Resize observer
+  private resizeObserver: ResizeObserver | null = null;
   
   constructor(container: HTMLElement, editor: TileEditor) {
     this.container = container;
@@ -36,21 +40,30 @@ export class SunControlPanel {
   
   private init(): void {
     const content = document.createElement('div');
-    content.style.fontSize = 'var(--font-size-xs)';
+    content.style.fontSize = 'var(--font-size-sm)';
+    content.style.width = '100%';
+    content.style.margin = '0';
+    content.style.padding = '0';
     
     // Create mini scene container
     const sceneContainer = document.createElement('div');
-    sceneContainer.style.marginBottom = 'var(--space-2)';
+    sceneContainer.style.marginBottom = 'var(--space-4)';
+    sceneContainer.style.width = '100%';
+    sceneContainer.style.aspectRatio = '1';
+    sceneContainer.style.padding = '0';
+    sceneContainer.style.borderRadius = 'var(--radius-md)';
+    sceneContainer.style.overflow = 'hidden';
     
     // Create canvas for mini scene
     this.miniCanvas = document.createElement('canvas');
-    this.miniCanvas.width = 180;
-    this.miniCanvas.height = 180;
-    this.miniCanvas.style.width = '180px';
-    this.miniCanvas.style.height = '180px';
-    this.miniCanvas.style.borderRadius = 'var(--radius-sm)';
+    this.miniCanvas.width = 250;
+    this.miniCanvas.height = 250;
+    this.miniCanvas.style.width = '100%';
+    this.miniCanvas.style.height = '100%';
+    this.miniCanvas.style.display = 'block';
+    this.miniCanvas.style.borderRadius = 'var(--radius-md)';
     this.miniCanvas.style.cursor = 'grab';
-    this.miniCanvas.style.backgroundColor = '#161614'; // Dark theme color
+    this.miniCanvas.style.backgroundColor = '#0d0d0d'; // Subtle dark background
     
     sceneContainer.appendChild(this.miniCanvas);
     content.appendChild(sceneContainer);
@@ -59,7 +72,7 @@ export class SunControlPanel {
     const controls = document.createElement('div');
     controls.style.display = 'flex';
     controls.style.flexDirection = 'column';
-    controls.style.gap = 'var(--space-1)';
+    controls.style.gap = 'var(--space-2)';
     
     // Angle display
     const angleRow = document.createElement('div');
@@ -70,11 +83,13 @@ export class SunControlPanel {
     const angleLabel = document.createElement('span');
     angleLabel.textContent = 'Angle:';
     angleLabel.style.color = 'var(--text-secondary)';
+    angleLabel.style.fontSize = 'var(--font-size-base)';
     angleRow.appendChild(angleLabel);
     
     this.angleDisplay = document.createElement('span');
     this.angleDisplay.className = 'tag tag-light-primary';
-    this.angleDisplay.style.fontSize = '10px';
+    this.angleDisplay.style.fontSize = 'var(--font-size-sm)';
+    this.angleDisplay.style.padding = 'var(--space-1) var(--space-2)';
     this.angleDisplay.textContent = `${this.sunAngle}°`;
     angleRow.appendChild(this.angleDisplay);
     
@@ -89,11 +104,13 @@ export class SunControlPanel {
     const elevationLabel = document.createElement('span');
     elevationLabel.textContent = 'Elevation:';
     elevationLabel.style.color = 'var(--text-secondary)';
+    elevationLabel.style.fontSize = 'var(--font-size-base)';
     elevationRow.appendChild(elevationLabel);
     
     this.elevationDisplay = document.createElement('span');
     this.elevationDisplay.className = 'tag tag-light-warning';
-    this.elevationDisplay.style.fontSize = '10px';
+    this.elevationDisplay.style.fontSize = 'var(--font-size-sm)';
+    this.elevationDisplay.style.padding = 'var(--space-1) var(--space-2)';
     this.elevationDisplay.textContent = `${this.sunElevation}°`;
     elevationRow.appendChild(this.elevationDisplay);
     
@@ -134,6 +151,9 @@ export class SunControlPanel {
     // Initialize mini scene
     this.setupMiniScene();
     this.attachEvents();
+    
+    // Set up resize observer
+    this.setupResizeObserver();
   }
   
   private setupMiniScene(): void {
@@ -145,7 +165,7 @@ export class SunControlPanel {
       alpha: true,
       antialias: true 
     });
-    this.miniRenderer.setSize(180, 180);
+    this.miniRenderer.setSize(250, 250);
     this.miniRenderer.setPixelRatio(window.devicePixelRatio);
     
     // Create mini scene
@@ -198,9 +218,48 @@ export class SunControlPanel {
     this.sunVector = new THREE.Line(vectorGeometry, vectorMaterial);
     this.miniScene.add(this.sunVector);
     
-    // Create small axes at sun position
+    // Create small axes at sun position with custom colors
     this.sunAxes = new THREE.AxesHelper(0.8);
+    // Override the default colors - make them all yellow/gold
+    const colors = this.sunAxes.geometry.attributes.color;
+    if (colors) {
+      // X axis - gold
+      colors.array[0] = 1.0;  // R
+      colors.array[1] = 0.843; // G
+      colors.array[2] = 0.0;   // B
+      colors.array[3] = 1.0;  // R
+      colors.array[4] = 0.843; // G
+      colors.array[5] = 0.0;   // B
+      
+      // Y axis - bright yellow
+      colors.array[6] = 1.0;  // R
+      colors.array[7] = 1.0;  // G
+      colors.array[8] = 0.0;  // B
+      colors.array[9] = 1.0;  // R
+      colors.array[10] = 1.0; // G
+      colors.array[11] = 0.0; // B
+      
+      // Z axis - orange-yellow
+      colors.array[12] = 1.0;  // R
+      colors.array[13] = 0.7;  // G
+      colors.array[14] = 0.0;  // B
+      colors.array[15] = 1.0;  // R
+      colors.array[16] = 0.7;  // G
+      colors.array[17] = 0.0;  // B
+      
+      colors.needsUpdate = true;
+    }
     this.miniScene.add(this.sunAxes);
+    
+    // Create elevation arc
+    const arcGeometry = new THREE.BufferGeometry();
+    const arcMaterial = new THREE.LineBasicMaterial({
+      color: 0x00FF00, // Green for Y axis
+      transparent: true,
+      opacity: 0.8
+    });
+    this.elevationArc = new THREE.Line(arcGeometry, arcMaterial);
+    this.miniScene.add(this.elevationArc);
     
     // Update positions
     this.updateSunPosition();
@@ -225,6 +284,56 @@ export class SunControlPanel {
     pathLine.rotation.x = Math.PI / 2;
     this.miniScene.add(pathLine);
     
+    // Add angle snap indicators (every 15 degrees)
+    const snapAngleStep = 15;
+    for (let angle = 0; angle < 360; angle += snapAngleStep) {
+      const rad = angle * Math.PI / 180;
+      const innerRadius = 2.5;
+      const outerRadius = 3.5;
+      
+      const lineGeometry = new THREE.BufferGeometry();
+      const lineVertices = new Float32Array([
+        Math.cos(rad) * innerRadius, 0, Math.sin(rad) * innerRadius,
+        Math.cos(rad) * outerRadius, 0, Math.sin(rad) * outerRadius
+      ]);
+      lineGeometry.setAttribute('position', new THREE.BufferAttribute(lineVertices, 3));
+      
+      const lineMaterial = new THREE.LineBasicMaterial({
+        color: 0x444444,
+        transparent: true,
+        opacity: angle % 45 === 0 ? 0.8 : 0.4 // Stronger lines at 45-degree intervals
+      });
+      
+      const snapLine = new THREE.Line(lineGeometry, lineMaterial);
+      this.miniScene.add(snapLine);
+    }
+    
+    // Add elevation rings (every 15 degrees)
+    const elevationSnap = 15;
+    for (let elevation = 15; elevation <= 75; elevation += elevationSnap) {
+      const ringRadius = 3 * Math.cos(elevation * Math.PI / 180);
+      const ringCurve = new THREE.EllipseCurve(
+        0, 0,
+        ringRadius, ringRadius,
+        0, 2 * Math.PI,
+        false,
+        0
+      );
+      
+      const ringPoints = ringCurve.getPoints(32);
+      const ringGeometry = new THREE.BufferGeometry().setFromPoints(ringPoints);
+      const ringMaterial = new THREE.LineBasicMaterial({
+        color: 0x333333,
+        transparent: true,
+        opacity: 0.3
+      });
+      
+      const ring = new THREE.Line(ringGeometry, ringMaterial);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 3 * Math.sin(elevation * Math.PI / 180);
+      this.miniScene.add(ring);
+    }
+    
     // Add light from sun
     const light = new THREE.DirectionalLight(0xFFFFFF, 0.5);
     light.position.copy(this.sunSphere.position);
@@ -233,6 +342,49 @@ export class SunControlPanel {
     // Add ambient light
     const ambient = new THREE.AmbientLight(0xFFFFFF, 0.3);
     this.miniScene.add(ambient);
+  }
+  
+  private setupResizeObserver(): void {
+    if (!this.element) return;
+    
+    // Find the scene container within the panel body
+    const panelBody = this.element.querySelector('.panel-body');
+    if (!panelBody) return;
+    
+    this.resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width } = entry.contentRect;
+        // Update canvas size to match panel width
+        const canvasSize = Math.floor(width);
+        if (canvasSize > 50 && this.miniCanvas && this.miniRenderer) {
+          this.updateCanvasSize(canvasSize);
+        }
+      }
+    });
+    
+    this.resizeObserver.observe(panelBody);
+  }
+  
+  private updateCanvasSize(size: number): void {
+    if (!this.miniCanvas || !this.miniRenderer || !this.miniCamera) return;
+    
+    // Update canvas dimensions
+    this.miniCanvas.width = size;
+    this.miniCanvas.height = size;
+    
+    // Update renderer
+    this.miniRenderer.setSize(size, size);
+    
+    // Update camera aspect ratio (orthographic camera doesn't need aspect, but we need to maintain the frustum)
+    const frustumSize = 8;
+    this.miniCamera.left = -frustumSize / 2;
+    this.miniCamera.right = frustumSize / 2;
+    this.miniCamera.top = frustumSize / 2;
+    this.miniCamera.bottom = -frustumSize / 2;
+    this.miniCamera.updateProjectionMatrix();
+    
+    // Force a render
+    this.update();
   }
   
   private attachEvents(): void {
@@ -256,12 +408,23 @@ export class SunControlPanel {
     const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     
     // Convert to angles
-    this.sunAngle = Math.atan2(y, x) * 180 / Math.PI + 90;
-    if (this.sunAngle < 0) this.sunAngle += 360;
+    let angle = Math.atan2(y, x) * 180 / Math.PI + 90;
+    if (angle < 0) angle += 360;
+    
+    // Snap angle to 15-degree increments
+    const angleSnap = 15;
+    this.sunAngle = Math.round(angle / angleSnap) * angleSnap;
     
     // Calculate elevation based on distance from center
     const distance = Math.sqrt(x * x + y * y);
-    this.sunElevation = Math.max(10, Math.min(90, (1 - distance) * 90));
+    let elevation = Math.max(10, Math.min(90, (1 - distance) * 90));
+    
+    // Snap elevation to 15-degree increments
+    const elevationSnap = 15;
+    this.sunElevation = Math.round(elevation / elevationSnap) * elevationSnap;
+    
+    // Ensure minimum elevation
+    if (this.sunElevation < 15) this.sunElevation = 15;
     
     this.updateSunPosition();
     this.updateDisplays();
@@ -276,7 +439,7 @@ export class SunControlPanel {
   }
   
   private updateSunPosition(): void {
-    if (!this.sunSphere || !this.sunVector || !this.sunAxes) return;
+    if (!this.sunSphere || !this.sunVector || !this.sunAxes || !this.elevationArc) return;
     
     const angleRad = this.sunAngle * Math.PI / 180;
     const elevationRad = this.sunElevation * Math.PI / 180;
@@ -298,6 +461,27 @@ export class SunControlPanel {
     ];
     this.sunVector.geometry.setFromPoints(points);
     this.sunVector.geometry.attributes.position.needsUpdate = true;
+    
+    // Update elevation arc
+    const arcPoints: THREE.Vector3[] = [];
+    const arcRadius = 1.5; // Smaller radius for the arc
+    const arcSegments = 16;
+    
+    // Create arc from Y axis (90 degrees) to current elevation
+    for (let i = 0; i <= arcSegments; i++) {
+      const t = i / arcSegments;
+      const angle = (90 - this.sunElevation) * t * Math.PI / 180 + this.sunElevation * Math.PI / 180;
+      
+      // Arc in the plane defined by the sun's azimuth
+      const arcX = arcRadius * Math.sin(angleRad) * Math.cos(angle);
+      const arcY = arcRadius * Math.sin(angle);
+      const arcZ = arcRadius * Math.cos(angleRad) * Math.cos(angle);
+      
+      arcPoints.push(new THREE.Vector3(arcX, arcY, arcZ));
+    }
+    
+    this.elevationArc.geometry.setFromPoints(arcPoints);
+    this.elevationArc.geometry.attributes.position.needsUpdate = true;
   }
   
   private updateDisplays(): void {
@@ -334,6 +518,10 @@ export class SunControlPanel {
   public dispose(): void {
     if (this.miniRenderer) {
       this.miniRenderer.dispose();
+    }
+    
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
     }
     
     document.removeEventListener('mousemove', this.onMouseMove.bind(this));

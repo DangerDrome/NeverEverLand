@@ -1,4 +1,5 @@
 import { TileEditor } from '@core/TileEditor';
+import { globalConfig } from './config/globalConfig';
 
 // Wait for StyleUI to be ready
 declare global {
@@ -10,8 +11,9 @@ declare global {
 
 // Initialize the application
 function init(): void {
-  // Ensure dark theme is applied
-  document.body.classList.add('dark');
+  // Initialize global config (which will apply settings)
+  const config = globalConfig.getConfig();
+  console.log('Global config loaded:', config);
   
   // Get container element
   const container = document.getElementById('game-container');
@@ -22,8 +24,9 @@ function init(): void {
   // Create tile editor instance
   const editor = new TileEditor(container);
 
-  // Make editor globally accessible for debugging
+  // Make editor and config globally accessible for debugging
   (window as any).editor = editor;
+  (window as any).globalConfig = globalConfig;
 
   // Defer starting to ensure proper initialization
   requestAnimationFrame(() => {

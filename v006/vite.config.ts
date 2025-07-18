@@ -12,6 +12,7 @@ export default defineConfig({
       '@tiles': resolve(__dirname, './src/tiles'),
       '@ui': resolve(__dirname, './src/ui'),
       '@types': resolve(__dirname, './src/types'),
+      '@config': resolve(__dirname, './src/config'),
     },
   },
   build: {

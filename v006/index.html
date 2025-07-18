@@ -37,6 +37,46 @@
             background-color: var(--bg-layer-0);
         }
         
+        /* Global disable text selection and drag */
+        body.no-select {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            -webkit-user-drag: none;
+            -khtml-user-drag: none;
+            -moz-user-drag: none;
+            -o-user-drag: none;
+            user-drag: none;
+        }
+        
+        /* Also prevent drag on images and canvases */
+        body.no-select img,
+        body.no-select canvas {
+            -webkit-user-drag: none;
+            -khtml-user-drag: none;
+            -moz-user-drag: none;
+            -o-user-drag: none;
+            user-drag: none;
+            pointer-events: auto;
+        }
+        
+        /* Prevent highlight on double-click */
+        body.no-select * {
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        /* Allow selection in specific elements if needed */
+        body.no-select input,
+        body.no-select textarea,
+        body.no-select [contenteditable="true"] {
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+            user-select: text;
+        }
+        
         #app {
             width: 100vw;
             height: 100vh;
@@ -90,9 +130,13 @@
             backdrop-filter: blur(10px);
         }
         
-        .minimap {
-            border: 1px solid var(--border-color);
+        canvas.minimap {
+            border: 2px solid #444 !important;
             box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+            display: block !important;
+            visibility: visible !important;
+            image-rendering: pixelated;
+            background: #2a2a2a !important;
         }
         
         /* Tile palette styling */
@@ -148,7 +192,7 @@
         
     </style>
 </head>
-<body class="dark">
+<body class="dark no-select">
     <div id="app">
         <div id="game-container"></div>
         <div id="ui-overlay">

@@ -31,6 +31,9 @@ export class MinimapPanel {
   private updateCounter: number = 0;
   private updateFrequency: number = 30; // Update every 30 frames (~2 FPS for minimap)
   
+  // Resize observer
+  private resizeObserver: ResizeObserver | null = null;
+  
   constructor(container: HTMLElement, editor: TileEditor) {
     this.container = container;
     this.editor = editor;
@@ -48,12 +51,21 @@ export class MinimapPanel {
     this.canvas.style.width = `${this.config.size}px`;
     this.canvas.style.height = `${this.config.size}px`;
     this.canvas.style.imageRendering = 'pixelated'; // Crisp pixels
+    this.canvas.style.display = 'block';
+    this.canvas.style.borderRadius = 'var(--radius-md)';
+    this.canvas.style.backgroundColor = '#1a1a1a';
+    this.canvas.style.border = '1px solid rgba(255, 255, 255, 0.2)';
+    this.canvas.style.minHeight = '200px';
+    this.canvas.style.minWidth = '200px';
     
-    const context = this.canvas.getContext('2d');
+    const context = this.canvas.getContext('2d', { alpha: false });
     if (!context) {
       throw new Error('Failed to get 2D context');
     }
     this.ctx = context;
+    
+    // Set context defaults
+    this.ctx.imageSmoothingEnabled = false;
     
     this.init();
   }
@@ -66,8 +78,12 @@ export class MinimapPanel {
     
     const content = document.createElement('div');
     content.style.padding = '0';
+    content.style.display = 'flex';
+    content.style.flexDirection = 'column';
+    content.style.alignItems = 'center';
+    content.style.gap = 'var(--space-2)';
     
-    // Add canvas to content
+    // Add canvas directly to content
     content.appendChild(this.canvas);
     
     // Create controls section
@@ -95,18 +111,87 @@ export class MinimapPanel {
     
     if (this.element) {
       this.element.className += ' minimap-panel';
-      this.element.style.position = 'fixed';
-      this.element.style.width = '240px';
-      this.element.style.height = 'auto';
-      this.element.style.top = '20px';
-      this.element.style.left = '20px';
-      this.element.style.zIndex = '999';
-      
+      // Don't override position - let CSS handle it
       this.container.appendChild(this.element);
+      
+      // Initialize lucide icons
+      if (window.lucide) {
+        window.lucide.createIcons();
+      }
     }
     
-    // Set initial background
+    // Set up resize observer
+    this.setupResizeObserver();
+    
+    // Initial draw
     this.clearMinimap();
+    this.drawGrid();
+    this.drawCamera();
+    
+    // Set up resize after a delay to ensure DOM is ready
+    setTimeout(() => {
+      const panelBody = this.element?.querySelector('.panel-body');
+      if (panelBody) {
+        const width = Math.min(panelBody.clientWidth || 200, 400);
+        this.updateCanvasSize(width);
+      }
+    }, 100);
+  }
+  
+  private setupResizeObserver(): void {
+    if (!this.element) return;
+    
+    // Find the panel body
+    const panelBody = this.element.querySelector('.panel-body');
+    if (!panelBody) return;
+    
+    this.resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width } = entry.contentRect;
+        // Update canvas size to match panel width, with max size limit
+        const canvasSize = Math.min(Math.floor(width), 400);
+        if (canvasSize > 50) {
+          this.updateCanvasSize(canvasSize);
+        }
+      }
+    });
+    
+    this.resizeObserver.observe(panelBody);
+  }
+  
+  private updateCanvasSize(size: number): void {
+    // Clamp size
+    size = Math.max(200, Math.min(size, 400));
+    
+    // Update canvas resolution and CSS size
+    this.canvas.width = size;
+    this.canvas.height = size;
+    this.canvas.style.width = `${size}px`;
+    this.canvas.style.height = `${size}px`;
+    
+    // Update config
+    this.config.size = size;
+    const scaleFactor = size / 200;
+    this.config.gridRange = Math.floor(50 * scaleFactor);
+    
+    // Update range label
+    const rangeLabel = this.element?.querySelector('.panel-body div:last-child div');
+    if (rangeLabel) {
+      rangeLabel.textContent = `${this.config.gridRange}×${this.config.gridRange} Grid View`;
+    }
+    
+    // Get new context after resize
+    const context = this.canvas.getContext('2d', { alpha: false });
+    if (context) {
+      this.ctx = context;
+      this.ctx.imageSmoothingEnabled = false;
+    }
+    
+    // Force immediate redraw
+    this.clearMinimap();
+    this.drawGrid();
+    this.drawVoxels();
+    this.drawCamera();
   }
   
   /**
@@ -119,13 +204,15 @@ export class MinimapPanel {
   /**
    * Update minimap display
    */
-  public update(): void {
+  public update(force: boolean = false): void {
     // Only update at reduced frequency for performance
-    this.updateCounter++;
-    if (this.updateCounter < this.updateFrequency) {
-      return;
+    if (!force) {
+      this.updateCounter++;
+      if (this.updateCounter < this.updateFrequency) {
+        return;
+      }
+      this.updateCounter = 0;
     }
-    this.updateCounter = 0;
     
     this.clearMinimap();
     this.drawGrid();
@@ -138,7 +225,7 @@ export class MinimapPanel {
    */
   private clearMinimap(): void {
     // Dark background matching theme
-    this.ctx.fillStyle = '#0d0d0c'; // --bg-layer-4 dark
+    this.ctx.fillStyle = '#1a1a1a'; // Slightly lighter to see it render
     this.ctx.fillRect(0, 0, this.config.size, this.config.size);
   }
   
@@ -299,6 +386,10 @@ export class MinimapPanel {
    * Dispose of resources
    */
   public dispose(): void {
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+    }
+    
     if (this.element && this.element.parentNode) {
       this.element.parentNode.removeChild(this.element);
     }
