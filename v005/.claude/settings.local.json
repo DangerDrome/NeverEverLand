@@ -14,7 +14,9 @@
       "Bash(find:*)",
       "WebFetch(domain:www.sidefx.com)",
       "Bash(npm install:*)",
-      "Bash(npm:*)"
+      "Bash(npm:*)",
+      "Bash(mv:*)",
+      "Bash(ls:*)"
     ],
     "deny": []
   }

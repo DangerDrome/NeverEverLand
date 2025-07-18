@@ -5,11 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NeverEverLand v006 - Tile Editor</title>
     
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
     <!-- StyleUI CSS -->
-    <link rel="stylesheet" href="StyleUI/css/base.css">
     <link rel="stylesheet" href="StyleUI/css/variables.css">
-    <link rel="stylesheet" href="StyleUI/css/colors.css">
+    <link rel="stylesheet" href="StyleUI/css/base.css">
     <link rel="stylesheet" href="StyleUI/css/typography.css">
+    <link rel="stylesheet" href="StyleUI/css/colors.css">
     <link rel="stylesheet" href="StyleUI/css/button.css">
     <link rel="stylesheet" href="StyleUI/css/card.css">
     <link rel="stylesheet" href="StyleUI/css/panel.css">
@@ -28,7 +33,6 @@
             padding: 0;
             overflow: hidden;
             background-color: #1a1a1a;
-            font-family: var(--font-sans);
         }
         
         #app {
@@ -72,19 +76,30 @@
             user-select: none;
         }
         
-        /* FPS counter */
-        #fps-counter {
-            position: absolute;
-            top: var(--space-3);
-            right: var(--space-3);
-            background: var(--overlay-backdrop);
-            padding: var(--space-2) var(--space-3);
-            border-radius: var(--radius-md);
-            font-family: var(--font-mono);
-            font-size: var(--font-size-sm);
-            color: var(--text-primary);
-            user-select: none;
+        /* Info panel enhancements */
+        .info-panel {
+            backdrop-filter: blur(10px);
         }
+        
+        /* Override tag colors for better contrast on graph backgrounds */
+        .info-panel .tag-success {
+            background-color: var(--success);
+            color: rgba(0, 0, 0, 0.9);
+            font-weight: var(--font-semibold);
+        }
+        
+        .info-panel .tag-warning {
+            background-color: var(--warning);
+            color: rgba(0, 0, 0, 0.9);
+            font-weight: var(--font-semibold);
+        }
+        
+        .info-panel .tag-info {
+            background-color: var(--info);
+            color: rgba(0, 0, 0, 0.9);
+            font-weight: var(--font-semibold);
+        }
+        
     </style>
 </head>
 <body>
@@ -92,7 +107,6 @@
         <div id="game-container"></div>
         <div id="ui-overlay">
             <div id="coordinates">Grid: (0, 0)</div>
-            <div id="fps-counter">FPS: 0</div>
         </div>
     </div>
     

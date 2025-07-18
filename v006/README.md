@@ -10,7 +10,10 @@ A dimetric isometric tile editor built with TypeScript, Three.js, and Vite.
 - **Camera Controls**: Pan with middle mouse, zoom with scroll wheel
 - **Grid Highlighting**: Visual feedback showing which cell the mouse is over
 - **Coordinate Display**: Real-time grid coordinate display
-- **FPS Counter**: Performance monitoring
+- **Debug Panel**: Advanced performance monitoring with:
+  - 3D orientation viewer with axis helper
+  - Real-time FPS, frame time, and draw calls graphs
+  - Detailed renderer statistics (triangles, geometries, textures)
 
 ## Setup
 
@@ -43,6 +46,7 @@ npm run dev
 - **DimetricGrid**: Renders the isometric diamond grid at multiple detail levels
 - **DimetricCamera**: Fixed dimetric projection camera with pan/zoom controls
 - **TileEditor**: Main editor class that coordinates all systems
+- **DebugPanel**: Performance monitoring UI with 3D orientation viewer and graphs
 
 ### Type System
 

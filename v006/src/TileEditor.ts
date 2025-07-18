@@ -7,11 +7,11 @@ import {
   EditorMode, 
   GridLevel, 
   TileRotation,
-  GridCoordinate,
   WorldPosition,
   CoordinateUtils 
 } from '@types';
 import { CameraTest } from './debug/CameraTest';
+import { InfoPanel } from './ui/InfoPanel';
 
 /**
  * Main tile editor class
@@ -19,10 +19,10 @@ import { CameraTest } from './debug/CameraTest';
  */
 export class TileEditor {
   private container: HTMLElement;
-  private renderer: THREE.WebGLRenderer;
-  private scene: THREE.Scene;
-  private camera: DimetricCamera;
-  private grid: DimetricGrid;
+  private renderer!: THREE.WebGLRenderer;
+  private scene!: THREE.Scene;
+  private camera!: DimetricCamera;
+  private grid!: DimetricGrid;
   
   // Editor state
   private state: EditorState;
@@ -37,13 +37,12 @@ export class TileEditor {
   // Animation
   private animationId: number | null = null;
   private clock: THREE.Clock;
-  private fps: number = 0;
   private frameCount: number = 0;
   private fpsTime: number = 0;
   
   // UI elements
   private coordinateDisplay: HTMLElement | null;
-  private fpsDisplay: HTMLElement | null;
+  private infoPanel: InfoPanel | null = null;
 
   constructor(container: HTMLElement, config?: Partial<EditorConfig>) {
     this.container = container;
@@ -76,7 +75,6 @@ export class TileEditor {
     
     // Get UI elements
     this.coordinateDisplay = document.getElementById('coordinates');
-    this.fpsDisplay = document.getElementById('fps-counter');
     
     // Initialize Three.js
     this.initRenderer();
@@ -92,6 +90,9 @@ export class TileEditor {
       const ratios = CameraTest.calculateDimetricRatios();
       console.log('Dimetric ratios:', ratios);
     }
+    
+    // Create info panel
+    this.infoPanel = new InfoPanel(this.container, this);
   }
 
   /**
@@ -411,6 +412,11 @@ export class TileEditor {
     // Update FPS
     this.updateFPS(delta);
     
+    // Update info panel
+    if (this.infoPanel) {
+      this.infoPanel.update();
+    }
+    
     // Render scene
     this.renderer.render(this.scene, this.camera.getCamera());
   }
@@ -423,13 +429,9 @@ export class TileEditor {
     this.fpsTime += delta;
     
     if (this.fpsTime >= 1.0) {
-      this.fps = this.frameCount;
+      // FPS is now tracked by info panel
       this.frameCount = 0;
       this.fpsTime = 0;
-      
-      if (this.fpsDisplay && this.config.showFPS) {
-        this.fpsDisplay.textContent = `FPS: ${this.fps}`;
-      }
     }
   }
 
@@ -468,6 +470,11 @@ export class TileEditor {
     this.grid.dispose();
     this.renderer.dispose();
     
+    // Dispose of UI elements
+    if (this.infoPanel) {
+      this.infoPanel.dispose();
+    }
+    
     // Remove event listeners
     window.removeEventListener('resize', this.onWindowResize.bind(this));
     if (this.config.enableShortcuts) {
@@ -494,5 +501,12 @@ export class TileEditor {
    */
   public getCamera(): DimetricCamera {
     return this.camera;
+  }
+  
+  /**
+   * Get renderer (for info panel)
+   */
+  public getRenderer(): THREE.WebGLRenderer {
+    return this.renderer;
   }
 }
