@@ -33,8 +33,16 @@ function init(): void {
 }
 
 // Wait for DOM and StyleUI to be ready
+function waitForUI(): void {
+  if (window.UI && window.lucide) {
+    init();
+  } else {
+    setTimeout(waitForUI, 10);
+  }
+}
+
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('DOMContentLoaded', waitForUI);
 } else {
-  init();
+  waitForUI();
 }

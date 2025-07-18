@@ -92,6 +92,8 @@ export class InfoPanel {
       icon: 'activity',
       collapsible: true,
       closable: true,
+      draggable: true,
+      resizable: true,
       startCollapsed: false,
     });
     

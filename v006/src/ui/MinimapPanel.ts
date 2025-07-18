@@ -88,6 +88,8 @@ export class MinimapPanel {
       icon: 'map',
       collapsible: true,
       closable: true,
+      draggable: true,
+      resizable: true,
       startCollapsed: false,
     });
     

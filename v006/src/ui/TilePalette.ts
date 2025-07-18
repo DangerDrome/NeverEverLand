@@ -63,14 +63,15 @@ export class TilePalette {
       icon: 'palette',
       collapsible: true,
       closable: false,
+      draggable: true,
+      resizable: true,
       startCollapsed: false,
     });
     
     if (this.element) {
       this.element.className += ' tile-palette';
       this.element.style.position = 'fixed';
-      this.element.style.left = '50%';
-      this.element.style.transform = 'translateX(-50%)';
+      this.element.style.left = '20px';
       this.element.style.bottom = '20px';
       this.element.style.width = 'auto';
       this.element.style.maxWidth = '90vw';

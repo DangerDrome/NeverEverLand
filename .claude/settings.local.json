@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(/home/danger/.nvm/versions/node/v22.17.0/bin/npm install)",
+      "Bash(npm:*)",
+      "Bash(mkdir:*)"
+    ],
+    "deny": []
+  }
+}
