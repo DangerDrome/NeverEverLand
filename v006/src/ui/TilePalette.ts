@@ -24,6 +24,8 @@ export class TilePalette {
     this.init();
   }
   
+  private tooltipsToCreate: Array<{element: HTMLElement, content: string}> = [];
+  
   private init(): void {
     // Create main palette container
     const content = document.createElement('div');
@@ -65,36 +67,79 @@ export class TilePalette {
     separator3.style.backgroundColor = 'var(--border-color)';
     content.appendChild(separator3);
     
+    // Create sky controls section
+    const skySection = this.createSkySection();
+    content.appendChild(skySection);
+    
+    // Add another separator
+    const separator4 = document.createElement('div');
+    separator4.style.width = '1px';
+    separator4.style.height = '40px';
+    separator4.style.backgroundColor = 'var(--border-color)';
+    content.appendChild(separator4);
+    
     // Create test section
     const testSection = this.createTestSection();
     content.appendChild(testSection);
     
+    // Add another separator
+    const separator5 = document.createElement('div');
+    separator5.style.width = '1px';
+    separator5.style.height = '40px';
+    separator5.style.backgroundColor = 'var(--border-color)';
+    content.appendChild(separator5);
+    
+    // Create clear section
+    const clearSection = this.createClearSection();
+    content.appendChild(clearSection);
+    
     // Create the panel
     this.element = window.UI.panel('Tile Palette', content, {
-      icon: 'palette',
       collapsible: true,
       closable: false,
       draggable: true,
       resizable: true,
       startCollapsed: false,
+      position: 'bottom-left',
     });
     
     if (this.element) {
       this.element.className += ' tile-palette';
-      this.element.style.position = 'fixed';
-      this.element.style.left = '20px';
-      this.element.style.bottom = '20px';
-      this.element.style.width = 'auto';
-      this.element.style.maxWidth = '90vw';
-      this.element.style.zIndex = '998';
       
-      // Make panel body horizontal
-      const panelBody = this.element.querySelector('.panel-body');
-      if (panelBody) {
-        (panelBody as HTMLElement).style.padding = 'var(--space-3)';
+      // Add palette icon to the title
+      const titleElement = this.element.querySelector('.panel-title');
+      if (titleElement) {
+        const iconHTML = '<i data-lucide="palette" style="width: 16px; height: 16px; margin-right: 8px;"></i>';
+        titleElement.innerHTML = iconHTML + titleElement.textContent;
       }
       
+      // Don't set inline styles - let CSS handle positioning
+      
+      // Panel body already has proper padding from CSS
+      
       this.container.appendChild(this.element);
+      
+      // Initialize lucide icons
+      if (window.lucide) {
+        window.lucide.createIcons();
+      }
+      
+      // Force reflow before creating tooltips
+      this.element.offsetHeight;
+      
+      // Create all tooltips after everything is rendered
+      setTimeout(() => {
+        this.tooltipsToCreate.forEach(({ element, content }) => {
+          window.UI.tooltip({
+            target: element,
+            content: content,
+            position: 'top',
+            size: 'sm',
+            delay: 100
+          });
+        });
+        this.tooltipsToCreate = [];
+      }, 100);
     }
     
     // Set initial tool
@@ -122,32 +167,24 @@ export class TilePalette {
       { mode: EditorMode.Erase, icon: 'eraser', tooltip: 'Erase (3)' },
     ];
     
-    // Create tool buttons
+    // Create tool buttons using StyleUI button component
     tools.forEach(tool => {
-      const button = document.createElement('button');
-      button.className = 'btn btn-default btn-sm';
-      button.style.width = '40px';
-      button.style.height = '40px';
-      button.style.padding = '0';
-      button.style.display = 'flex';
-      button.style.alignItems = 'center';
-      button.style.justifyContent = 'center';
+      const buttonConfig = {
+        variant: 'ghost',
+        size: 'sm',
+        icon: tool.icon,
+        className: 'tool-button',
+        onClick: () => this.selectTool(tool.mode)
+      };
       
-      // Add icon
-      const icon = document.createElement('i');
-      icon.setAttribute('data-lucide', tool.icon);
-      icon.style.width = '20px';
-      icon.style.height = '20px';
-      button.appendChild(icon);
-      
-      // Add click handler
-      button.onclick = () => this.selectTool(tool.mode);
-      
-      // Add StyleUI tooltip
-      window.UI.tooltip(button, tool.tooltip, 'top');
+      const buttonComponent = window.UI.button(buttonConfig);
+      const button = buttonComponent.element;
       
       this.toolButtons.set(tool.mode, button);
       section.appendChild(button);
+      
+      // Store tooltip info to create later
+      this.tooltipsToCreate.push({ element: button, content: tool.tooltip });
     });
     
     // Initialize lucide icons
@@ -173,68 +210,51 @@ export class TilePalette {
     label.textContent = 'Voxels:';
     section.appendChild(label);
     
-    // Voxel types to show (skip Air)
+    // Voxel types to show (skip Air) with icons
     const voxelTypes = [
-      VoxelType.Grass,
-      VoxelType.Dirt,
-      VoxelType.Stone,
-      VoxelType.Wood,
-      VoxelType.Sand,
-      VoxelType.Water,
-      VoxelType.Glass,
-      VoxelType.Metal,
-      VoxelType.Brick,
+      { type: VoxelType.Grass, icon: 'trees' },
+      { type: VoxelType.Dirt, icon: 'mountain' },
+      { type: VoxelType.Stone, icon: 'gem' },
+      { type: VoxelType.Wood, icon: 'tree-pine' },
+      { type: VoxelType.Sand, icon: 'waves' },
+      { type: VoxelType.Water, icon: 'droplets' },
+      { type: VoxelType.Glass, icon: 'square' },
+      { type: VoxelType.Metal, icon: 'zap' },
+      { type: VoxelType.Brick, icon: 'box' },
     ];
     
-    // Create voxel buttons
-    voxelTypes.forEach((type, index) => {
+    // Create voxel buttons using StyleUI
+    voxelTypes.forEach((voxelInfo, index) => {
+      const { type, icon } = voxelInfo;
       const props = VOXEL_PROPERTIES[type];
       const color = VoxelTypeColors[type];
       
-      const button = document.createElement('button');
-      button.className = 'btn btn-default btn-sm';
-      button.style.width = '40px';
-      button.style.height = '40px';
-      button.style.padding = '0';
-      button.style.position = 'relative';
-      button.style.overflow = 'hidden';
-      
-      // Color fill
-      const colorFill = document.createElement('div');
-      colorFill.style.position = 'absolute';
-      colorFill.style.inset = '4px';
-      colorFill.style.backgroundColor = color;
-      colorFill.style.borderRadius = 'var(--radius-sm)';
-      colorFill.style.border = '1px solid rgba(0,0,0,0.2)';
-      
-      // Add transparency pattern for transparent voxels
-      if (props.transparent) {
-        colorFill.style.backgroundImage = `
-          linear-gradient(45deg, #666 25%, transparent 25%),
-          linear-gradient(-45deg, #666 25%, transparent 25%),
-          linear-gradient(45deg, transparent 75%, #666 75%),
-          linear-gradient(-45deg, transparent 75%, #666 75%)
-        `;
-        colorFill.style.backgroundSize = '8px 8px';
-        colorFill.style.backgroundPosition = '0 0, 0 4px, 4px -4px, -4px 0px';
-      }
-      
-      button.appendChild(colorFill);
-      
-      // Add click handler
-      button.onclick = () => {
-        this.selectVoxelType(type);
-        // Auto-switch to place mode when selecting a voxel
-        if (this.selectedTool !== EditorMode.Place) {
-          this.selectTool(EditorMode.Place);
+      const buttonConfig = {
+        variant: 'ghost',
+        size: 'sm',
+        icon: icon,
+        className: `voxel-button voxel-${type}`,
+        onClick: () => {
+          this.selectVoxelType(type);
+          // Auto-switch to place mode when selecting a voxel
+          if (this.selectedTool !== EditorMode.Place) {
+            this.selectTool(EditorMode.Place);
+          }
         }
       };
       
-      // Add StyleUI tooltip
-      window.UI.tooltip(button, `${props.name} (${index + 4})`, 'top');
+      const buttonComponent = window.UI.button(buttonConfig);
+      const button = buttonComponent.element;
+      
+      // Add custom voxel styling via CSS custom properties
+      button.style.setProperty('--voxel-color', color);
+      button.style.setProperty('--voxel-transparent', props.transparent ? '1' : '0');
       
       this.voxelButtons.set(type, button);
       section.appendChild(button);
+      
+      // Store tooltip info to create later
+      this.tooltipsToCreate.push({ element: button, content: `${props.name} (${index + 4})` });
     });
     
     return section;
@@ -249,30 +269,50 @@ export class TilePalette {
     section.style.alignItems = 'center';
     section.style.gap = 'var(--space-2)';
     
-    // Stack mode toggle
-    const stackToggle = window.UI.checkbox({
-      label: 'Stack',
-      checked: true,
-      onChange: (checked: boolean) => {
-        this.editor.setStackMode(checked);
+    // Track stack mode state
+    let stackEnabled = true;
+    
+    // Stack mode toggle button
+    const stackButton = window.UI.button({
+      variant: 'primary', // Start enabled
+      size: 'sm',
+      icon: 'layers',
+      className: 'tool-button',
+      onClick: () => {
+        stackEnabled = !stackEnabled;
+        this.editor.setStackMode(stackEnabled);
+        // Update button appearance
+        if (stackEnabled) {
+          stackButton.element.classList.add('btn-primary');
+          stackButton.element.classList.remove('btn-ghost');
+        } else {
+          stackButton.element.classList.remove('btn-primary');
+          stackButton.element.classList.add('btn-ghost');
+        }
       }
     });
-    section.appendChild(stackToggle.element);
+    section.appendChild(stackButton.element);
     
-    // Layer height display
-    const heightDisplay = document.createElement('span');
-    heightDisplay.className = 'tag tag-light-primary';
-    heightDisplay.style.fontSize = '10px';
-    heightDisplay.textContent = 'Height: 0m';
-    heightDisplay.id = 'height-display';
-    section.appendChild(heightDisplay);
+    // Store tooltip info to create later
+    this.tooltipsToCreate.push({ element: stackButton.element, content: 'Stack Mode' });
+    
+    return section;
+  }
+  
+  /**
+   * Create clear section
+   */
+  private createClearSection(): HTMLElement {
+    const section = document.createElement('div');
+    section.style.display = 'flex';
+    section.style.alignItems = 'center';
     
     // Clear all button
     const clearBtn = window.UI.button({
-      text: 'Clear',
-      variant: 'danger',
-      size: 'xs',
+      variant: 'ghost',
+      size: 'sm',
       icon: 'trash-2',
+      className: 'tool-button',
       onClick: () => {
         if (window.UI.confirm) {
           window.UI.confirm({
@@ -286,7 +326,88 @@ export class TilePalette {
         }
       }
     });
+    // Add danger color on hover
+    clearBtn.element.addEventListener('mouseenter', () => {
+      clearBtn.element.classList.add('btn-danger');
+      clearBtn.element.classList.remove('btn-ghost');
+    });
+    clearBtn.element.addEventListener('mouseleave', () => {
+      clearBtn.element.classList.remove('btn-danger');
+      clearBtn.element.classList.add('btn-ghost');
+    });
     section.appendChild(clearBtn.element);
+    
+    // Store tooltip info to create later
+    this.tooltipsToCreate.push({ element: clearBtn.element, content: 'Clear All Blocks' });
+    
+    return section;
+  }
+  
+  /**
+   * Create sky controls section
+   */
+  private createSkySection(): HTMLElement {
+    const section = document.createElement('div');
+    section.style.display = 'flex';
+    section.style.alignItems = 'center';
+    section.style.gap = 'var(--space-2)';
+    
+    // Track toggle states
+    let skyEnabled = false;
+    let aoEnabled = false;
+    
+    // Sky toggle button
+    const skyButton = window.UI.button({
+      variant: 'ghost',
+      size: 'sm',
+      icon: 'sun',
+      className: 'tool-button',
+      onClick: () => {
+        skyEnabled = !skyEnabled;
+        this.editor.toggleSky(skyEnabled);
+        // Update button appearance
+        if (skyEnabled) {
+          skyButton.element.classList.add('btn-primary');
+          skyButton.element.classList.remove('btn-ghost');
+        } else {
+          skyButton.element.classList.remove('btn-primary');
+          skyButton.element.classList.add('btn-ghost');
+        }
+      }
+    });
+    section.appendChild(skyButton.element);
+    
+    // Store tooltip info to create later
+    this.tooltipsToCreate.push({ element: skyButton.element, content: 'Toggle Sky' });
+    
+    // AO toggle button
+    const aoButton = window.UI.button({
+      variant: 'ghost',
+      size: 'sm',
+      icon: 'aperture',
+      className: 'tool-button',
+      onClick: () => {
+        aoEnabled = !aoEnabled;
+        this.editor.setAmbientOcclusion(aoEnabled);
+        // Update button appearance
+        if (aoEnabled) {
+          aoButton.element.classList.add('btn-warning');
+          aoButton.element.classList.remove('btn-ghost');
+        } else {
+          aoButton.element.classList.remove('btn-warning');
+          aoButton.element.classList.add('btn-ghost');
+        }
+      }
+    });
+    section.appendChild(aoButton.element);
+    
+    // Store tooltip info to create later
+    this.tooltipsToCreate.push({ element: aoButton.element, content: 'Ambient Occlusion' });
+    
+    // Initialize lucide icons
+    if (window.lucide) {
+      window.lucide.createIcons();
+    }
     
     return section;
   }
@@ -294,49 +415,31 @@ export class TilePalette {
   private createTestSection(): HTMLElement {
     const section = document.createElement('div');
     section.style.display = 'flex';
-    section.style.gap = 'var(--space-2)';
     section.style.alignItems = 'center';
     
-    // Add label
-    const label = document.createElement('div');
-    label.style.fontSize = 'var(--font-size-xs)';
-    label.style.color = 'var(--text-secondary)';
-    label.style.marginRight = 'var(--space-2)';
-    label.textContent = 'Test:';
-    section.appendChild(label);
+    // Stress test button - icon only
+    const stressButton = window.UI.button({
+      variant: 'ghost',
+      size: 'sm',
+      icon: 'zap',
+      className: 'tool-button',
+      onClick: () => this.runStressTest()
+    });
     
-    // Stress test button
-    const stressButton = document.createElement('button');
-    stressButton.className = 'btn btn-warning btn-sm';
-    stressButton.style.display = 'flex';
-    stressButton.style.alignItems = 'center';
-    stressButton.style.gap = 'var(--space-1)';
+    // Add warning color on hover
+    stressButton.element.addEventListener('mouseenter', () => {
+      stressButton.element.classList.add('btn-warning');
+      stressButton.element.classList.remove('btn-ghost');
+    });
+    stressButton.element.addEventListener('mouseleave', () => {
+      stressButton.element.classList.remove('btn-warning');
+      stressButton.element.classList.add('btn-ghost');
+    });
     
-    // Add icon
-    const icon = document.createElement('i');
-    icon.setAttribute('data-lucide', 'zap');
-    icon.style.width = '16px';
-    icon.style.height = '16px';
-    stressButton.appendChild(icon);
+    section.appendChild(stressButton.element);
     
-    // Add text
-    const text = document.createElement('span');
-    text.textContent = 'Stress Test';
-    text.style.fontSize = 'var(--font-size-xs)';
-    stressButton.appendChild(text);
-    
-    // Add click handler
-    stressButton.onclick = () => this.runStressTest();
-    
-    // Add StyleUI tooltip
-    window.UI.tooltip(stressButton, 'Add 900 tiles to stress test performance', 'top');
-    
-    section.appendChild(stressButton);
-    
-    // Initialize lucide icons
-    if (window.lucide) {
-      window.lucide.createIcons();
-    }
+    // Store tooltip info to create later
+    this.tooltipsToCreate.push({ element: stressButton.element, content: 'Stress Test (900 tiles)' });
     
     return section;
   }

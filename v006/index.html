@@ -120,36 +120,30 @@
             color: rgba(0, 0, 0, 0.9) !important;
         }
         
-        /* Dark mode tooltips */
+        /* Solid dark tooltip background and styling */
         .tooltip {
-            background-color: var(--bg-layer-4) !important;
-            color: var(--text-primary) !important;
-            border: 1px solid var(--border-color) !important;
+            background-color: #1a1a1a !important;
+            padding: 16px 20px !important;
+            font-size: 12px !important;
+            line-height: 1.2 !important;
+            display: flex !important;
+            align-items: center !important;
         }
         
-        .tooltip::before {
-            /* Arrow color for all positions */
-            border-top-color: var(--bg-layer-4) !important;
-            border-bottom-color: var(--bg-layer-4) !important;
-            border-left-color: var(--bg-layer-4) !important;
-            border-right-color: var(--bg-layer-4) !important;
+        .tooltip--top::before {
+            border-top-color: #1a1a1a !important;
         }
         
-        /* Arrow border for each position */
-        .tooltip--top::after {
-            border-top-color: var(--border-color) !important;
+        .tooltip--bottom::before {
+            border-bottom-color: #1a1a1a !important;
         }
         
-        .tooltip--bottom::after {
-            border-bottom-color: var(--border-color) !important;
+        .tooltip--left::before {
+            border-left-color: #1a1a1a !important;
         }
         
-        .tooltip--left::after {
-            border-left-color: var(--border-color) !important;
-        }
-        
-        .tooltip--right::after {
-            border-right-color: var(--border-color) !important;
+        .tooltip--right::before {
+            border-right-color: #1a1a1a !important;
         }
         
     </style>

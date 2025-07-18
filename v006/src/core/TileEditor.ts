@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
 import { DimetricCamera } from '@core/Camera';
 import { DimetricGrid } from '@core/DimetricGrid';
 import { SimpleTileSystem } from '@core/SimpleTileSystem';
@@ -16,6 +19,7 @@ import {
 import { InfoPanel } from '@ui/InfoPanel';
 import { MinimapPanel } from '@ui/MinimapPanel';
 import { TilePalette } from '@ui/TilePalette';
+import { SunControlPanel } from '@ui/SunControlPanel';
 import { SHADOW_MAP_SIZE, MAX_PIXEL_RATIO } from '@core/constants';
 
 /**
@@ -28,6 +32,11 @@ export class TileEditor {
   private scene!: THREE.Scene;
   private camera!: DimetricCamera;
   private grid!: DimetricGrid;
+  
+  // Post-processing
+  private composer!: EffectComposer;
+  private ssaoPass!: SSAOPass;
+  private aoEnabled: boolean = false; // Start disabled for safety
   
   // Tile system
   private tileSystem!: SimpleTileSystem;
@@ -46,6 +55,10 @@ export class TileEditor {
   private isErasing: boolean = false;
   private lastDrawnCell: GridCoordinate | null = null;
   
+  // Performance optimization
+  private isInteracting: boolean = false;
+  private interactionTimeout: number | null = null;
+  
   // Animation
   private animationId: number | null = null;
   private clock: THREE.Clock;
@@ -55,11 +68,20 @@ export class TileEditor {
   // Placement mode
   private stackMode: boolean = true;
   
+  // Sky system
+  private skyEnabled: boolean = false;
+  private sunMesh: THREE.Mesh | null = null;
+  private skyGradientTexture: THREE.Texture | null = null;
+  private directionalLight: THREE.DirectionalLight | null = null;
+  private secondaryLight: THREE.DirectionalLight | null = null;
+  private lastSunPosition: THREE.Vector3 = new THREE.Vector3();
+  
   // UI elements
   private coordinateDisplay: HTMLElement | null;
   private infoPanel: InfoPanel | null = null;
   private minimapPanel: MinimapPanel | null = null;
   private tilePalette: TilePalette | null = null;
+  private sunControlPanel: SunControlPanel | null = null;
   
   // Preview
   private previewMesh: THREE.Mesh | null = null;
@@ -104,6 +126,7 @@ export class TileEditor {
     this.initGrid();
     this.initTileSystem();
     this.initLighting();
+    this.initPostProcessing();
     this.initEventListeners();
     
     // Defer UI panel creation to ensure StyleUI is ready
@@ -111,10 +134,16 @@ export class TileEditor {
       this.infoPanel = new InfoPanel(this.container, this);
       this.minimapPanel = new MinimapPanel(this.container, this);
       this.tilePalette = new TilePalette(this.container, this);
+      this.sunControlPanel = new SunControlPanel(this.container, this);
       
       // Give minimap access to tile system
       if (this.minimapPanel) {
         this.minimapPanel.setTileSystem(this.tileSystem);
+      }
+      
+      // Sun control panel is always visible
+      if (this.sunControlPanel) {
+        this.sunControlPanel.setVisible(true);
       }
     });
   }
@@ -124,14 +153,14 @@ export class TileEditor {
    */
   private initRenderer(): void {
     this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: false, // Disable for better performance
       alpha: true,
       powerPreference: 'high-performance',
     });
     
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.BasicShadowMap; // Faster than PCFSoft
     
     this.container.appendChild(this.renderer.domElement);
     
@@ -144,11 +173,37 @@ export class TileEditor {
    */
   private initScene(): void {
     this.scene = new THREE.Scene();
-    // Use dark theme background color
+    // Use dark theme background color by default
     this.scene.background = new THREE.Color(0x161614); // --bg-layer-4 dark theme
     
     // Add fog for depth
     this.scene.fog = new THREE.Fog(0x161614, 50, 200);
+    
+    // Create gradient texture for sky
+    this.createSkyGradient();
+  }
+  
+  /**
+   * Create sky gradient texture
+   */
+  private createSkyGradient(): void {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 256;
+    
+    const context = canvas.getContext('2d')!;
+    const gradient = context.createLinearGradient(0, 0, 0, 256);
+    
+    // Sky blue to lighter blue gradient
+    gradient.addColorStop(0, '#E0F6FF'); // Light blue at top
+    gradient.addColorStop(0.4, '#87CEEB'); // Sky blue
+    gradient.addColorStop(1, '#B0E0E6'); // Powder blue at horizon
+    
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 1, 256);
+    
+    this.skyGradientTexture = new THREE.CanvasTexture(canvas);
+    this.skyGradientTexture.needsUpdate = true;
   }
 
   /**
@@ -202,25 +257,109 @@ export class TileEditor {
    */
   private initLighting(): void {
     // Ambient light for overall illumination
-    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.6); // Reduced to make shadows more visible
     this.scene.add(ambient);
     
-    // Directional light for shadows and depth
-    const directional = new THREE.DirectionalLight(0xffffff, 0.8);
-    directional.position.set(5, 10, 5);
-    directional.castShadow = true;
+    // Primary directional light (main sun shadow)
+    this.directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
+    this.directionalLight.position.set(5, 10, 5);
+    this.directionalLight.castShadow = true;
     
-    // Configure shadow properties
-    directional.shadow.mapSize.width = SHADOW_MAP_SIZE;
-    directional.shadow.mapSize.height = SHADOW_MAP_SIZE;
-    directional.shadow.camera.near = 0.1;
-    directional.shadow.camera.far = 50;
-    directional.shadow.camera.left = -20;
-    directional.shadow.camera.right = 20;
-    directional.shadow.camera.top = 20;
-    directional.shadow.camera.bottom = -20;
+    // Primary shadow properties
+    this.directionalLight.shadow.mapSize.width = SHADOW_MAP_SIZE;
+    this.directionalLight.shadow.mapSize.height = SHADOW_MAP_SIZE;
+    this.directionalLight.shadow.camera.near = 1;
+    this.directionalLight.shadow.camera.far = 30;
+    this.directionalLight.shadow.camera.left = -15;
+    this.directionalLight.shadow.camera.right = 15;
+    this.directionalLight.shadow.camera.top = 15;
+    this.directionalLight.shadow.camera.bottom = -15;
+    this.directionalLight.shadow.bias = -0.0005;
     
-    this.scene.add(directional);
+    this.scene.add(this.directionalLight);
+    
+    // Secondary directional light (softer fill shadow)
+    this.secondaryLight = new THREE.DirectionalLight(0xffffff, 0.3);
+    this.secondaryLight.position.set(-3, 8, -3); // Opposite angle
+    this.secondaryLight.castShadow = true;
+    
+    // Secondary shadow properties (smaller, softer)
+    this.secondaryLight.shadow.mapSize.width = 512; // Smaller for performance
+    this.secondaryLight.shadow.mapSize.height = 512;
+    this.secondaryLight.shadow.camera.near = 1;
+    this.secondaryLight.shadow.camera.far = 25;
+    this.secondaryLight.shadow.camera.left = -12;
+    this.secondaryLight.shadow.camera.right = 12;
+    this.secondaryLight.shadow.camera.top = 12;
+    this.secondaryLight.shadow.camera.bottom = -12;
+    this.secondaryLight.shadow.bias = -0.001;
+    
+    this.scene.add(this.secondaryLight);
+    
+    // Create sun
+    this.createSun();
+  }
+  
+  /**
+   * Create sun mesh
+   */
+  private createSun(): void {
+    // Create sun geometry
+    const sunGeometry = new THREE.SphereGeometry(2, 16, 16);
+    const sunMaterial = new THREE.MeshBasicMaterial({
+      color: 0xFFD700, // Gold color
+      emissive: 0xFFD700,
+      emissiveIntensity: 1,
+    });
+    
+    this.sunMesh = new THREE.Mesh(sunGeometry, sunMaterial);
+    this.sunMesh.position.set(30, 60, 30); // Higher and further for better shadows
+    this.sunMesh.visible = false; // Hidden by default
+    
+    // Add glow effect
+    const glowGeometry = new THREE.SphereGeometry(2.5, 16, 16);
+    const glowMaterial = new THREE.MeshBasicMaterial({
+      color: 0xFFFFAA,
+      transparent: true,
+      opacity: 0.3,
+    });
+    const glowMesh = new THREE.Mesh(glowGeometry, glowMaterial);
+    this.sunMesh.add(glowMesh);
+    
+    this.scene.add(this.sunMesh);
+  }
+  
+  /**
+   * Initialize post-processing effects
+   */
+  private initPostProcessing(): void {
+    try {
+      // Create effect composer
+      this.composer = new EffectComposer(this.renderer);
+      
+      // Add render pass
+      const renderPass = new RenderPass(this.scene, this.camera.getCamera());
+      this.composer.addPass(renderPass);
+      
+      // Add SSAO pass with optimized settings
+      this.ssaoPass = new SSAOPass(this.scene, this.camera.getCamera());
+      
+      // Ultrathink AO settings - minimal but effective
+      this.ssaoPass.kernelRadius = 8; // Smaller radius for performance
+      this.ssaoPass.minDistance = 0.01;
+      this.ssaoPass.maxDistance = 0.1; // Short range for better performance
+      this.ssaoPass.output = SSAOPass.OUTPUT.Default;
+      
+      this.composer.addPass(this.ssaoPass);
+      
+      // Set composer size
+      this.composer.setSize(this.container.clientWidth, this.container.clientHeight);
+      
+      console.log('Post-processing initialized successfully');
+    } catch (error) {
+      console.warn('Post-processing failed to initialize, falling back to direct rendering:', error);
+      this.aoEnabled = false; // Disable AO if initialization failed
+    }
   }
 
   /**
@@ -249,6 +388,7 @@ export class TileEditor {
   private onMouseMove(event: MouseEvent): void {
     // Handle camera panning first
     if (event.buttons === 4) { // Middle mouse button
+      this.startInteraction();
       this.camera.updatePan(event.clientX, event.clientY);
       // Don't update anything else during panning
       return;
@@ -259,8 +399,8 @@ export class TileEditor {
     this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     
-    // Only update grid highlight when not panning
-    if (!this.isPanning) {
+    // Only update grid highlight when not panning and not interacting
+    if (!this.isPanning && !this.isInteracting) {
       this.updateGridHighlight();
       
       // Handle continuous drawing/erasing while dragging
@@ -296,6 +436,7 @@ export class TileEditor {
   private onMouseDown(event: MouseEvent): void {
     if (event.button === 1) { // Middle mouse
       this.isPanning = true;
+      this.startInteraction();
       this.camera.startPan(event.clientX, event.clientY);
       event.preventDefault();
     } else if (event.button === 0) { // Left mouse
@@ -333,6 +474,7 @@ export class TileEditor {
     if (event.button === 1) { // Middle mouse
       this.isPanning = false;
       this.camera.endPan();
+      this.endInteraction();
     }
   }
 
@@ -341,6 +483,7 @@ export class TileEditor {
    */
   private onWheel(event: WheelEvent): void {
     event.preventDefault();
+    this.startInteraction();
     
     // Update mouse coordinates for world position calculation
     const rect = this.renderer.domElement.getBoundingClientRect();
@@ -359,8 +502,12 @@ export class TileEditor {
     }
     this.state.cameraZoom = this.camera.getZoomLevel();
     
-    // Update grid opacity based on zoom
-    this.grid.updateOpacity(this.state.cameraZoom);
+    // Update grid opacity based on zoom (only when not interacting for performance)
+    if (!this.isInteracting) {
+      this.grid.updateOpacity(this.state.cameraZoom);
+    }
+    
+    this.endInteraction();
   }
 
   /**
@@ -405,6 +552,10 @@ export class TileEditor {
         this.selectedVoxelType = VoxelType.Dirt;
         console.log('Selected:', VoxelType[this.selectedVoxelType]);
         break;
+      case 'o':
+      case 'O':
+        this.toggleAmbientOcclusion();
+        break;
     }
   }
 
@@ -417,6 +568,9 @@ export class TileEditor {
     
     this.camera.updateAspectRatio(width / height);
     this.renderer.setSize(width, height);
+    if (this.composer) {
+      this.composer.setSize(width, height);
+    }
   }
 
   /**
@@ -454,11 +608,12 @@ export class TileEditor {
           this.previewMesh.visible = false;
         }
         
-        // Update coordinate display
+        // Update coordinate display with height
         if (this.coordinateDisplay && this.config.showCoordinates) {
           const mode = this.state.mode === EditorMode.Place ? `Place ${VoxelType[this.selectedVoxelType]}` :
                       this.state.mode === EditorMode.Erase ? 'Erase' : 'Select';
-          this.coordinateDisplay.textContent = `Grid: (${gridCoord.x}, ${gridCoord.z}) | Mode: ${mode}`;
+          const height = this.tileSystem.getWorldHeight(gridCoord);
+          this.coordinateDisplay.textContent = `Grid: (${gridCoord.x}, ${gridCoord.z}) | Height: ${height.toFixed(1)}m | Mode: ${mode}`;
         }
       }
     } else {
@@ -628,9 +783,10 @@ export class TileEditor {
     
     console.log('Selected voxel type:', VoxelType[this.selectedVoxelType]);
     
-    // Update coordinate display to show voxel type
-    if (this.coordinateDisplay) {
-      this.coordinateDisplay.textContent = `Grid: (${this.state.highlightedCell?.x || 0}, ${this.state.highlightedCell?.z || 0}) | Voxel: ${VoxelType[this.selectedVoxelType]}`;
+    // Update coordinate display to show voxel type and height
+    if (this.coordinateDisplay && this.state.highlightedCell) {
+      const height = this.tileSystem.getWorldHeight(this.state.highlightedCell);
+      this.coordinateDisplay.textContent = `Grid: (${this.state.highlightedCell.x}, ${this.state.highlightedCell.z}) | Height: ${height.toFixed(1)}m | Voxel: ${VoxelType[this.selectedVoxelType]}`;
     }
   }
 
@@ -672,6 +828,35 @@ export class TileEditor {
   }
   
   /**
+   * Start interaction (panning/zooming) - disable expensive operations
+   */
+  private startInteraction(): void {
+    this.isInteracting = true;
+    
+    // Clear any existing timeout
+    if (this.interactionTimeout) {
+      clearTimeout(this.interactionTimeout);
+    }
+  }
+  
+  /**
+   * End interaction - re-enable expensive operations after delay
+   */
+  private endInteraction(): void {
+    // Clear any existing timeout
+    if (this.interactionTimeout) {
+      clearTimeout(this.interactionTimeout);
+    }
+    
+    // Set timeout to end interaction after 100ms of inactivity
+    this.interactionTimeout = window.setTimeout(() => {
+      this.isInteracting = false;
+      // Update grid opacity when interaction ends
+      this.grid.updateOpacity(this.state.cameraZoom);
+    }, 100);
+  }
+  
+  /**
    * Clear all tiles
    */
   public clearAllTiles(): void {
@@ -680,13 +865,169 @@ export class TileEditor {
   }
   
   /**
-   * Update height display
+   * Toggle ambient occlusion
+   */
+  private toggleAmbientOcclusion(): void {
+    this.aoEnabled = !this.aoEnabled;
+    console.log('Ambient Occlusion:', this.aoEnabled ? 'ON' : 'OFF');
+  }
+  
+  /**
+   * Set ambient occlusion (called by TilePalette)
+   */
+  public setAmbientOcclusion(enabled: boolean): void {
+    this.aoEnabled = enabled;
+  }
+  
+  /**
+   * Update height display in coordinate HUD
    */
   private updateHeightDisplay(coord: GridCoordinate): void {
-    const heightDisplay = document.getElementById('height-display');
-    if (heightDisplay) {
-      const height = this.tileSystem.getWorldHeight(coord);
-      heightDisplay.textContent = `Height: ${height.toFixed(1)}m`;
+    // Height info is now included in the coordinate display updates
+    // This method is kept for backward compatibility but does nothing
+  }
+  
+  /**
+   * Toggle sky system (visuals only)
+   */
+  public toggleSky(enabled: boolean): void {
+    this.skyEnabled = enabled;
+    
+    if (enabled) {
+      // Use gradient background
+      this.scene.background = this.skyGradientTexture;
+      // Update fog to match sky
+      this.scene.fog = new THREE.Fog(0xB0E0E6, 50, 200); // Powder blue fog
+      // Show sun mesh
+      if (this.sunMesh) {
+        this.sunMesh.visible = true;
+      }
+      // Brighter lighting for daytime
+      if (this.directionalLight) {
+        this.directionalLight.intensity = 0.8;
+        this.directionalLight.color.setHex(0xFFF5E6); // Warm sunlight
+      }
+      if (this.secondaryLight) {
+        this.secondaryLight.intensity = 0.4; // Stronger fill light
+        this.secondaryLight.color.setHex(0xF0F8FF); // Cool fill light
+      }
+      // Update ambient light for daytime
+      const ambient = this.scene.children.find(child => child instanceof THREE.AmbientLight) as THREE.AmbientLight;
+      if (ambient) {
+        ambient.intensity = 0.7;
+        ambient.color.setHex(0xFFF5E6); // Warm white
+      }
+    } else {
+      // Use dark background
+      this.scene.background = new THREE.Color(0x161614);
+      // Dark fog
+      this.scene.fog = new THREE.Fog(0x161614, 50, 200);
+      // Hide sun mesh
+      if (this.sunMesh) {
+        this.sunMesh.visible = false;
+      }
+      // Dimmer lighting for dark theme
+      if (this.directionalLight) {
+        this.directionalLight.intensity = 0.6;
+        this.directionalLight.color.setHex(0xFFFFFF);
+      }
+      if (this.secondaryLight) {
+        this.secondaryLight.intensity = 0.2; // Dimmer fill light
+        this.secondaryLight.color.setHex(0xFFFFFF);
+      }
+      // Reset ambient light
+      const ambient = this.scene.children.find(child => child instanceof THREE.AmbientLight) as THREE.AmbientLight;
+      if (ambient) {
+        ambient.intensity = 0.6;
+        ambient.color.setHex(0xFFFFFF);
+      }
+    }
+    
+    console.log('Sky visuals:', enabled ? 'ON' : 'OFF');
+  }
+  
+  /**
+   * Update sun position (called by SunControlPanel)
+   */
+  public updateSunPosition(x: number, y: number, z: number): void {
+    if (this.sunMesh) {
+      this.sunMesh.position.set(x, y, z);
+    }
+    
+    // Skip expensive light updates during interaction
+    if (this.isInteracting) return;
+    
+    // Always update directional light position from sun (independent of sky visuals)
+    if (this.directionalLight) {
+      const newPosition = new THREE.Vector3(x, y, z);
+      
+      // Only update if position changed significantly (optimization)
+      if (this.lastSunPosition.distanceTo(newPosition) > 0.1) {
+        this.directionalLight.position.copy(newPosition);
+        this.directionalLight.target.position.set(0, 0, 0);
+        this.directionalLight.updateMatrixWorld();
+        
+        // Update primary shadow camera
+        this.directionalLight.shadow.camera.far = 40;
+        this.directionalLight.shadow.camera.left = -20;
+        this.directionalLight.shadow.camera.right = 20;
+        this.directionalLight.shadow.camera.top = 20;
+        this.directionalLight.shadow.camera.bottom = -20;
+        this.directionalLight.shadow.camera.updateProjectionMatrix();
+        
+        // Update secondary light to maintain relative angle to primary sun
+        if (this.secondaryLight) {
+          // Calculate secondary position based on primary sun direction
+          const sunDirection = newPosition.clone().normalize();
+          
+          // Create secondary light at 45° offset from primary sun
+          const secondaryDirection = sunDirection.clone();
+          // Rotate around Y axis by 45 degrees for side lighting
+          const cos45 = Math.cos(Math.PI / 4);
+          const sin45 = Math.sin(Math.PI / 4);
+          const newX = secondaryDirection.x * cos45 - secondaryDirection.z * sin45;
+          const newZ = secondaryDirection.x * sin45 + secondaryDirection.z * cos45;
+          secondaryDirection.x = newX;
+          secondaryDirection.z = newZ;
+          
+          // Position secondary light at same distance as primary
+          const distance = newPosition.length();
+          this.secondaryLight.position.copy(secondaryDirection.multiplyScalar(distance));
+          this.secondaryLight.target.position.set(0, 0, 0);
+          this.secondaryLight.updateMatrixWorld();
+          
+          // Update secondary shadow camera
+          this.secondaryLight.shadow.camera.far = 30;
+          this.secondaryLight.shadow.camera.left = -15;
+          this.secondaryLight.shadow.camera.right = 15;
+          this.secondaryLight.shadow.camera.top = 15;
+          this.secondaryLight.shadow.camera.bottom = -15;
+          this.secondaryLight.shadow.camera.updateProjectionMatrix();
+        }
+        
+        this.lastSunPosition.copy(newPosition);
+      } else {
+        // Still update positions but skip expensive shadow camera updates
+        this.directionalLight.position.copy(newPosition);
+        this.directionalLight.updateMatrixWorld();
+        
+        if (this.secondaryLight) {
+          // Update secondary light position relative to primary (fast update)
+          const sunDirection = newPosition.clone().normalize();
+          const secondaryDirection = sunDirection.clone();
+          // Rotate around Y axis by 45 degrees
+          const cos45 = Math.cos(Math.PI / 4);
+          const sin45 = Math.sin(Math.PI / 4);
+          const newX = secondaryDirection.x * cos45 - secondaryDirection.z * sin45;
+          const newZ = secondaryDirection.x * sin45 + secondaryDirection.z * cos45;
+          secondaryDirection.x = newX;
+          secondaryDirection.z = newZ;
+          
+          const distance = newPosition.length();
+          this.secondaryLight.position.copy(secondaryDirection.multiplyScalar(distance));
+          this.secondaryLight.updateMatrixWorld();
+        }
+      }
     }
   }
 
@@ -710,9 +1051,16 @@ export class TileEditor {
     if (this.minimapPanel) {
       this.minimapPanel.update();
     }
+    if (this.sunControlPanel) {
+      this.sunControlPanel.update();
+    }
     
-    // Render scene
-    this.renderer.render(this.scene, this.camera.getCamera());
+    // Render scene - skip post-processing during interaction for performance
+    if (this.aoEnabled && this.composer && !this.isInteracting) {
+      this.composer.render();
+    } else {
+      this.renderer.render(this.scene, this.camera.getCamera());
+    }
   }
 
   /**
@@ -739,7 +1087,11 @@ export class TileEditor {
     this.camera.getCamera().updateProjectionMatrix();
     
     // Initial render to ensure everything is set up
-    this.renderer.render(this.scene, this.camera.getCamera());
+    if (this.aoEnabled && this.composer) {
+      this.composer.render();
+    } else {
+      this.renderer.render(this.scene, this.camera.getCamera());
+    }
     
     // Start animation loop
     this.animate();
@@ -761,9 +1113,17 @@ export class TileEditor {
   public dispose(): void {
     this.stop();
     
+    // Clear interaction timeout
+    if (this.interactionTimeout) {
+      clearTimeout(this.interactionTimeout);
+    }
+    
     // Dispose of Three.js resources
     this.grid.dispose();
     this.tileSystem.dispose();
+    if (this.composer) {
+      this.composer.dispose();
+    }
     this.renderer.dispose();
     
     // Dispose of UI elements
@@ -775,6 +1135,9 @@ export class TileEditor {
     }
     if (this.tilePalette) {
       this.tilePalette.dispose();
+    }
+    if (this.sunControlPanel) {
+      this.sunControlPanel.dispose();
     }
     
     // Remove event listeners

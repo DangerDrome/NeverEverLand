@@ -19,7 +19,7 @@ export const ZOOM_SPEED = 0.001;
 export const PAN_SPEED = 1;
 
 // Rendering constants
-export const SHADOW_MAP_SIZE = 2048;
+export const SHADOW_MAP_SIZE = 512; // Further reduced for ultrathink performance
 export const MAX_PIXEL_RATIO = 2;
 
 /**
