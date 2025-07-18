@@ -1,4 +1,4 @@
-import { TileEditor } from './TileEditor';
+import { TileEditor } from '@core/TileEditor';
 
 // Wait for StyleUI to be ready
 declare global {

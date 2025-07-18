@@ -10,8 +10,8 @@ import {
   WorldPosition,
   CoordinateUtils 
 } from '@types';
-import { CameraTest } from './debug/CameraTest';
-import { InfoPanel } from './ui/InfoPanel';
+import { InfoPanel } from '@ui/InfoPanel';
+import { SHADOW_MAP_SIZE, MAX_PIXEL_RATIO } from '@core/constants';
 
 /**
  * Main tile editor class
@@ -84,13 +84,6 @@ export class TileEditor {
     this.initLighting();
     this.initEventListeners();
     
-    // Add debug test scene (temporary)
-    if (window.location.hash === '#debug') {
-      CameraTest.createTestScene(this.scene);
-      const ratios = CameraTest.calculateDimetricRatios();
-      console.log('Dimetric ratios:', ratios);
-    }
-    
     // Create info panel
     this.infoPanel = new InfoPanel(this.container, this);
   }
@@ -105,7 +98,7 @@ export class TileEditor {
       powerPreference: 'high-performance',
     });
     
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     
@@ -138,11 +131,8 @@ export class TileEditor {
    * Initialize grid system
    */
   private initGrid(): void {
-    this.grid = new DimetricGrid(this.scene, {
-      cellSize: 1,
-      gridWidth: 100,
-      gridDepth: 100,
-    });
+    this.grid = new DimetricGrid(this.scene);
+    // Using default values from constants
     
     this.grid.setVisible(this.state.gridVisible);
   }
@@ -161,8 +151,8 @@ export class TileEditor {
     directional.castShadow = true;
     
     // Configure shadow properties
-    directional.shadow.mapSize.width = 2048;
-    directional.shadow.mapSize.height = 2048;
+    directional.shadow.mapSize.width = SHADOW_MAP_SIZE;
+    directional.shadow.mapSize.height = SHADOW_MAP_SIZE;
     directional.shadow.camera.near = 0.1;
     directional.shadow.camera.far = 50;
     directional.shadow.camera.left = -20;
@@ -247,9 +237,22 @@ export class TileEditor {
    */
   private onWheel(event: WheelEvent): void {
     event.preventDefault();
+    
+    // Update mouse coordinates for world position calculation
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    
+    // Get world position under mouse for zoom-to-mouse
+    const worldPos = this.getMouseWorldPosition();
+    
     // Use deltaY directly for smoother zooming
     const delta = event.deltaY;
-    this.camera.zoom(delta);
+    if (worldPos) {
+      this.camera.zoom(delta, new THREE.Vector3(worldPos.x, worldPos.y, worldPos.z));
+    } else {
+      this.camera.zoom(delta);
+    }
     this.state.cameraZoom = this.camera.getZoomLevel();
     
     // Update grid opacity based on zoom

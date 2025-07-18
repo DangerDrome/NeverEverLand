@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { TileEditor } from '../TileEditor';
+import { TileEditor } from '@core/TileEditor';
+import { DIMETRIC_ELEVATION, DIMETRIC_AZIMUTH, calculateDimetricPosition } from '@core/constants';
 
 interface Stats {
   fps: number;
@@ -308,15 +309,9 @@ export class InfoPanel {
     
     // Set up dimetric angle (same as main camera)
     const distance = 10;
-    const elevation = Math.atan(0.5); // ~26.57 degrees
-    const azimuth = Math.PI / 4; // 45 degrees
+    const position = calculateDimetricPosition(distance);
     
-    const height = distance * Math.sin(elevation);
-    const groundDistance = distance * Math.cos(elevation);
-    const x = groundDistance * Math.cos(azimuth);
-    const z = groundDistance * Math.sin(azimuth);
-    
-    this.axesCamera.position.set(x, height, z);
+    this.axesCamera.position.set(position.x, position.y, position.z);
     this.axesCamera.lookAt(0, 0, 0);
     this.axesCamera.updateMatrixWorld(true);
     

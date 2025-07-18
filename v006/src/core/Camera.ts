@@ -1,5 +1,15 @@
 import * as THREE from 'three';
 import { WorldPosition, ScreenPosition } from '@types';
+import { 
+  DIMETRIC_ELEVATION, 
+  DIMETRIC_AZIMUTH, 
+  DEFAULT_FRUSTUM_SIZE,
+  MIN_ZOOM,
+  MAX_ZOOM,
+  ZOOM_SPEED,
+  PAN_SPEED,
+  calculateDimetricPosition 
+} from './constants';
 
 /**
  * Dimetric camera controller for isometric tile editor
@@ -9,17 +19,17 @@ export class DimetricCamera {
   private camera: THREE.OrthographicCamera;
   private frustumSize: number;
   private aspectRatio: number;
-  private minZoom: number = 5;
-  private maxZoom: number = 50;
-  private zoomSpeed: number = 0.002;
-  private panSpeed: number = 1;
+  private minZoom: number = MIN_ZOOM;
+  private maxZoom: number = MAX_ZOOM;
+  private zoomSpeed: number = ZOOM_SPEED;
+  private panSpeed: number = PAN_SPEED;
   
   // Camera state
   private target: THREE.Vector3;
   private isPanning: boolean = false;
   private panStart: THREE.Vector2;
   
-  constructor(aspectRatio: number, frustumSize: number = 20) {
+  constructor(aspectRatio: number, frustumSize: number = DEFAULT_FRUSTUM_SIZE) {
     this.frustumSize = frustumSize;
     this.aspectRatio = aspectRatio;
     this.target = new THREE.Vector3(0, 0, 0);
@@ -46,17 +56,10 @@ export class DimetricCamera {
   private setupDimetricView(): void {
     // Calculate dimetric camera position
     const distance = 100; // Far enough to avoid clipping
-    const elevation = Math.atan(0.5); // ~26.57 degrees
-    const azimuth = Math.PI / 4; // 45 degrees
-    
-    // Convert spherical to cartesian
-    const height = distance * Math.sin(elevation);
-    const groundDistance = distance * Math.cos(elevation);
-    const x = groundDistance * Math.cos(azimuth);
-    const z = groundDistance * Math.sin(azimuth);
+    const position = calculateDimetricPosition(distance);
     
     // Set camera position
-    this.camera.position.set(x, height, z);
+    this.camera.position.set(position.x, position.y, position.z);
     
     // Look at target
     this.camera.lookAt(this.target);
@@ -86,10 +89,14 @@ export class DimetricCamera {
   }
 
   /**
-   * Zoom camera in/out
+   * Zoom camera in/out towards mouse position
    * @param delta Mouse wheel deltaY value
+   * @param worldPoint Optional world position to zoom towards
    */
-  public zoom(delta: number): void {
+  public zoom(delta: number, worldPoint?: THREE.Vector3): void {
+    // Store old frustum size
+    const oldFrustumSize = this.frustumSize;
+    
     // Normalize delta and apply zoom speed
     const normalizedDelta = THREE.MathUtils.clamp(delta, -100, 100) / 100;
     const zoomFactor = 1 + normalizedDelta * this.zoomSpeed * 50;
@@ -99,6 +106,27 @@ export class DimetricCamera {
       this.minZoom,
       this.maxZoom
     );
+    
+    // If world point provided, zoom towards that point
+    if (worldPoint) {
+      // Calculate how much to adjust the target to keep the world point under the mouse
+      const scaleFactor = this.frustumSize / oldFrustumSize;
+      const offsetX = worldPoint.x - this.target.x;
+      const offsetZ = worldPoint.z - this.target.z;
+      
+      // Adjust target so the world point stays in the same screen position
+      this.target.x = worldPoint.x - offsetX * scaleFactor;
+      this.target.z = worldPoint.z - offsetZ * scaleFactor;
+      
+      // Update camera position relative to new target
+      const position = calculateDimetricPosition(100);
+      this.camera.position.set(
+        this.target.x + position.x,
+        this.target.y + position.y,
+        this.target.z + position.z
+      );
+      this.camera.lookAt(this.target);
+    }
     
     // Update camera bounds with the stored aspect ratio
     this.camera.left = -this.frustumSize * this.aspectRatio / 2;
@@ -132,10 +160,10 @@ export class DimetricCamera {
     // For dimetric view at 45° azimuth:
     // Camera right vector projects to world (-0.707, 0, 0.707)
     // Camera up vector projects to world (-0.5, 0, -0.5) approximately
-    const rightX = -Math.cos(Math.PI / 4);
-    const rightZ = Math.sin(Math.PI / 4);
-    const upX = -Math.sin(Math.PI / 4) * Math.cos(Math.atan(0.5));
-    const upZ = -Math.cos(Math.PI / 4) * Math.cos(Math.atan(0.5));
+    const rightX = -Math.cos(DIMETRIC_AZIMUTH);
+    const rightZ = Math.sin(DIMETRIC_AZIMUTH);
+    const upX = -Math.sin(DIMETRIC_AZIMUTH) * Math.cos(DIMETRIC_ELEVATION);
+    const upZ = -Math.cos(DIMETRIC_AZIMUTH) * Math.cos(DIMETRIC_ELEVATION);
     
     // Apply screen delta to world movement
     const worldDX = (deltaX * rightX + deltaY * upX) * panScale;
@@ -180,8 +208,8 @@ export class DimetricCamera {
   private updateCameraPosition(): void {
     // Maintain fixed dimetric angle relative to target
     const distance = 100;
-    const elevation = Math.atan(0.5);
-    const azimuth = Math.PI / 4;
+    const elevation = DIMETRIC_ELEVATION;
+    const azimuth = DIMETRIC_AZIMUTH;
     
     const height = distance * Math.sin(elevation);
     const groundDistance = distance * Math.cos(elevation);

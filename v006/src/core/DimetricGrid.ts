@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GridConfig, GridLevel, GridCoordinate, WorldPosition, CoordinateUtils } from '@types';
+import { DEFAULT_CELL_SIZE, DEFAULT_GRID_WIDTH, DEFAULT_GRID_DEPTH } from './constants';
 
 /**
  * Dimetric grid system for isometric tile editor
@@ -18,9 +19,9 @@ export class DimetricGrid {
     
     // Default configuration
     this.config = {
-      cellSize: 1,
-      gridWidth: 100,
-      gridDepth: 100,
+      cellSize: DEFAULT_CELL_SIZE,
+      gridWidth: DEFAULT_GRID_WIDTH,
+      gridDepth: DEFAULT_GRID_DEPTH,
       colors: {
         major: 0x888888,
         standard: 0x555555,
