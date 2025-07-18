@@ -10,6 +10,7 @@ export class SimpleTileSystem {
   private tiles: Map<string, THREE.Mesh> = new Map();
   private tileGeometry: THREE.BoxGeometry;
   private materials: Map<VoxelType, THREE.Material> = new Map();
+  private layerHeight: number = 0.1; // Height of each layer
   
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -38,24 +39,45 @@ export class SimpleTileSystem {
    * Place a tile at grid coordinate
    */
   public placeTile(coord: GridCoordinate, type: VoxelType): void {
-    const key = `${coord.x},${coord.z}`;
-    
-    // Remove existing tile if any
+    // Remove existing tiles at this position
     this.removeTile(coord);
     
     // Don't place air
     if (type === VoxelType.Air) return;
+    
+    // Special handling for multi-layer tiles
+    if (type === VoxelType.Grass) {
+      // Grass: 3 layers (sand, dirt, grass)
+      this.placeSingleTile(coord, VoxelType.Sand, 0);  // Bottom layer
+      this.placeSingleTile(coord, VoxelType.Dirt, 1);  // Middle layer
+      this.placeSingleTile(coord, VoxelType.Grass, 2); // Top layer
+    } else if (type === VoxelType.Dirt) {
+      // Dirt: 2 layers (sand, dirt)
+      this.placeSingleTile(coord, VoxelType.Sand, 0);  // Bottom layer
+      this.placeSingleTile(coord, VoxelType.Dirt, 1);  // Top layer
+    } else {
+      // Normal single tile placement
+      this.placeSingleTile(coord, type, 0);
+    }
+  }
+  
+  /**
+   * Place a single tile layer
+   */
+  private placeSingleTile(coord: GridCoordinate, type: VoxelType, layer: number): void {
+    const key = `${coord.x},${coord.z},${layer}`;
     
     // Create new tile mesh
     const material = this.materials.get(type);
     if (!material) return;
     
     const mesh = new THREE.Mesh(this.tileGeometry, material);
-    // Center tile in grid cell and position so bottom sits on grid
-    mesh.position.set(coord.x + 0.5, 0.05, coord.z + 0.5); 
+    // Center tile in grid cell and position based on layer
+    const yPos = this.layerHeight / 2 + (layer * this.layerHeight);
+    mesh.position.set(coord.x + 0.5, yPos, coord.z + 0.5); 
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    mesh.userData = { type, coord };
+    mesh.userData = { type, coord, layer };
     
     this.tiles.set(key, mesh);
     this.scene.add(mesh);
@@ -65,23 +87,32 @@ export class SimpleTileSystem {
    * Remove a tile at grid coordinate
    */
   public removeTile(coord: GridCoordinate): void {
-    const key = `${coord.x},${coord.z}`;
-    const mesh = this.tiles.get(key);
-    
-    if (mesh) {
-      this.scene.remove(mesh);
-      mesh.geometry.dispose();
-      this.tiles.delete(key);
+    // Remove all layers at this position
+    for (let layer = 0; layer < 3; layer++) {
+      const key = `${coord.x},${coord.z},${layer}`;
+      const mesh = this.tiles.get(key);
+      
+      if (mesh) {
+        this.scene.remove(mesh);
+        mesh.geometry.dispose();
+        this.tiles.delete(key);
+      }
     }
   }
   
   /**
-   * Get tile at coordinate
+   * Get tile at coordinate (returns top-most tile type)
    */
   public getTile(coord: GridCoordinate): VoxelType {
-    const key = `${coord.x},${coord.z}`;
-    const mesh = this.tiles.get(key);
-    return mesh ? mesh.userData.type : VoxelType.Air;
+    // Check from top layer down
+    for (let layer = 2; layer >= 0; layer--) {
+      const key = `${coord.x},${coord.z},${layer}`;
+      const mesh = this.tiles.get(key);
+      if (mesh) {
+        return mesh.userData.type;
+      }
+    }
+    return VoxelType.Air;
   }
   
   /**
@@ -89,11 +120,21 @@ export class SimpleTileSystem {
    */
   public getAllTiles(): Map<string, { coord: GridCoordinate; type: VoxelType }> {
     const result = new Map();
+    const processedCoords = new Set<string>();
+    
+    // Only return one entry per x,z coordinate (the top-most tile)
     this.tiles.forEach((mesh, key) => {
-      result.set(key, {
-        coord: mesh.userData.coord,
-        type: mesh.userData.type
-      });
+      const coord = mesh.userData.coord;
+      const coordKey = `${coord.x},${coord.z}`;
+      
+      if (!processedCoords.has(coordKey)) {
+        processedCoords.add(coordKey);
+        const topType = this.getTile(coord);
+        result.set(coordKey, {
+          coord: coord,
+          type: topType
+        });
+      }
     });
     return result;
   }
