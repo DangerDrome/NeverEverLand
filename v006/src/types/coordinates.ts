@@ -102,7 +102,9 @@ export class CoordinateUtils {
    * Parse a grid key back to coordinates
    */
   static parseGridKey(key: string): GridCoordinate {
-    const [x, z] = key.split(',').map(Number);
+    const parts = key.split(',');
+    const x = Number(parts[0] || 0);
+    const z = Number(parts[1] || 0);
     return { x, z };
   }
 

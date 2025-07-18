@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { WorldPosition, ScreenPosition } from '@types';
+import { WorldPosition, ScreenPosition } from '../types';
 import { 
   DIMETRIC_ELEVATION, 
   DIMETRIC_AZIMUTH, 

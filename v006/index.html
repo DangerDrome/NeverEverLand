@@ -24,6 +24,7 @@
     <link rel="stylesheet" href="StyleUI/css/tag.css">
     <link rel="stylesheet" href="StyleUI/css/spinners.css">
     <link rel="stylesheet" href="StyleUI/css/tooltip.css">
+    <link rel="stylesheet" href="StyleUI/css/toast.css">
     <link rel="stylesheet" href="StyleUI/css/icons.css">
     <link rel="stylesheet" href="StyleUI/css/animations.css">
     
@@ -32,7 +33,7 @@
             margin: 0;
             padding: 0;
             overflow: hidden;
-            background-color: #1a1a1a;
+            background-color: var(--bg-layer-0);
         }
         
         #app {
@@ -67,13 +68,15 @@
             position: absolute;
             bottom: var(--space-3);
             left: var(--space-3);
-            background: var(--overlay-backdrop);
+            background: var(--bg-layer-2);
+            border: 1px solid var(--border-color);
             padding: var(--space-2) var(--space-3);
             border-radius: var(--radius-md);
             font-family: var(--font-mono);
             font-size: var(--font-size-sm);
             color: var(--text-primary);
             user-select: none;
+            backdrop-filter: blur(10px);
         }
         
         /* Info panel enhancements */
@@ -81,28 +84,76 @@
             backdrop-filter: blur(10px);
         }
         
-        /* Override tag colors for better contrast on graph backgrounds */
-        .info-panel .tag-success {
-            background-color: var(--success);
-            color: rgba(0, 0, 0, 0.9);
-            font-weight: var(--font-semibold);
+        /* Minimap styling */
+        .minimap-panel {
+            backdrop-filter: blur(10px);
         }
         
-        .info-panel .tag-warning {
-            background-color: var(--warning);
-            color: rgba(0, 0, 0, 0.9);
-            font-weight: var(--font-semibold);
+        .minimap {
+            border: 1px solid var(--border-color);
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
         }
         
-        .info-panel .tag-info {
-            background-color: var(--info);
-            color: rgba(0, 0, 0, 0.9);
-            font-weight: var(--font-semibold);
+        /* Tile palette styling */
+        .tile-palette {
+            backdrop-filter: blur(10px);
+        }
+        
+        .tile-palette .panel-body {
+            display: flex !important;
+            align-items: center;
+            padding: var(--space-3) !important;
+        }
+        
+        /* Toast text override for readability */
+        .toast {
+            color: rgba(0, 0, 0, 0.9) !important;
+        }
+        
+        .toast-message {
+            color: rgba(0, 0, 0, 0.9) !important;
+        }
+        
+        /* Stress test button text */
+        .btn-warning {
+            color: rgba(0, 0, 0, 0.9) !important;
+        }
+        
+        /* Dark mode tooltips */
+        .tooltip {
+            background-color: var(--bg-layer-4) !important;
+            color: var(--text-primary) !important;
+            border: 1px solid var(--border-color) !important;
+        }
+        
+        .tooltip::before {
+            /* Arrow color for all positions */
+            border-top-color: var(--bg-layer-4) !important;
+            border-bottom-color: var(--bg-layer-4) !important;
+            border-left-color: var(--bg-layer-4) !important;
+            border-right-color: var(--bg-layer-4) !important;
+        }
+        
+        /* Arrow border for each position */
+        .tooltip--top::after {
+            border-top-color: var(--border-color) !important;
+        }
+        
+        .tooltip--bottom::after {
+            border-bottom-color: var(--border-color) !important;
+        }
+        
+        .tooltip--left::after {
+            border-left-color: var(--border-color) !important;
+        }
+        
+        .tooltip--right::after {
+            border-right-color: var(--border-color) !important;
         }
         
     </style>
 </head>
-<body>
+<body class="dark">
     <div id="app">
         <div id="game-container"></div>
         <div id="ui-overlay">
@@ -122,6 +173,7 @@
     <script src="StyleUI/components/menu.js"></script>
     <script src="StyleUI/components/modal.js"></script>
     <script src="StyleUI/components/tooltip.js"></script>
+    <script src="StyleUI/components/toast.js"></script>
     
     <!-- Main Application -->
     <script type="module" src="/src/main.ts"></script>

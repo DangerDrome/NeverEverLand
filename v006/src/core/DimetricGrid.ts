@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GridConfig, GridLevel, GridCoordinate, WorldPosition, CoordinateUtils } from '@types';
+import { GridConfig, GridLevel, GridCoordinate, CoordinateUtils } from '../types';
 import { DEFAULT_CELL_SIZE, DEFAULT_GRID_WIDTH, DEFAULT_GRID_DEPTH } from './constants';
 
 /**
@@ -118,21 +118,6 @@ export class DimetricGrid {
     return geometry;
   }
 
-  /**
-   * Clip line to grid bounds
-   */
-  private clipLineToBounds(
-    x1: number, z1: number, x2: number, z2: number,
-    halfWidth: number, halfDepth: number
-  ): { x1: number; z1: number; x2: number; z2: number } | null {
-    // Simple bounds check for now
-    const clippedX1 = Math.max(-halfWidth, Math.min(halfWidth, x1));
-    const clippedZ1 = Math.max(-halfDepth, Math.min(halfDepth, z1));
-    const clippedX2 = Math.max(-halfWidth, Math.min(halfWidth, x2));
-    const clippedZ2 = Math.max(-halfDepth, Math.min(halfDepth, z2));
-    
-    return { x1: clippedX1, z1: clippedZ1, x2: clippedX2, z2: clippedZ2 };
-  }
 
   /**
    * Create highlight mesh for grid cells

@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { DimetricCamera } from '@core/Camera';
 import { DimetricGrid } from '@core/DimetricGrid';
+import { SimpleTileSystem } from '@core/SimpleTileSystem';
+import { VoxelType } from '@core/VoxelTypes';
 import { 
   EditorState, 
   EditorConfig, 
@@ -8,9 +10,12 @@ import {
   GridLevel, 
   TileRotation,
   WorldPosition,
-  CoordinateUtils 
-} from '@types';
+  CoordinateUtils,
+  GridCoordinate 
+} from '../types';
 import { InfoPanel } from '@ui/InfoPanel';
+import { MinimapPanel } from '@ui/MinimapPanel';
+import { TilePalette } from '@ui/TilePalette';
 import { SHADOW_MAP_SIZE, MAX_PIXEL_RATIO } from '@core/constants';
 
 /**
@@ -24,6 +29,10 @@ export class TileEditor {
   private camera!: DimetricCamera;
   private grid!: DimetricGrid;
   
+  // Tile system
+  private tileSystem!: SimpleTileSystem;
+  private selectedVoxelType: VoxelType = VoxelType.Grass;
+  
   // Editor state
   private state: EditorState;
   private config: EditorConfig;
@@ -33,6 +42,9 @@ export class TileEditor {
   private raycaster: THREE.Raycaster;
   private groundPlane: THREE.Plane;
   private isPanning: boolean = false;
+  private isDrawing: boolean = false;
+  private isErasing: boolean = false;
+  private lastDrawnCell: GridCoordinate | null = null;
   
   // Animation
   private animationId: number | null = null;
@@ -43,6 +55,8 @@ export class TileEditor {
   // UI elements
   private coordinateDisplay: HTMLElement | null;
   private infoPanel: InfoPanel | null = null;
+  private minimapPanel: MinimapPanel | null = null;
+  private tilePalette: TilePalette | null = null;
 
   constructor(container: HTMLElement, config?: Partial<EditorConfig>) {
     this.container = container;
@@ -53,7 +67,7 @@ export class TileEditor {
     
     // Default configuration
     this.config = {
-      defaultMode: EditorMode.Select,
+      defaultMode: EditorMode.Place, // Changed to Place mode by default
       showGrid: true,
       defaultGridLevel: GridLevel.Standard,
       enableShortcuts: true,
@@ -81,11 +95,21 @@ export class TileEditor {
     this.initScene();
     this.initCamera();
     this.initGrid();
+    this.initTileSystem();
     this.initLighting();
     this.initEventListeners();
     
-    // Create info panel
-    this.infoPanel = new InfoPanel(this.container, this);
+    // Defer UI panel creation to ensure StyleUI is ready
+    requestAnimationFrame(() => {
+      this.infoPanel = new InfoPanel(this.container, this);
+      this.minimapPanel = new MinimapPanel(this.container, this);
+      this.tilePalette = new TilePalette(this.container, this);
+      
+      // Give minimap access to tile system
+      if (this.minimapPanel) {
+        this.minimapPanel.setTileSystem(this.tileSystem);
+      }
+    });
   }
 
   /**
@@ -113,10 +137,11 @@ export class TileEditor {
    */
   private initScene(): void {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x2a2a2a);
+    // Use dark theme background color
+    this.scene.background = new THREE.Color(0x161614); // --bg-layer-4 dark theme
     
     // Add fog for depth
-    this.scene.fog = new THREE.Fog(0x2a2a2a, 50, 200);
+    this.scene.fog = new THREE.Fog(0x161614, 50, 200);
   }
 
   /**
@@ -135,6 +160,13 @@ export class TileEditor {
     // Using default values from constants
     
     this.grid.setVisible(this.state.gridVisible);
+  }
+
+  /**
+   * Initialize tile system
+   */
+  private initTileSystem(): void {
+    this.tileSystem = new SimpleTileSystem(this.scene);
   }
 
   /**
@@ -202,6 +234,31 @@ export class TileEditor {
     // Only update grid highlight when not panning
     if (!this.isPanning) {
       this.updateGridHighlight();
+      
+      // Handle continuous drawing/erasing while dragging
+      // Additional check: ensure mouse buttons are actually pressed
+      if ((this.isDrawing || this.isErasing) && this.state.highlightedCell && event.buttons > 0) {
+        // Check if we've moved to a new cell
+        if (!this.lastDrawnCell || !CoordinateUtils.coordsEqual(this.lastDrawnCell, this.state.highlightedCell)) {
+          // Interpolate between last position and current to fill gaps
+          if (this.lastDrawnCell) {
+            this.drawLine(this.lastDrawnCell, this.state.highlightedCell, this.isDrawing);
+          } else {
+            // First cell
+            if (this.isDrawing) {
+              this.placeVoxel(this.state.highlightedCell);
+            } else {
+              this.removeVoxel(this.state.highlightedCell);
+            }
+          }
+          this.lastDrawnCell = { ...this.state.highlightedCell };
+        }
+      } else if (event.buttons === 0) {
+        // No buttons pressed - ensure drawing/erasing states are cleared
+        this.isDrawing = false;
+        this.isErasing = false;
+        this.lastDrawnCell = null;
+      }
     }
   }
 
@@ -214,11 +271,24 @@ export class TileEditor {
       this.camera.startPan(event.clientX, event.clientY);
       event.preventDefault();
     } else if (event.button === 0) { // Left mouse
-      // Handle tile placement/selection
-      this.handleLeftClick();
+      if (this.state.mode === EditorMode.Place && this.state.highlightedCell) {
+        this.isDrawing = true;
+        this.lastDrawnCell = { ...this.state.highlightedCell };
+        this.placeVoxel(this.state.highlightedCell);
+      } else if (this.state.mode === EditorMode.Erase && this.state.highlightedCell) {
+        this.isErasing = true;
+        this.lastDrawnCell = { ...this.state.highlightedCell };
+        this.removeVoxel(this.state.highlightedCell);
+      } else if (this.state.mode === EditorMode.Select) {
+        // Handle selection
+        this.handleLeftClick();
+      }
     } else if (event.button === 2) { // Right mouse
-      // Handle tile removal/context menu
-      this.handleRightClick();
+      if (this.state.highlightedCell) {
+        this.isErasing = true;
+        this.lastDrawnCell = { ...this.state.highlightedCell };
+        this.removeVoxel(this.state.highlightedCell);
+      }
     }
   }
 
@@ -226,6 +296,12 @@ export class TileEditor {
    * Handle mouse up
    */
   private onMouseUp(event: MouseEvent): void {
+    // Always clear all drawing/erasing states on any mouse up to prevent stuck states
+    this.isDrawing = false;
+    this.isErasing = false;
+    this.lastDrawnCell = null;
+    
+    // Handle specific button releases
     if (event.button === 1) { // Middle mouse
       this.isPanning = false;
       this.camera.endPan();
@@ -281,6 +357,26 @@ export class TileEditor {
       case 'R':
         this.rotateTile();
         break;
+      case 'q':
+      case 'Q':
+        this.cycleVoxelType();
+        break;
+      case '4':
+        this.selectedVoxelType = VoxelType.Grass;
+        console.log('Selected:', VoxelType[this.selectedVoxelType]);
+        break;
+      case '5':
+        this.selectedVoxelType = VoxelType.Stone;
+        console.log('Selected:', VoxelType[this.selectedVoxelType]);
+        break;
+      case '6':
+        this.selectedVoxelType = VoxelType.Wood;
+        console.log('Selected:', VoxelType[this.selectedVoxelType]);
+        break;
+      case '7':
+        this.selectedVoxelType = VoxelType.Dirt;
+        console.log('Selected:', VoxelType[this.selectedVoxelType]);
+        break;
     }
   }
 
@@ -310,7 +406,9 @@ export class TileEditor {
         
         // Update coordinate display
         if (this.coordinateDisplay && this.config.showCoordinates) {
-          this.coordinateDisplay.textContent = `Grid: (${gridCoord.x}, ${gridCoord.z})`;
+          const mode = this.state.mode === EditorMode.Place ? `Place ${VoxelType[this.selectedVoxelType]}` :
+                      this.state.mode === EditorMode.Erase ? 'Erase' : 'Select';
+          this.coordinateDisplay.textContent = `Grid: (${gridCoord.x}, ${gridCoord.z}) | Mode: ${mode}`;
         }
       }
     } else {
@@ -349,11 +447,10 @@ export class TileEditor {
     
     switch (this.state.mode) {
       case EditorMode.Place:
-        // TODO: Place tile at highlighted position
-        console.log('Place tile at', this.state.highlightedCell);
+        this.placeVoxel(this.state.highlightedCell);
         break;
       case EditorMode.Select:
-        // TODO: Select tile at position
+        // TODO: Implement selection functionality
         console.log('Select tile at', this.state.highlightedCell);
         break;
     }
@@ -365,11 +462,66 @@ export class TileEditor {
   private handleRightClick(): void {
     if (!this.state.highlightedCell) return;
     
-    if (this.state.mode === EditorMode.Erase) {
-      // TODO: Remove tile at position
-      console.log('Remove tile at', this.state.highlightedCell);
+    // Right click always removes voxels regardless of mode
+    this.removeVoxel(this.state.highlightedCell);
+  }
+
+  /**
+   * Place tile at grid position
+   */
+  private placeVoxel(gridCoord: GridCoordinate): void {
+    // Only place if no tile exists at this position
+    const existingTile = this.tileSystem.getTile(gridCoord);
+    if (existingTile === VoxelType.Air) {
+      this.tileSystem.placeTile(gridCoord, this.selectedVoxelType);
     }
   }
+
+  /**
+   * Remove tile at grid position
+   */
+  private removeVoxel(gridCoord: GridCoordinate): void {
+    this.tileSystem.removeTile(gridCoord);
+  }
+  
+  /**
+   * Draw a line of tiles between two grid coordinates
+   */
+  private drawLine(from: GridCoordinate, to: GridCoordinate, place: boolean): void {
+    // Bresenham's line algorithm for grid coordinates
+    const dx = Math.abs(to.x - from.x);
+    const dy = Math.abs(to.z - from.z);
+    const sx = from.x < to.x ? 1 : -1;
+    const sy = from.z < to.z ? 1 : -1;
+    let err = dx - dy;
+    
+    let x = from.x;
+    let z = from.z;
+    
+    // Draw tiles along the line
+    while (true) {
+      if (place) {
+        this.placeVoxel({ x, z });
+      } else {
+        this.removeVoxel({ x, z });
+      }
+      
+      // Check if we've reached the end
+      if (x === to.x && z === to.z) break;
+      
+      // Calculate next position
+      const e2 = 2 * err;
+      if (e2 > -dy) {
+        err -= dy;
+        x += sx;
+      }
+      if (e2 < dx) {
+        err += dx;
+        z += sy;
+      }
+    }
+  }
+
 
   /**
    * Toggle grid visibility
@@ -398,10 +550,51 @@ export class TileEditor {
   }
 
   /**
+   * Cycle through available voxel types
+   */
+  private cycleVoxelType(): void {
+    const voxelTypes = [
+      VoxelType.Grass,
+      VoxelType.Dirt,
+      VoxelType.Stone,
+      VoxelType.Wood,
+      VoxelType.Sand,
+      VoxelType.Brick,
+      VoxelType.Metal,
+      VoxelType.Glass
+    ];
+    
+    const currentIndex = voxelTypes.indexOf(this.selectedVoxelType);
+    const nextIndex = (currentIndex + 1) % voxelTypes.length;
+    this.selectedVoxelType = voxelTypes[nextIndex]!;
+    
+    console.log('Selected voxel type:', VoxelType[this.selectedVoxelType]);
+    
+    // Update coordinate display to show voxel type
+    if (this.coordinateDisplay) {
+      this.coordinateDisplay.textContent = `Grid: (${this.state.highlightedCell?.x || 0}, ${this.state.highlightedCell?.z || 0}) | Voxel: ${VoxelType[this.selectedVoxelType]}`;
+    }
+  }
+
+  /**
    * Update editor state
    */
   private setState(partial: Partial<EditorState>): void {
     this.state = { ...this.state, ...partial };
+  }
+  
+  /**
+   * Set editor mode (called by TilePalette)
+   */
+  public setMode(mode: EditorMode): void {
+    this.setState({ mode });
+  }
+  
+  /**
+   * Set selected voxel type (called by TilePalette)
+   */
+  public setSelectedVoxelType(type: VoxelType): void {
+    this.selectedVoxelType = type;
   }
 
   /**
@@ -415,9 +608,14 @@ export class TileEditor {
     // Update FPS
     this.updateFPS(delta);
     
-    // Update info panel
+    // No need to update tile system - it's immediate
+    
+    // Update UI panels
     if (this.infoPanel) {
       this.infoPanel.update();
+    }
+    if (this.minimapPanel) {
+      this.minimapPanel.update();
     }
     
     // Render scene
@@ -437,6 +635,7 @@ export class TileEditor {
       this.fpsTime = 0;
     }
   }
+
 
   /**
    * Start the editor
@@ -471,11 +670,18 @@ export class TileEditor {
     
     // Dispose of Three.js resources
     this.grid.dispose();
+    this.tileSystem.dispose();
     this.renderer.dispose();
     
     // Dispose of UI elements
     if (this.infoPanel) {
       this.infoPanel.dispose();
+    }
+    if (this.minimapPanel) {
+      this.minimapPanel.dispose();
+    }
+    if (this.tilePalette) {
+      this.tilePalette.dispose();
     }
     
     // Remove event listeners
@@ -511,5 +717,12 @@ export class TileEditor {
    */
   public getRenderer(): THREE.WebGLRenderer {
     return this.renderer;
+  }
+  
+  /**
+   * Get tile system (for direct access in stress test)
+   */
+  public getTileSystem(): SimpleTileSystem {
+    return this.tileSystem;
   }
 }

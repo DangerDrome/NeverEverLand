@@ -10,6 +10,9 @@ declare global {
 
 // Initialize the application
 function init(): void {
+  // Ensure dark theme is applied
+  document.body.classList.add('dark');
+  
   // Get container element
   const container = document.getElementById('game-container');
   if (!container) {

@@ -1,5 +1,8 @@
 export * from './coordinates';
 
+// Import types needed in this file
+import { WorldPosition, GridCoordinate } from './coordinates';
+
 /**
  * Editor modes
  */

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { TileEditor } from '@core/TileEditor';
-import { DIMETRIC_ELEVATION, DIMETRIC_AZIMUTH, calculateDimetricPosition } from '@core/constants';
+import { calculateDimetricPosition } from '@core/constants';
 
 interface Stats {
   fps: number;
@@ -74,6 +74,11 @@ export class InfoPanel {
   }
   
   private init(): void {
+    // Ensure dark theme is applied
+    if (!document.body.classList.contains('dark')) {
+      document.body.classList.add('dark');
+    }
+    
     const content = document.createElement('div');
     content.style.fontSize = 'var(--font-size-xs)';
     content.style.fontFamily = 'var(--font-mono)';
@@ -91,7 +96,7 @@ export class InfoPanel {
     });
     
     if (this.element) {
-      this.element.className += ' info-panel';
+      this.element.className += ' info-panel debug-panel';
       this.element.style.position = 'fixed';
       this.element.style.width = '320px';
       this.element.style.height = 'auto';
@@ -175,7 +180,7 @@ export class InfoPanel {
     canvas.height = 44;
     canvas.style.width = '100%';
     canvas.style.height = '44px';
-    canvas.style.background = 'var(--bg-layer-2)';
+    canvas.style.background = 'var(--bg-layer-4)';
     canvas.style.borderRadius = 'var(--radius-sm)';
     container.appendChild(canvas);
     
@@ -317,9 +322,8 @@ export class InfoPanel {
     
     // Add grid helper that matches the orthographic scale
     // Use StyleUI grey colors
-    const grey500 = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--grey-500').trim().replace('#', ''), 16);
-    const grey700 = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--grey-700').trim().replace('#', ''), 16);
-    const gridHelper = new THREE.GridHelper(2, 4, grey500, grey700);
+    // Use dark theme grid colors
+    const gridHelper = new THREE.GridHelper(2, 4, 0x444444, 0x222222);
     gridHelper.position.y = -0.01; // Slightly below axes
     this.axesScene.add(gridHelper);
     
@@ -364,11 +368,10 @@ export class InfoPanel {
     };
     
     // Add X, Y, Z labels positioned for orthographic view
-    // Get colors from computed styles
-    const computedStyle = getComputedStyle(document.documentElement);
-    const errorColor = computedStyle.getPropertyValue('--error-dark').trim();
-    const successColor = computedStyle.getPropertyValue('--success-dark').trim();
-    const infoColor = computedStyle.getPropertyValue('--info-dark').trim();
+    // Use explicit dark theme colors
+    const errorColor = '#ef4444';
+    const successColor = '#10b981';
+    const infoColor = '#3b82f6';
     
     this.axesScene.add(createLabel('X', errorColor, new THREE.Vector3(1.3, 0, 0)));
     this.axesScene.add(createLabel('Y', successColor, new THREE.Vector3(0, 1.3, 0)));
@@ -442,18 +445,15 @@ export class InfoPanel {
   private updateGraphs(): void {
     if (this.fpsCanvas) {
       const canvas = this.fpsCanvas.querySelector('canvas')!;
-      const successColor = getComputedStyle(document.documentElement).getPropertyValue('--success-dark').trim();
-      this.drawMiniGraph(canvas, this.history.fps, 120, successColor);
+      this.drawMiniGraph(canvas, this.history.fps, 120, '#10b981');
     }
     if (this.frameTimeCanvas) {
       const canvas = this.frameTimeCanvas.querySelector('canvas')!;
-      const warningColor = getComputedStyle(document.documentElement).getPropertyValue('--warning-dark').trim();
-      this.drawMiniGraph(canvas, this.history.frameTime, 33.33, warningColor);
+      this.drawMiniGraph(canvas, this.history.frameTime, 33.33, '#f59e0b');
     }
     if (this.drawCallsCanvas) {
       const canvas = this.drawCallsCanvas.querySelector('canvas')!;
-      const infoColor = getComputedStyle(document.documentElement).getPropertyValue('--info-dark').trim();
-      this.drawMiniGraph(canvas, this.history.drawCalls, Math.max(...this.history.drawCalls) || 100, infoColor);
+      this.drawMiniGraph(canvas, this.history.drawCalls, Math.max(...this.history.drawCalls) || 100, '#3b82f6');
     }
   }
   
