@@ -6,6 +6,7 @@ import { DimetricCamera } from '@core/Camera';
 import { DimetricGrid } from '@core/DimetricGrid';
 import { SimpleTileSystem } from '@core/SimpleTileSystem';
 import { VoxelType, VOXEL_PROPERTIES } from '@core/VoxelTypes';
+import { globalConfig } from '@config/globalConfig';
 import { 
   EditorState, 
   EditorConfig, 
@@ -36,7 +37,7 @@ export class TileEditor {
   // Post-processing
   private composer!: EffectComposer;
   private ssaoPass!: SSAOPass;
-  private aoEnabled: boolean = false; // Start disabled for safety
+  private aoEnabled: boolean = false; // Will be set from config
   
   // Tile system
   private tileSystem!: SimpleTileSystem;
@@ -64,6 +65,8 @@ export class TileEditor {
   private clock: THREE.Clock;
   private frameCount: number = 0;
   private fpsTime: number = 0;
+  private uiUpdateTime: number = 0;
+  private UI_UPDATE_INTERVAL: number = 1000 / 30; // Will be updated from config
   
   // Placement mode
   private stackMode: boolean = true;
@@ -116,6 +119,10 @@ export class TileEditor {
       cameraZoom: 20,
     };
     
+    // Apply config settings
+    const cfg = globalConfig.getConfig();
+    this.UI_UPDATE_INTERVAL = 1000 / cfg.uiUpdateRate;
+    
     // Get UI elements
     this.coordinateDisplay = document.getElementById('coordinates');
     
@@ -160,7 +167,7 @@ export class TileEditor {
     
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.BasicShadowMap; // Faster than PCFSoft
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Softer shadows for more realism
     
     this.container.appendChild(this.renderer.domElement);
     
@@ -257,17 +264,18 @@ export class TileEditor {
    */
   private initLighting(): void {
     // Ambient light for overall illumination
-    const ambient = new THREE.AmbientLight(0xffffff, 0.6); // Reduced to make shadows more visible
+    const ambient = new THREE.AmbientLight(0xffffff, 0.3); // Lower ambient for more dramatic lighting
     this.scene.add(ambient);
     
     // Primary directional light (main sun shadow)
-    this.directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
+    this.directionalLight = new THREE.DirectionalLight(0xffeeaa, 1.4); // Warmer color and higher intensity
     this.directionalLight.position.set(5, 10, 5);
     this.directionalLight.castShadow = true;
     
     // Primary shadow properties
-    this.directionalLight.shadow.mapSize.width = SHADOW_MAP_SIZE;
-    this.directionalLight.shadow.mapSize.height = SHADOW_MAP_SIZE;
+    const cfg = globalConfig.getConfig();
+    this.directionalLight.shadow.mapSize.width = cfg.shadowMapSize;
+    this.directionalLight.shadow.mapSize.height = cfg.shadowMapSize;
     this.directionalLight.shadow.camera.near = 1;
     this.directionalLight.shadow.camera.far = 30;
     this.directionalLight.shadow.camera.left = -15;
@@ -278,10 +286,11 @@ export class TileEditor {
     
     this.scene.add(this.directionalLight);
     
-    // Secondary directional light (softer fill shadow)
-    this.secondaryLight = new THREE.DirectionalLight(0xffffff, 0.3);
-    this.secondaryLight.position.set(-3, 8, -3); // Opposite angle
-    this.secondaryLight.castShadow = true;
+    // Secondary directional light (softer fill shadow) - only if enabled
+    if (cfg.secondaryShadows) {
+      this.secondaryLight = new THREE.DirectionalLight(0x88ccff, 0.2); // Cool blue fill light
+      this.secondaryLight.position.set(-3, 8, -3); // Opposite angle
+      this.secondaryLight.castShadow = true;
     
     // Secondary shadow properties (smaller, softer)
     this.secondaryLight.shadow.mapSize.width = 512; // Smaller for performance
@@ -293,8 +302,9 @@ export class TileEditor {
     this.secondaryLight.shadow.camera.top = 12;
     this.secondaryLight.shadow.camera.bottom = -12;
     this.secondaryLight.shadow.bias = -0.001;
-    
-    this.scene.add(this.secondaryLight);
+      
+      this.scene.add(this.secondaryLight);
+    }
     
     // Create sun
     this.createSun();
@@ -333,6 +343,13 @@ export class TileEditor {
    * Initialize post-processing effects
    */
   private initPostProcessing(): void {
+    const cfg = globalConfig.getConfig();
+    this.aoEnabled = cfg.ambientOcclusionEnabled;
+    
+    if (!cfg.postProcessingEnabled) {
+      return; // Skip post-processing setup entirely
+    }
+    
     try {
       // Create effect composer
       this.composer = new EffectComposer(this.renderer);
@@ -962,10 +979,44 @@ export class TileEditor {
       const newPosition = new THREE.Vector3(x, y, z);
       
       // Only update if position changed significantly (optimization)
-      if (this.lastSunPosition.distanceTo(newPosition) > 0.1) {
+      if (this.lastSunPosition.distanceTo(newPosition) > 1.0) { // Increased threshold from 0.1 to 1.0
         this.directionalLight.position.copy(newPosition);
         this.directionalLight.target.position.set(0, 0, 0);
         this.directionalLight.updateMatrixWorld();
+        
+        // Calculate sun elevation (0-1 where 1 is directly overhead)
+        const elevation = Math.max(0, Math.min(1, y / 50));
+        
+        // Adjust light intensity based on elevation
+        // Lower sun = more dramatic orange light
+        // Higher sun = brighter white light
+        const intensity = 0.8 + elevation * 0.8; // 0.8 to 1.6
+        this.directionalLight.intensity = intensity;
+        
+        // Adjust color based on elevation
+        // Low sun: warm orange/red
+        // High sun: bright white/yellow
+        const r = 1.0;
+        const g = 0.7 + elevation * 0.3; // 0.7 to 1.0
+        const b = 0.4 + elevation * 0.6; // 0.4 to 1.0
+        this.directionalLight.color.setRGB(r, g, b);
+        
+        // Adjust ambient light based on sun height
+        const ambient = this.scene.children.find(child => child instanceof THREE.AmbientLight) as THREE.AmbientLight;
+        if (ambient) {
+          // Lower sun = darker ambient (more contrast)
+          // Higher sun = lighter ambient
+          ambient.intensity = 0.15 + elevation * 0.25; // 0.15 to 0.4
+          
+          // Also tint ambient light
+          // Low sun: cool blue ambient (simulating sky light)
+          // High sun: neutral ambient
+          ambient.color.setRGB(
+            0.7 + elevation * 0.3,  // 0.7 to 1.0
+            0.8 + elevation * 0.2,  // 0.8 to 1.0
+            1.0                     // Always full blue
+          );
+        }
         
         // Update primary shadow camera
         this.directionalLight.shadow.camera.far = 40;
@@ -995,6 +1046,11 @@ export class TileEditor {
           this.secondaryLight.position.copy(secondaryDirection.multiplyScalar(distance));
           this.secondaryLight.target.position.set(0, 0, 0);
           this.secondaryLight.updateMatrixWorld();
+          
+          // Make secondary light more subtle and complementary
+          // Low sun = stronger blue fill light
+          // High sun = weaker fill light
+          this.secondaryLight.intensity = 0.3 * (1 - elevation * 0.5); // 0.3 to 0.15
           
           // Update secondary shadow camera
           this.secondaryLight.shadow.camera.far = 30;
@@ -1038,21 +1094,28 @@ export class TileEditor {
     this.animationId = requestAnimationFrame(() => this.animate());
     
     const delta = this.clock.getDelta();
+    const deltaMs = delta * 1000;
     
     // Update FPS
     this.updateFPS(delta);
     
     // No need to update tile system - it's immediate
     
-    // Update UI panels
-    if (this.infoPanel) {
-      this.infoPanel.update();
-    }
-    if (this.minimapPanel) {
-      this.minimapPanel.update();
-    }
-    if (this.sunControlPanel) {
-      this.sunControlPanel.update();
+    // Update UI panels at reduced frequency (30fps instead of 60fps)
+    this.uiUpdateTime += deltaMs;
+    if (this.uiUpdateTime >= this.UI_UPDATE_INTERVAL) {
+      this.uiUpdateTime = 0;
+      
+      if (this.infoPanel) {
+        this.infoPanel.update();
+      }
+      if (this.minimapPanel) {
+        this.minimapPanel.update();
+      }
+      // Only update sun control panel if visible and not interacting
+      if (this.sunControlPanel && !this.isInteracting) {
+        this.sunControlPanel.update();
+      }
     }
     
     // Render scene - skip post-processing during interaction for performance

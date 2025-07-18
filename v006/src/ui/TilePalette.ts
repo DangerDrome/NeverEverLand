@@ -100,7 +100,7 @@ export class TilePalette {
       draggable: true,
       resizable: true,
       startCollapsed: false,
-      position: 'bottom-left',
+      // Don't specify position - let CSS handle centering
     });
     
     if (this.element) {
@@ -113,7 +113,13 @@ export class TilePalette {
         titleElement.innerHTML = iconHTML + titleElement.textContent;
       }
       
-      // Don't set inline styles - let CSS handle positioning
+      // Override any default positioning to ensure centering works
+      this.element.style.position = 'fixed';
+      this.element.style.left = '50%';
+      this.element.style.transform = 'translateX(-50%)';
+      this.element.style.bottom = '80px';
+      this.element.style.top = 'auto';
+      this.element.style.right = 'auto';
       
       // Panel body already has proper padding from CSS
       

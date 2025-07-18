@@ -10,6 +10,8 @@ export class SimpleTileSystem {
   private tiles: Map<string, THREE.Mesh> = new Map();
   private tileGeometry: THREE.BoxGeometry;
   private materials: Map<VoxelType, THREE.Material> = new Map();
+  // Material cache: key is "voxelType,tintLevel" where tintLevel is 0-10
+  private materialCache: Map<string, THREE.Material> = new Map();
   private layerHeight: number = 0.1; // Height of each layer
   private maxLayers: number = 50; // Maximum height in layers
   
@@ -34,6 +36,41 @@ export class SimpleTileSystem {
       
       this.materials.set(type, material);
     }
+  }
+  
+  /**
+   * Get a cached material with height-based tinting
+   * This prevents creating a new material for every single tile
+   */
+  private getCachedMaterial(type: VoxelType, layer: number): THREE.Material {
+    // Quantize the tint level to reduce material variations
+    // Using 10 levels of tinting instead of infinite variations
+    const tintLevel = Math.floor((layer / this.maxLayers) * 10);
+    const cacheKey = `${type},${tintLevel}`;
+    
+    // Check cache first
+    const cached = this.materialCache.get(cacheKey);
+    if (cached) return cached;
+    
+    // Create new material only if not cached
+    const baseMaterial = this.materials.get(type);
+    if (!baseMaterial) return baseMaterial!;
+    
+    const material = (baseMaterial as THREE.MeshPhongMaterial).clone();
+    
+    // Apply consistent tinting based on quantized level
+    const tintFactor = tintLevel / 10 * 0.2; // 0 to 0.2 range
+    
+    const baseColor = (baseMaterial as THREE.MeshPhongMaterial).color;
+    const r = baseColor.r + (1 - baseColor.r) * tintFactor;
+    const g = baseColor.g + (1 - baseColor.g) * tintFactor;
+    const b = baseColor.b + (1 - baseColor.b) * tintFactor;
+    material.color.setRGB(r, g, b);
+    
+    // Cache the material
+    this.materialCache.set(cacheKey, material);
+    
+    return material;
   }
   
   /**
@@ -96,8 +133,8 @@ export class SimpleTileSystem {
   private placeSingleTile(coord: GridCoordinate, type: VoxelType, layer: number): void {
     const key = `${coord.x},${coord.z},${layer}`;
     
-    // Create new tile mesh
-    const material = this.materials.get(type);
+    // Get or create cached material with tinting
+    const material = this.getCachedMaterial(type, layer);
     if (!material) return;
     
     const mesh = new THREE.Mesh(this.tileGeometry, material);
@@ -110,6 +147,40 @@ export class SimpleTileSystem {
     
     this.tiles.set(key, mesh);
     this.scene.add(mesh);
+  }
+  
+  /**
+   * Get or create a cached material with appropriate tinting
+   */
+  private getCachedMaterial(type: VoxelType, layer: number): THREE.Material | null {
+    const baseMaterial = this.materials.get(type);
+    if (!baseMaterial) return null;
+    
+    // Quantize tint level to reduce number of materials (0-10 levels)
+    const heightFactor = layer / this.maxLayers;
+    const tintLevel = Math.round(heightFactor * 10);
+    const cacheKey = `${type},${tintLevel}`;
+    
+    // Check cache first
+    let material = this.materialCache.get(cacheKey);
+    if (material) return material;
+    
+    // Create new material for this tint level
+    material = (baseMaterial as THREE.MeshPhongMaterial).clone();
+    
+    // Apply height-based tint (no randomness for cached materials)
+    const tintFactor = tintLevel / 10;
+    
+    // Tint towards lighter color as height increases
+    const baseColor = (baseMaterial as THREE.MeshPhongMaterial).color;
+    const r = baseColor.r + (1 - baseColor.r) * tintFactor * 0.2;
+    const g = baseColor.g + (1 - baseColor.g) * tintFactor * 0.2;
+    const b = baseColor.b + (1 - baseColor.b) * tintFactor * 0.2;
+    (material as THREE.MeshPhongMaterial).color.setRGB(r, g, b);
+    
+    // Cache the material
+    this.materialCache.set(cacheKey, material);
+    return material;
   }
   
   /**
@@ -209,5 +280,7 @@ export class SimpleTileSystem {
     this.clear();
     this.tileGeometry.dispose();
     this.materials.forEach(material => material.dispose());
+    this.materialCache.forEach(material => material.dispose());
+    this.materialCache.clear();
   }
 }

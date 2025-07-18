@@ -5,7 +5,8 @@
       "Bash(/home/danger/.nvm/versions/node/v22.17.0/bin/npm install)",
       "Bash(npm:*)",
       "Bash(mkdir:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(ls:*)"
     ],
     "deny": []
   }

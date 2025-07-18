@@ -21,9 +21,12 @@ export class SunControlPanel {
   private sunVector: THREE.Line | null = null;
   private sunAxes: THREE.AxesHelper | null = null;
   private elevationArc: THREE.Line | null = null;
+  private radialLines: THREE.Line[] = [];
+  private elevationRings: THREE.Line[] = [];
   private sunAngle: number = 45; // degrees
   private sunElevation: number = 60; // degrees
   private isDragging: boolean = false;
+  private snappingEnabled: boolean = true;
   
   // Display elements
   private angleDisplay!: HTMLElement;
@@ -116,6 +119,40 @@ export class SunControlPanel {
     
     controls.appendChild(elevationRow);
     
+    // Snap toggle
+    const snapRow = document.createElement('div');
+    snapRow.style.display = 'flex';
+    snapRow.style.justifyContent = 'space-between';
+    snapRow.style.alignItems = 'center';
+    snapRow.style.marginTop = 'var(--space-2)';
+    
+    const snapLabel = document.createElement('span');
+    snapLabel.textContent = 'Snap:';
+    snapLabel.style.color = 'var(--text-secondary)';
+    snapLabel.style.fontSize = 'var(--font-size-base)';
+    snapRow.appendChild(snapLabel);
+    
+    const snapButton = window.UI.button({
+      variant: this.snappingEnabled ? 'primary' : 'ghost',
+      size: 'sm',
+      icon: 'magnet',
+      className: 'tool-button',
+      onClick: () => {
+        this.snappingEnabled = !this.snappingEnabled;
+        // Update button appearance
+        if (this.snappingEnabled) {
+          snapButton.element.classList.add('btn-primary');
+          snapButton.element.classList.remove('btn-ghost');
+        } else {
+          snapButton.element.classList.remove('btn-primary');
+          snapButton.element.classList.add('btn-ghost');
+        }
+      }
+    });
+    snapRow.appendChild(snapButton.element);
+    
+    controls.appendChild(snapRow);
+    
     content.appendChild(controls);
     
     // Create the panel
@@ -190,8 +227,8 @@ export class SunControlPanel {
     this.miniCamera.lookAt(0, 0, 0);
     this.miniCamera.updateMatrixWorld(true);
     
-    // Add grid
-    const gridHelper = new THREE.GridHelper(4, 8, 0x444444, 0x222222);
+    // Add grid with less lines
+    const gridHelper = new THREE.GridHelper(4, 4, 0x444444, 0x222222);
     this.miniScene.add(gridHelper);
     
     // Add axes
@@ -264,28 +301,8 @@ export class SunControlPanel {
     // Update positions
     this.updateSunPosition();
     
-    // Add sun path circle
-    const curve = new THREE.EllipseCurve(
-      0, 0,             // center
-      3, 3,             // radius
-      0, 2 * Math.PI,   // angles
-      false,            // clockwise
-      0                 // rotation
-    );
-    
-    const points = curve.getPoints(64);
-    const pathGeometry = new THREE.BufferGeometry().setFromPoints(points);
-    const pathMaterial = new THREE.LineBasicMaterial({ 
-      color: 0xFFD700, 
-      transparent: true, 
-      opacity: 0.3 
-    });
-    const pathLine = new THREE.Line(pathGeometry, pathMaterial);
-    pathLine.rotation.x = Math.PI / 2;
-    this.miniScene.add(pathLine);
-    
-    // Add angle snap indicators (every 15 degrees)
-    const snapAngleStep = 15;
+    // Add angle snap indicators (every 45 degrees for less clutter)
+    const snapAngleStep = 45;
     for (let angle = 0; angle < 360; angle += snapAngleStep) {
       const rad = angle * Math.PI / 180;
       const innerRadius = 2.5;
@@ -301,16 +318,18 @@ export class SunControlPanel {
       const lineMaterial = new THREE.LineBasicMaterial({
         color: 0x444444,
         transparent: true,
-        opacity: angle % 45 === 0 ? 0.8 : 0.4 // Stronger lines at 45-degree intervals
+        opacity: angle % 90 === 0 ? 0.8 : 0.4 // Stronger lines at 90-degree intervals
       });
       
       const snapLine = new THREE.Line(lineGeometry, lineMaterial);
+      snapLine.userData = { angle: angle }; // Store angle for highlighting
+      this.radialLines.push(snapLine);
       this.miniScene.add(snapLine);
     }
     
-    // Add elevation rings (every 15 degrees)
-    const elevationSnap = 15;
-    for (let elevation = 15; elevation <= 75; elevation += elevationSnap) {
+    // Add elevation rings (every 30 degrees for less clutter)
+    const elevationSnap = 30;
+    for (let elevation = 30; elevation <= 60; elevation += elevationSnap) {
       const ringRadius = 3 * Math.cos(elevation * Math.PI / 180);
       const ringCurve = new THREE.EllipseCurve(
         0, 0,
@@ -331,6 +350,8 @@ export class SunControlPanel {
       const ring = new THREE.Line(ringGeometry, ringMaterial);
       ring.rotation.x = Math.PI / 2;
       ring.position.y = 3 * Math.sin(elevation * Math.PI / 180);
+      ring.userData = { elevation: elevation }; // Store elevation for highlighting
+      this.elevationRings.push(ring);
       this.miniScene.add(ring);
     }
     
@@ -401,30 +422,104 @@ export class SunControlPanel {
   }
   
   private onMouseMove(event: MouseEvent): void {
-    if (!this.isDragging || !this.miniCanvas) return;
+    if (!this.isDragging || !this.miniCanvas || !this.miniCamera) return;
     
     const rect = this.miniCanvas.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    const mouseX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    const mouseY = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     
-    // Convert to angles
-    let angle = Math.atan2(y, x) * 180 / Math.PI + 90;
-    if (angle < 0) angle += 360;
+    // Create a raycaster from the camera through the mouse position
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(mouseX, mouseY), this.miniCamera);
     
-    // Snap angle to 15-degree increments
-    const angleSnap = 15;
-    this.sunAngle = Math.round(angle / angleSnap) * angleSnap;
+    // Create an invisible sphere at radius 3 to intersect with
+    const sphereGeometry = new THREE.SphereGeometry(3, 32, 32);
+    const sphere = new THREE.Mesh(sphereGeometry);
     
-    // Calculate elevation based on distance from center
-    const distance = Math.sqrt(x * x + y * y);
-    let elevation = Math.max(10, Math.min(90, (1 - distance) * 90));
+    // Get intersection point on the sphere
+    const intersects = raycaster.intersectObject(sphere);
     
-    // Snap elevation to 15-degree increments
-    const elevationSnap = 15;
-    this.sunElevation = Math.round(elevation / elevationSnap) * elevationSnap;
-    
-    // Ensure minimum elevation
-    if (this.sunElevation < 15) this.sunElevation = 15;
+    if (intersects.length > 0) {
+      const point = intersects[0].point;
+      
+      // Convert 3D position to angles
+      const angleRad = Math.atan2(point.x, point.z);
+      let angle = angleRad * 180 / Math.PI;
+      if (angle < 0) angle += 360;
+      
+      // Calculate elevation from the point
+      const horizontalDist = Math.sqrt(point.x * point.x + point.z * point.z);
+      const elevationRad = Math.atan2(point.y, horizontalDist);
+      let elevation = elevationRad * 180 / Math.PI;
+      
+      if (this.snappingEnabled) {
+        // Check if we're near a radial line for sticky behavior
+        const radialAngles = [0, 45, 90, 135, 180, 225, 270, 315]; // All radial lines
+        const radialStickyThreshold = 10; // degrees
+        
+        let snappedToRadial = false;
+        for (const radialAngle of radialAngles) {
+          let angleDiff = Math.abs(angle - radialAngle);
+          if (angleDiff > 180) angleDiff = 360 - angleDiff;
+          
+          if (angleDiff < radialStickyThreshold) {
+            this.sunAngle = radialAngle;
+            snappedToRadial = true;
+            break;
+          }
+        }
+        
+        // If not snapped to radial line, use normal 15-degree snapping
+        if (!snappedToRadial) {
+          const angleSnap = 15;
+          this.sunAngle = Math.round(angle / angleSnap) * angleSnap;
+        }
+      } else {
+        // No snapping - use raw angle
+        this.sunAngle = angle;
+      }
+      
+      if (this.snappingEnabled) {
+        // Check if we're near a ring elevation for sticky behavior
+        const ringElevations = [30, 60]; // The elevation rings we have
+        const stickyThreshold = 15; // degrees - much stickier for easier snapping
+        
+        let finalElevation = elevation;
+        for (const ringElev of ringElevations) {
+          if (Math.abs(elevation - ringElev) < stickyThreshold) {
+            finalElevation = ringElev; // Snap to ring
+            break;
+          }
+        }
+        
+        // Otherwise use normal snapping
+        if (finalElevation === elevation) {
+          const elevationSnap = 15;
+          this.sunElevation = Math.round(elevation / elevationSnap) * elevationSnap;
+        } else {
+          this.sunElevation = finalElevation;
+        }
+      } else {
+        // No snapping - use raw elevation
+        this.sunElevation = elevation;
+      }
+      
+      // Clamp elevation
+      this.sunElevation = Math.max(0, Math.min(90, this.sunElevation));
+    } else {
+      // If no intersection, project to edge of sphere
+      const angle = Math.atan2(mouseY, mouseX) * 180 / Math.PI + 90;
+      this.sunAngle = angle < 0 ? angle + 360 : angle;
+      
+      if (this.snappingEnabled) {
+        // Snap angle
+        const angleSnap = 15;
+        this.sunAngle = Math.round(this.sunAngle / angleSnap) * angleSnap;
+      }
+      
+      // Set to horizon if clicking outside
+      this.sunElevation = 0;
+    }
     
     this.updateSunPosition();
     this.updateDisplays();
@@ -453,6 +548,56 @@ export class SunControlPanel {
     
     // Update axes position to match sun
     this.sunAxes.position.set(x, y, z);
+    
+    // Highlight radial lines when sun is near them
+    // Calculate the actual angle in the XZ plane (matching the radial line angles)
+    const sunAngleInPlane = Math.atan2(z, x) * 180 / Math.PI;
+    // Normalize to 0-360 range
+    let normalizedAngle = sunAngleInPlane;
+    if (normalizedAngle < 0) normalizedAngle += 360;
+    
+    const highlightThreshold = 7.5; // degrees
+    
+    this.radialLines.forEach(line => {
+      const lineAngle = line.userData.angle;
+      const material = line.material as THREE.LineBasicMaterial;
+      
+      // Calculate angular distance
+      let angleDiff = Math.abs(normalizedAngle - lineAngle);
+      if (angleDiff > 180) angleDiff = 360 - angleDiff;
+      
+      if (angleDiff < highlightThreshold) {
+        // Highlight the line
+        material.color.setHex(0xFFD700); // Golden color
+        material.opacity = 1.0;
+      } else {
+        // Reset to default
+        material.color.setHex(0x444444);
+        material.opacity = lineAngle % 90 === 0 ? 0.8 : 0.4;
+      }
+      material.needsUpdate = true;
+    });
+    
+    // Highlight elevation rings when sun is near them
+    const elevationThreshold = 10; // degrees - larger to show when in sticky range
+    
+    this.elevationRings.forEach(ring => {
+      const ringElevation = ring.userData.elevation;
+      const material = ring.material as THREE.LineBasicMaterial;
+      
+      const elevationDiff = Math.abs(this.sunElevation - ringElevation);
+      
+      if (elevationDiff < elevationThreshold) {
+        // Highlight the ring
+        material.color.setHex(0xFF4444); // Error red color
+        material.opacity = 0.8;
+      } else {
+        // Reset to default
+        material.color.setHex(0x333333);
+        material.opacity = 0.3;
+      }
+      material.needsUpdate = true;
+    });
     
     // Update vector line from origin to sun
     const points = [
@@ -523,6 +668,10 @@ export class SunControlPanel {
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
     }
+    
+    // Clear arrays
+    this.radialLines = [];
+    this.elevationRings = [];
     
     document.removeEventListener('mousemove', this.onMouseMove.bind(this));
     document.removeEventListener('mouseup', this.onMouseUp.bind(this));

@@ -10,6 +10,8 @@ export interface GlobalConfig {
   shadowMapSize: number;
   ambientOcclusionEnabled: boolean;
   postProcessingEnabled: boolean;
+  secondaryShadows: boolean;
+  uiUpdateRate: number; // UI update rate in FPS
   
   // Editor Settings
   gridSnapping: boolean;
@@ -34,6 +36,8 @@ export const defaultGlobalConfig: GlobalConfig = {
   shadowMapSize: 1024,
   ambientOcclusionEnabled: false,
   postProcessingEnabled: true,
+  secondaryShadows: false,
+  uiUpdateRate: 30,
   
   // Editor Settings
   gridSnapping: true,
