@@ -32,6 +32,7 @@ export class TileEditor {
   private mouse: THREE.Vector2;
   private raycaster: THREE.Raycaster;
   private groundPlane: THREE.Plane;
+  private isPanning: boolean = false;
   
   // Animation
   private animationId: number | null = null;
@@ -195,16 +196,21 @@ export class TileEditor {
    * Handle mouse movement
    */
   private onMouseMove(event: MouseEvent): void {
+    // Handle camera panning first
+    if (event.buttons === 4) { // Middle mouse button
+      this.camera.updatePan(event.clientX, event.clientY);
+      // Don't update anything else during panning
+      return;
+    }
+    
+    // Update mouse coordinates
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     
-    // Update grid highlight
-    this.updateGridHighlight();
-    
-    // Handle camera panning
-    if (event.buttons === 4) { // Middle mouse button
-      this.camera.updatePan(event.clientX, event.clientY);
+    // Only update grid highlight when not panning
+    if (!this.isPanning) {
+      this.updateGridHighlight();
     }
   }
 
@@ -213,6 +219,7 @@ export class TileEditor {
    */
   private onMouseDown(event: MouseEvent): void {
     if (event.button === 1) { // Middle mouse
+      this.isPanning = true;
       this.camera.startPan(event.clientX, event.clientY);
       event.preventDefault();
     } else if (event.button === 0) { // Left mouse
@@ -229,6 +236,7 @@ export class TileEditor {
    */
   private onMouseUp(event: MouseEvent): void {
     if (event.button === 1) { // Middle mouse
+      this.isPanning = false;
       this.camera.endPan();
     }
   }
@@ -311,7 +319,11 @@ export class TileEditor {
    * Get mouse position in world space
    */
   private getMouseWorldPosition(): WorldPosition | null {
-    this.raycaster.setFromCamera(this.mouse, this.camera.getCamera());
+    // Ensure camera matrices are up to date
+    const cam = this.camera.getCamera();
+    cam.updateMatrixWorld(true);
+    
+    this.raycaster.setFromCamera(this.mouse, cam);
     
     const intersection = new THREE.Vector3();
     if (this.raycaster.ray.intersectPlane(this.groundPlane, intersection)) {

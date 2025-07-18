@@ -28,7 +28,7 @@ npm run dev
 
 ## Controls
 
-- **Middle Mouse Drag**: Pan camera
+- **Middle Mouse Drag**: Pan camera (grid highlight follows mouse during pan)
 - **Scroll Wheel**: Zoom in/out (smooth orthographic zoom)
 - **G**: Toggle grid visibility
 - **1**: Select mode

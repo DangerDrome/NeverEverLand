@@ -141,9 +141,9 @@ export class DimetricCamera {
     const worldDX = (deltaX * rightX + deltaY * upX) * panScale;
     const worldDZ = (deltaX * rightZ + deltaY * upZ) * panScale;
     
-    // Update target
-    this.target.x -= worldDX;
-    this.target.z -= worldDZ;
+    // Update target (inverted for natural panning)
+    this.target.x += worldDX;
+    this.target.z += worldDZ;
     
     // Update camera position to maintain fixed angle
     this.updateCameraPosition();
