@@ -239,7 +239,6 @@ export class SunControlPanel {
     const sunGeometry = new THREE.SphereGeometry(0.3, 16, 16);
     const sunMaterial = new THREE.MeshBasicMaterial({
       color: 0xFFD700,
-      emissive: 0xFFD700,
     });
     this.sunSphere = new THREE.Mesh(sunGeometry, sunMaterial);
     this.miniScene.add(this.sunSphere);

@@ -38,40 +38,6 @@ export class SimpleTileSystem {
     }
   }
   
-  /**
-   * Get a cached material with height-based tinting
-   * This prevents creating a new material for every single tile
-   */
-  private getCachedMaterial(type: VoxelType, layer: number): THREE.Material {
-    // Quantize the tint level to reduce material variations
-    // Using 10 levels of tinting instead of infinite variations
-    const tintLevel = Math.floor((layer / this.maxLayers) * 10);
-    const cacheKey = `${type},${tintLevel}`;
-    
-    // Check cache first
-    const cached = this.materialCache.get(cacheKey);
-    if (cached) return cached;
-    
-    // Create new material only if not cached
-    const baseMaterial = this.materials.get(type);
-    if (!baseMaterial) return baseMaterial!;
-    
-    const material = (baseMaterial as THREE.MeshPhongMaterial).clone();
-    
-    // Apply consistent tinting based on quantized level
-    const tintFactor = tintLevel / 10 * 0.2; // 0 to 0.2 range
-    
-    const baseColor = (baseMaterial as THREE.MeshPhongMaterial).color;
-    const r = baseColor.r + (1 - baseColor.r) * tintFactor;
-    const g = baseColor.g + (1 - baseColor.g) * tintFactor;
-    const b = baseColor.b + (1 - baseColor.b) * tintFactor;
-    material.color.setRGB(r, g, b);
-    
-    // Cache the material
-    this.materialCache.set(cacheKey, material);
-    
-    return material;
-  }
   
   /**
    * Get the top layer at a coordinate

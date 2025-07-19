@@ -6,7 +6,7 @@ import { DimetricCamera } from '@core/Camera';
 import { DimetricGrid } from '@core/DimetricGrid';
 import { SimpleTileSystem } from '@core/SimpleTileSystem';
 import { VoxelType, VOXEL_PROPERTIES } from '@core/VoxelTypes';
-import { globalConfig } from '@config/globalConfig';
+import { globalConfig } from '../config/globalConfig';
 import { 
   EditorState, 
   EditorConfig, 
@@ -88,7 +88,7 @@ export class TileEditor {
   
   // Preview
   private previewMesh: THREE.Mesh | null = null;
-  private previewMaterial: THREE.Material;
+  private previewMaterial: THREE.Material | null = null;
 
   constructor(container: HTMLElement, config?: Partial<EditorConfig>) {
     this.container = container;
@@ -318,8 +318,6 @@ export class TileEditor {
     const sunGeometry = new THREE.SphereGeometry(2, 16, 16);
     const sunMaterial = new THREE.MeshBasicMaterial({
       color: 0xFFD700, // Gold color
-      emissive: 0xFFD700,
-      emissiveIntensity: 1,
     });
     
     this.sunMesh = new THREE.Mesh(sunGeometry, sunMaterial);
@@ -615,8 +613,8 @@ export class TileEditor {
           
           // Update preview color based on selected voxel type
           const voxelProps = VOXEL_PROPERTIES[this.selectedVoxelType];
-          if (voxelProps) {
-            this.previewMaterial.color.setHex(voxelProps.color);
+          if (voxelProps && this.previewMaterial) {
+            (this.previewMaterial as any).color.setHex(voxelProps.color);
           }
           
           // Update height display for preview
