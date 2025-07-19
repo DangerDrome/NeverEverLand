@@ -1,0 +1,441 @@
+/* Ultrathin Panel Design */
+
+/* Base panel ultrathin overrides */
+.panel {
+    border-width: 1px;
+    border-color: rgba(255, 255, 255, 0.1);
+    background-color: #262626; /* Same as header background */
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: 
+        0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+        0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* Thicker panel header with more padding */
+.panel-header {
+    padding: var(--space-4) var(--space-6); /* Generous padding: 1rem 1.5rem */
+    border-bottom: none;
+    background-color: #262626; /* Fully opaque header */
+    min-height: 48px; /* Taller header for more padding */
+}
+
+/* Panel title - use StyleUI sizes */
+.panel-title {
+    font-size: var(--font-size-sm); /* 14px instead of 11px */
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: 0.3px;
+    opacity: 0.95;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+/* Panel title icon alignment */
+.panel-title i[data-lucide] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+/* Panel controls - use StyleUI defaults for better usability */
+.panel-controls {
+    gap: var(--space-2);
+}
+
+.panel-controls .icon-button {
+    width: 28px;
+    height: 28px;
+    padding: var(--space-1);
+    border-radius: var(--radius-sm);
+}
+
+.panel-controls .icon-button svg {
+    width: 16px;
+    height: 16px;
+}
+
+.panel-close {
+    width: 28px;
+    height: 28px;
+    padding: var(--space-1);
+}
+
+.panel-close svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Panel body with generous padding */
+.panel-body {
+    padding: var(--space-6); /* 1.5rem - generous padding */
+    background-color: #262626; /* Same as header background */
+}
+
+/* Dragging state */
+.panel-dragging {
+    opacity: 1; /* Keep fully opaque while dragging */
+    box-shadow: 
+        0 0 0 1px rgba(59, 130, 246, 0.5) inset,
+        0 16px 64px rgba(0, 0, 0, 0.5);
+    z-index: 1500 !important; /* Ensure dragged panels are on top */
+}
+
+/* Resize handle - more subtle */
+.panel-resize-handle {
+    width: 12px;
+    height: 12px;
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+    background: linear-gradient(
+        135deg,
+        transparent 0%,
+        transparent 40%,
+        rgba(255, 255, 255, 0.2) 40%,
+        rgba(255, 255, 255, 0.2) 60%,
+        transparent 60%,
+        transparent 100%
+    );
+}
+
+.panel:hover .panel-resize-handle {
+    opacity: 0.5;
+}
+
+.panel-resize-handle:hover {
+    opacity: 1;
+}
+
+/* Specific panel ultrathin styles */
+
+/* Info Panel */
+.info-panel.debug-panel {
+    min-width: 280px;
+}
+
+.info-panel .panel-body {
+    padding: var(--space-6); /* 1.5rem padding */
+}
+
+.info-panel .debug-section {
+    margin-bottom: var(--space-3); /* More spacing between sections */
+}
+
+.info-panel h4 {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: var(--space-1);
+    opacity: 0.7;
+}
+
+.info-panel table {
+    background-color: rgba(64, 64, 64, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.info-panel td {
+    padding: 2px 6px;
+    font-size: 11px;
+}
+
+/* Minimap Panel */
+.minimap-panel {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    width: 240px;
+    min-width: 200px;
+    max-width: 400px;
+    z-index: 999;
+}
+
+.minimap-panel .panel-body {
+    padding: var(--space-6); /* 1.5rem padding */
+}
+
+.minimap-panel canvas.minimap {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 
+        inset 0 1px 3px rgba(0, 0, 0, 0.3),
+        0 0 0 1px rgba(0, 0, 0, 0.5);
+    display: block !important;
+}
+
+/* Tile Palette */
+.tile-palette {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 80px; /* Moved up to show coords underneath */
+    width: auto;
+    max-width: 90vw;
+    z-index: 998;
+}
+
+/* Tile Palette needs extra padding for button layout */
+.tile-palette .panel-body {
+    padding: var(--space-8) !important; /* 2rem all around */
+}
+
+.tile-palette .btn-group {
+    gap: var(--space-1);
+}
+
+.tile-palette .btn {
+    padding: var(--space-1) var(--space-2);
+    font-size: 11px;
+    min-width: unset;
+}
+
+.tile-palette .btn-icon {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+}
+
+/* Tool buttons - fix icon positioning with absolute center */
+.tile-palette .tool-button {
+    color: var(--text-primary);
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    padding: 0 !important;
+    position: relative !important;
+}
+
+.tile-palette .tool-button.btn-primary {
+    background-color: var(--color-primary);
+    color: white;
+    border-color: var(--color-primary);
+}
+
+.tile-palette .tool-button i[data-lucide],
+.tile-palette .tool-button svg {
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 24px !important;
+    height: 24px !important;
+    stroke-width: 1.5px !important;
+}
+
+/* Voxel buttons - custom styling using CSS properties */
+.tile-palette .voxel-button {
+    position: relative !important;
+    overflow: hidden;
+    background: var(--voxel-color) !important;
+    border: none !important;
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    padding: 0 !important;
+}
+
+.tile-palette .voxel-button::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--voxel-color);
+    opacity: 1;
+}
+
+/* Transparency pattern for transparent voxels */
+.tile-palette .voxel-button[style*="--voxel-transparent: 1"]::before {
+    background-image: 
+        linear-gradient(45deg, #666 25%, transparent 25%),
+        linear-gradient(-45deg, #666 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #666 75%),
+        linear-gradient(-45deg, transparent 75%, #666 75%);
+    background-size: 8px 8px;
+    background-position: 0 0, 0 4px, 4px -4px, -4px 0px;
+    background-color: var(--voxel-color);
+}
+
+/* Override for water button - make it solid */
+.tile-palette .voxel-button.voxel-6::before {
+    background-image: none !important;
+    background-color: var(--voxel-color) !important;
+}
+
+.tile-palette .voxel-button i[data-lucide],
+.tile-palette .voxel-button svg {
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    z-index: 1;
+    color: rgba(0, 0, 0, 0.8) !important;
+    filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.5));
+    width: 24px !important;
+    height: 24px !important;
+    stroke-width: 2px !important;
+}
+
+.tile-palette .voxel-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.tile-palette .voxel-button.btn-primary {
+    border: 2px solid var(--color-primary) !important;
+    box-shadow: 0 0 8px rgba(59, 130, 246, 0.3);
+}
+
+/* Layer controls */
+.tile-palette .form-checkbox {
+    width: 14px;
+    height: 14px;
+}
+
+.tile-palette .form-inline {
+    font-size: 11px;
+    gap: var(--space-1);
+}
+
+#height-display {
+    padding: 2px 6px;
+    font-size: 10px;
+    min-width: 60px;
+    text-align: center;
+}
+
+/* Extra small button */
+.btn-xs {
+    padding: 2px 6px;
+    font-size: 10px;
+    height: 20px;
+}
+
+.btn-xs svg {
+    width: 12px;
+    height: 12px;
+}
+
+/* Tags in ultrathin mode */
+.tag {
+    padding: 1px 6px;
+    font-size: 9px;
+    border-width: 1px;
+}
+
+.tag-sm {
+    padding: 0 4px;
+    font-size: 8px;
+}
+
+
+/* Graph containers */
+.info-panel canvas {
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Scrollbars in panels */
+.panel-body::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+}
+
+.panel-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.panel-body::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+}
+
+.panel-body::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Panel animations */
+.panel {
+    transition: 
+        border-color var(--transition-fast),
+        box-shadow var(--transition-fast),
+        transform var(--transition-fast);
+}
+
+.panel:hover {
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Focus state */
+.panel:focus-within {
+    border-color: rgba(59, 130, 246, 0.3);
+    box-shadow: 
+        0 0 0 1px rgba(59, 130, 246, 0.2) inset,
+        0 8px 32px rgba(0, 0, 0, 0.4),
+        0 0 20px rgba(59, 130, 246, 0.1);
+}
+
+/* Collapsed state adjustments */
+.panel-collapsed .panel-header {
+    border-bottom: none;
+}
+
+.panel-collapsed {
+    min-width: unset;
+    width: auto !important;
+    height: auto !important;
+}
+
+/* Sun Control Panel */
+.sun-control-panel {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    width: 300px;
+    min-width: 250px;
+    max-width: 500px;
+    z-index: 999;
+}
+
+.sun-control-panel .panel-body {
+    padding: var(--space-6); /* 1.5rem padding */
+}
+
+.sun-control-panel canvas {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 
+        inset 0 1px 3px rgba(0, 0, 0, 0.3),
+        0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+
+.sun-control-panel .tag {
+    min-width: 45px;
+    text-align: center;
+}
+
+/* Dark glass effect for panels */
+@supports (backdrop-filter: blur(20px)) {
+    .panel {
+        background-color: rgba(23, 23, 23, 0.75);
+    }
+}
+
+/* Light theme adjustments */
+body:not(.dark) .panel {
+    background-color: rgba(255, 255, 255, 0.85);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+body:not(.dark) .panel-header {
+    background-color: rgba(243, 244, 246, 0.5);
+    border-bottom-color: rgba(0, 0, 0, 0.05);
+}
+
+body:not(.dark) .panel-resize-handle {
+    background: linear-gradient(
+        135deg,
+        transparent 0%,
+        transparent 40%,
+        rgba(0, 0, 0, 0.2) 40%,
+        rgba(0, 0, 0, 0.2) 60%,
+        transparent 60%,
+        transparent 100%
+    );
+}

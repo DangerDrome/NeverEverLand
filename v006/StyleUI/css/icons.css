@@ -1,0 +1,168 @@
+/* Icon Styles */
+.icon {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    vertical-align: middle;
+    fill: currentColor;
+    flex-shrink: 0;
+}
+
+/* Icon Sizes */
+.icon-xs {
+    width: 12px;
+    height: 12px;
+}
+
+.icon-sm {
+    width: 16px;
+    height: 16px;
+}
+
+.icon-md {
+    width: 20px;
+    height: 20px;
+}
+
+.icon-lg {
+    width: 24px;
+    height: 24px;
+}
+
+.icon-xl {
+    width: 32px;
+    height: 32px;
+}
+
+.icon-2xl {
+    width: 48px;
+    height: 48px;
+}
+
+/* Icon Colors */
+.icon-primary { color: var(--color-primary); }
+.icon-secondary { color: var(--color-secondary); }
+.icon-success { color: var(--color-success); }
+.icon-warning { color: var(--color-warning); }
+.icon-danger { color: var(--color-danger); }
+.icon-info { color: var(--color-info); }
+
+/* Icon Button */
+.icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.icon-button:hover {
+    background-color: var(--bg-layer-2);
+}
+
+.icon-button:active {
+    background-color: var(--bg-layer-3);
+}
+
+.icon-button:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+.icon-button svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* Icon Button Sizes */
+.icon-button-sm {
+    width: 24px;
+    height: 24px;
+}
+
+.icon-button-sm svg {
+    width: 16px;
+    height: 16px;
+}
+
+.icon-button-lg {
+    width: 40px;
+    height: 40px;
+}
+
+.icon-button-lg svg {
+    width: 24px;
+    height: 24px;
+}
+
+/* Icon with Text */
+.icon-text {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+/* Animated Icons */
+.icon-spin {
+    animation: spin 1s linear infinite;
+}
+
+.icon-pulse {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.icon-bounce {
+    animation: bounce 1s ease-in-out infinite;
+}
+
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-25%); }
+}
+
+/* Icon Badge */
+.icon-badge {
+    position: relative;
+    display: inline-block;
+}
+
+.icon-badge-dot {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 8px;
+    height: 8px;
+    background-color: var(--color-danger);
+    border-radius: 50%;
+    border: 2px solid var(--bg-layer-0);
+}
+
+.icon-badge-count {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    background-color: var(--color-danger);
+    color: white;
+    font-size: 10px;
+    font-weight: var(--font-weight-bold);
+    line-height: 18px;
+    text-align: center;
+    border-radius: var(--radius-full);
+    border: 2px solid var(--bg-layer-0);
+}

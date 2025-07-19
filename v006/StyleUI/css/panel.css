@@ -1,0 +1,146 @@
+/* Panel Styles */
+.panel {
+    position: fixed;
+    background-color: var(--bg-layer-1);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    z-index: var(--z-overlay);
+}
+
+.panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--bg-layer-2);
+    user-select: none;
+}
+
+.panel-title {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.panel-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.panel-body {
+    flex: 1;
+    padding: var(--space-4);
+    overflow: auto;
+}
+
+.panel-footer {
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--border-color);
+    background-color: var(--bg-layer-2);
+}
+
+/* Panel Positions */
+.panel-top-left {
+    top: var(--space-4);
+    left: var(--space-4);
+}
+
+.panel-top-right {
+    top: var(--space-4);
+    right: var(--space-4);
+}
+
+.panel-bottom-left {
+    bottom: var(--space-4);
+    left: var(--space-4);
+}
+
+.panel-bottom-right {
+    bottom: var(--space-4);
+    right: var(--space-4);
+}
+
+/* Draggable Panel */
+.panel-draggable .panel-header {
+    cursor: move;
+}
+
+.panel-dragging {
+    opacity: 0.9;
+}
+
+/* Resizable Panel */
+.panel-resizable {
+    resize: both;
+    overflow: auto;
+}
+
+.panel-resize-handle {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 16px;
+    height: 16px;
+    cursor: nwse-resize;
+}
+
+/* Panel Sizes */
+.panel-sm {
+    width: 300px;
+    max-height: 400px;
+}
+
+.panel-md {
+    width: 400px;
+    max-height: 500px;
+}
+
+.panel-lg {
+    width: 600px;
+    max-height: 700px;
+}
+
+/* Collapsible Panel */
+.panel-collapsed .panel-body,
+.panel-collapsed .panel-footer {
+    display: none;
+}
+
+.panel-collapse-icon {
+    transition: transform var(--transition-fast);
+}
+
+.panel-collapsed .panel-collapse-icon {
+    transform: rotate(-90deg);
+}
+
+/* Panel Close Button */
+.panel-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: var(--space-1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-fast);
+}
+
+.panel-close:hover {
+    background-color: var(--bg-layer-3);
+    color: var(--text-primary);
+}
+
+.panel-close svg {
+    width: 16px;
+    height: 16px;
+}
