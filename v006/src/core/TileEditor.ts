@@ -550,7 +550,7 @@ export class TileEditor {
     event.preventDefault();
     
     if (event.touches.length === 1) {
-      // Single touch - for placing/erasing or panning
+      // Single touch - for drawing (placing/erasing)
       const touch = event.touches[0];
       this.touchStartData = {
         x: touch.clientX,
@@ -563,10 +563,32 @@ export class TileEditor {
       this.mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
       this.mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
       this.updateGridHighlight();
+      
+      // Start drawing immediately if in place or erase mode
+      if (this.state.highlightedCell && (this.state.mode === EditorMode.Place || this.state.mode === EditorMode.Erase)) {
+        if (this.state.mode === EditorMode.Place) {
+          this.placeVoxel(this.state.highlightedCell);
+        } else if (this.state.mode === EditorMode.Erase) {
+          this.removeVoxel(this.state.highlightedCell);
+        }
+      }
     } else if (event.touches.length === 2) {
-      // Two touches - for pinch zoom
+      // Two touches - for panning
       const touch1 = event.touches[0];
       const touch2 = event.touches[1];
+      // Store center point for panning
+      const centerX = (touch1.clientX + touch2.clientX) / 2;
+      const centerY = (touch1.clientY + touch2.clientY) / 2;
+      this.touchStartData = {
+        x: centerX,
+        y: centerY,
+        time: Date.now()
+      };
+      this.touchPanning = true;
+      this.startInteraction();
+      this.camera.startPan(centerX, centerY);
+      
+      // Also store distance for pinch zoom
       this.lastTouchDistance = Math.hypot(
         touch2.clientX - touch1.clientX,
         touch2.clientY - touch1.clientY
@@ -580,26 +602,38 @@ export class TileEditor {
   private onTouchMove(event: TouchEvent): void {
     event.preventDefault();
     
-    if (event.touches.length === 1 && this.touchStartData) {
-      // Single touch - pan or draw
+    if (event.touches.length === 1 && this.touchStartData && !this.touchPanning) {
+      // Single touch - continue drawing
       const touch = event.touches[0];
-      const deltaX = touch.clientX - this.touchStartData.x;
-      const deltaY = touch.clientY - this.touchStartData.y;
       
-      // Start panning if moved more than threshold
-      if (!this.touchPanning && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
-        this.touchPanning = true;
-        this.startInteraction();
-        this.camera.startPan(this.touchStartData.x, this.touchStartData.y);
-      }
+      // Update mouse position
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      this.mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
+      this.mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
+      this.updateGridHighlight();
       
-      if (this.touchPanning) {
-        this.camera.updatePan(touch.clientX, touch.clientY);
+      // Continue drawing if in place or erase mode
+      if (this.state.highlightedCell && (this.state.mode === EditorMode.Place || this.state.mode === EditorMode.Erase)) {
+        if (this.state.mode === EditorMode.Place) {
+          this.placeVoxel(this.state.highlightedCell);
+        } else if (this.state.mode === EditorMode.Erase) {
+          this.removeVoxel(this.state.highlightedCell);
+        }
       }
     } else if (event.touches.length === 2) {
-      // Two touches - pinch zoom
+      // Two touches - pan and pinch zoom
       const touch1 = event.touches[0];
       const touch2 = event.touches[1];
+      
+      // Calculate center point for panning
+      const centerX = (touch1.clientX + touch2.clientX) / 2;
+      const centerY = (touch1.clientY + touch2.clientY) / 2;
+      
+      if (this.touchPanning && this.touchStartData) {
+        this.camera.updatePan(centerX, centerY);
+      }
+      
+      // Handle pinch zoom
       const distance = Math.hypot(
         touch2.clientX - touch1.clientX,
         touch2.clientY - touch1.clientY
@@ -620,19 +654,6 @@ export class TileEditor {
    * Handle touch end
    */
   private onTouchEnd(event: TouchEvent): void {
-    if (this.touchStartData && !this.touchPanning && event.changedTouches.length === 1) {
-      // Check if it was a tap (short duration, minimal movement)
-      const timeDiff = Date.now() - this.touchStartData.time;
-      if (timeDiff < 300 && this.state.highlightedCell) {
-        // Treat as a tap - place or erase
-        if (this.state.mode === EditorMode.Place) {
-          this.placeVoxel(this.state.highlightedCell);
-        } else if (this.state.mode === EditorMode.Erase) {
-          this.removeVoxel(this.state.highlightedCell);
-        }
-      }
-    }
-    
     // Reset touch state
     this.touchStartData = null;
     this.touchPanning = false;
