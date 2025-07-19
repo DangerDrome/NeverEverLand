@@ -637,7 +637,7 @@ export class TileEditor {
     this.touchStartData = null;
     this.touchPanning = false;
     this.lastTouchDistance = 0;
-    this.stopInteraction();
+    this.endInteraction();
   }
 
   /**

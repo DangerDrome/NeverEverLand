@@ -32,43 +32,126 @@ export class TilePalette {
     const content = document.createElement('div');
     
     if (isMobile()) {
-      // Mobile: vertical layout
+      // Mobile: two rows layout
       content.style.display = 'flex';
       content.style.flexDirection = 'column';
       content.style.gap = 'var(--space-2)';
       content.style.padding = '0';
-      content.style.maxHeight = '60vh';
-      content.style.overflowY = 'auto';
     } else {
       // Desktop: horizontal layout
       content.style.display = 'flex';
       content.style.gap = 'var(--space-4)';
       content.style.alignItems = 'center';
       content.style.padding = '0';
+      content.style.flexWrap = 'nowrap';
     }
     
-    // Create tools section
-    const toolsSection = this.createToolsSection();
-    content.appendChild(toolsSection);
-    
-    // Add separator
-    const separator = document.createElement('div');
     if (isMobile()) {
-      separator.style.width = '100%';
-      separator.style.height = '1px';
+      // Mobile: Create horizontal layout with tools on left
+      const mobileLayout = document.createElement('div');
+      mobileLayout.style.display = 'flex';
+      mobileLayout.style.gap = 'var(--space-3)';
+      mobileLayout.style.height = '100%';
+      mobileLayout.style.width = '100%';
+      mobileLayout.style.padding = '0';
+      mobileLayout.style.margin = '0';
+      
+      // Left column: Tools (vertical)
+      const toolsColumn = document.createElement('div');
+      toolsColumn.style.display = 'flex';
+      toolsColumn.style.flexDirection = 'column';
+      toolsColumn.style.gap = 'var(--space-2)';
+      toolsColumn.style.alignItems = 'center';
+      toolsColumn.style.justifyContent = 'center';
+      toolsColumn.style.paddingRight = 'var(--space-2)';
+      toolsColumn.style.borderRight = '1px solid var(--border-color)';
+      
+      const toolsSection = this.createToolsSection();
+      toolsColumn.appendChild(toolsSection);
+      
+      // Add stack button to tools column on mobile
+      const layerSection = this.createLayerSection();
+      const stackButton = layerSection.querySelector('button');
+      if (stackButton) {
+        toolsColumn.appendChild(stackButton);
+      }
+      
+      mobileLayout.appendChild(toolsColumn);
+      
+      // Middle section: Voxels
+      const middleSection = document.createElement('div');
+      middleSection.style.display = 'flex';
+      middleSection.style.flex = '1';
+      middleSection.style.justifyContent = 'center';
+      middleSection.style.alignItems = 'center';
+      
+      const voxelsSection = this.createVoxelsSection();
+      middleSection.appendChild(voxelsSection);
+      mobileLayout.appendChild(middleSection);
+      
+      // Right column: Controls (vertical)
+      const controlsColumn = document.createElement('div');
+      controlsColumn.style.display = 'flex';
+      controlsColumn.style.flexDirection = 'column';
+      controlsColumn.style.gap = 'var(--space-2)';
+      controlsColumn.style.alignItems = 'center';
+      controlsColumn.style.justifyContent = 'center';
+      controlsColumn.style.borderLeft = '1px solid var(--border-color)';
+      controlsColumn.style.paddingRight = '0';
+      controlsColumn.style.paddingLeft = 'var(--space-2)';
+      controlsColumn.style.marginRight = '0';
+      controlsColumn.style.width = 'auto';
+      controlsColumn.style.flexShrink = '0';
+      
+      mobileLayout.appendChild(controlsColumn);
+      content.appendChild(mobileLayout);
+      
+      // Store reference for later use
+      content.dataset.mobileLayout = 'true';
+      (content as any).mobileControlsColumn = controlsColumn;
+      (content as any).mobileLayerSectionCreated = true;
     } else {
+      // Desktop: Single row with separators
+      // Create tools section
+      const toolsSection = this.createToolsSection();
+      content.appendChild(toolsSection);
+      
+      // Add separator
+      const separator = document.createElement('div');
       separator.style.width = '1px';
       separator.style.height = '40px';
+      separator.style.backgroundColor = 'var(--border-color)';
+      separator.style.flexShrink = '0';
+      content.appendChild(separator);
+      
+      // Create voxels section
+      const voxelsSection = this.createVoxelsSection();
+      content.appendChild(voxelsSection);
     }
-    separator.style.backgroundColor = 'var(--border-color)';
-    content.appendChild(separator);
     
-    // Create voxels section
-    const voxelsSection = this.createVoxelsSection();
-    content.appendChild(voxelsSection);
-    
-    // Only add extra sections on desktop
-    if (!isMobile()) {
+    // Add extra sections
+    if (isMobile() && (content as any).mobileControlsColumn) {
+      // Mobile: Add controls to the right column
+      const controlsColumn = (content as any).mobileControlsColumn;
+      
+      // Add each control button to the vertical column
+      // For mobile, we need to extract just the buttons from each section
+      // (Stack button is already in the left column)
+      
+      const skySection = this.createSkySection();
+      // Sky section has two buttons, get both
+      const skyButtons = skySection.querySelectorAll('button');
+      skyButtons.forEach(btn => controlsColumn.appendChild(btn));
+      
+      const testSection = this.createTestSection();
+      const testButton = testSection.querySelector('button');
+      if (testButton) controlsColumn.appendChild(testButton);
+      
+      const clearSection = this.createClearSection();
+      const clearButton = clearSection.querySelector('button');
+      if (clearButton) controlsColumn.appendChild(clearButton);
+    } else if (!isMobile()) {
+      // Desktop: Add sections with separators
       // Add another separator
       const separator2 = document.createElement('div');
       separator2.style.width = '1px';
@@ -119,9 +202,10 @@ export class TilePalette {
       collapsible: true,
       closable: false,
       draggable: true,
-      resizable: true,
+      resizable: !isMobile(), // Disable resizing on mobile
       startCollapsed: false,
       // Don't specify position - let CSS handle centering
+      onCollapse: isMobile() ? (collapsed: boolean) => this.handleMobileCollapse(collapsed) : undefined
     });
     
     if (this.element) {
@@ -138,14 +222,56 @@ export class TilePalette {
       this.element.style.position = 'fixed';
       
       if (isMobile()) {
-        // Mobile: vertical panel on the right
+        // Mobile: horizontal scrollable panel at bottom with slide animation
+        this.element.style.left = '10px';
         this.element.style.right = '10px';
-        this.element.style.top = '50%';
-        this.element.style.transform = 'translateY(-50%)';
-        this.element.style.bottom = 'auto';
-        this.element.style.left = 'auto';
-        this.element.style.width = '80px';
-        this.element.style.maxHeight = '70vh';
+        this.element.style.bottom = '10px';
+        this.element.style.top = 'auto';
+        this.element.style.transform = 'translateY(0)';
+        this.element.style.width = 'auto';
+        this.element.style.maxWidth = 'calc(100vw - 20px)';
+        // Make the panel appropriate height for new layout
+        this.element.style.minHeight = '180px';
+        // Add transition for smooth sliding
+        this.element.style.transition = 'transform 0.3s ease-in-out';
+        
+        // Also adjust the panel body height
+        const panelBody = this.element.querySelector('.panel-body');
+        if (panelBody) {
+          (panelBody as HTMLElement).style.minHeight = '140px';
+          (panelBody as HTMLElement).style.display = 'flex !important'; // Override collapsed state
+          (panelBody as HTMLElement).style.alignItems = 'stretch';
+          (panelBody as HTMLElement).style.padding = 'var(--space-2)';
+          (panelBody as HTMLElement).style.paddingRight = '0'; // Remove right padding on mobile
+        }
+        
+        // Add custom CSS to override panel-collapsed behavior on mobile
+        const style = document.createElement('style');
+        style.textContent = `
+          @media (max-width: 768px) {
+            .tile-palette.panel-collapsed .panel-body {
+              display: flex !important;
+              visibility: visible !important;
+              height: auto !important;
+              opacity: 1 !important;
+            }
+            .tile-palette .panel-body {
+              padding: var(--space-2) 0 var(--space-2) var(--space-2) !important;
+            }
+            .tile-palette .panel-body > div {
+              padding-right: 0 !important;
+              margin-right: 0 !important;
+            }
+            .tile-palette .panel-body > div > div:last-child {
+              padding-right: 0 !important;
+              margin-right: 0 !important;
+            }
+            .tile-palette button {
+              margin-right: 0 !important;
+            }
+          }
+        `;
+        document.head.appendChild(style);
       } else {
         // Desktop: horizontal panel at bottom center
         this.element.style.left = '50%';
@@ -189,16 +315,17 @@ export class TilePalette {
   
   private createToolsSection(): HTMLElement {
     const section = document.createElement('div');
+    section.style.display = 'flex';
+    section.style.gap = 'var(--space-2)';
+    section.style.alignItems = 'center';
+    section.style.flexShrink = '0';
     
+    // Mobile: vertical layout
     if (isMobile()) {
-      section.style.display = 'grid';
-      section.style.gridTemplateColumns = 'repeat(2, 1fr)';
-      section.style.gap = 'var(--space-1)';
-      section.style.padding = 'var(--space-2)';
-    } else {
-      section.style.display = 'flex';
-      section.style.gap = 'var(--space-2)';
-      
+      section.style.flexDirection = 'column';
+    }
+    
+    if (!isMobile()) {
       // Add label (desktop only)
       const label = document.createElement('div');
       label.style.fontSize = 'var(--font-size-xs)';
@@ -228,6 +355,9 @@ export class TilePalette {
       const buttonComponent = window.UI.button(buttonConfig);
       const button = buttonComponent.element;
       
+      // Ensure button doesn't shrink
+      button.style.flexShrink = '0';
+      
       this.toolButtons.set(tool.mode, button);
       section.appendChild(button);
       
@@ -247,21 +377,28 @@ export class TilePalette {
     const section = document.createElement('div');
     
     if (isMobile()) {
+      // Mobile: 2-row grid layout
       section.style.display = 'grid';
-      section.style.gridTemplateColumns = 'repeat(2, 1fr)';
-      section.style.gap = 'var(--space-1)';
-      section.style.padding = 'var(--space-2)';
+      section.style.gridTemplateRows = 'repeat(2, 1fr)';
+      section.style.gridAutoFlow = 'column';
+      section.style.gap = 'var(--space-2)';
+      section.style.justifyContent = 'center';
+      section.style.alignItems = 'center';
+      section.style.padding = '0 var(--space-2)';
     } else {
+      // Desktop: horizontal flex layout, no wrapping
       section.style.display = 'flex';
       section.style.gap = 'var(--space-2)';
-      section.style.flexWrap = 'wrap';
-      section.style.maxWidth = '600px';
+      section.style.alignItems = 'center';
+      section.style.flexWrap = 'nowrap'; // Prevent vertical stacking
+      section.style.flexShrink = '0';
       
       // Add label (desktop only)
       const label = document.createElement('div');
       label.style.fontSize = 'var(--font-size-xs)';
       label.style.color = 'var(--text-secondary)';
       label.style.marginRight = 'var(--space-2)';
+      label.style.flexShrink = '0';
       label.textContent = 'Voxels:';
       section.appendChild(label);
     }
@@ -305,6 +442,9 @@ export class TilePalette {
       // Add custom voxel styling via CSS custom properties
       button.style.setProperty('--voxel-color', color);
       button.style.setProperty('--voxel-transparent', props.transparent ? '1' : '0');
+      
+      // Ensure button doesn't shrink
+      button.style.flexShrink = '0';
       
       this.voxelButtons.set(type, button);
       section.appendChild(button);
@@ -614,6 +754,24 @@ export class TilePalette {
   public setVisible(visible: boolean): void {
     if (this.element) {
       this.element.style.display = visible ? 'block' : 'none';
+    }
+  }
+  
+  /**
+   * Handle mobile collapse/expand with slide animation
+   */
+  private handleMobileCollapse(collapsed: boolean): void {
+    if (!this.element) return;
+    
+    if (collapsed) {
+      // Slide down off canvas, keeping just the header visible
+      const panelHeight = this.element.offsetHeight;
+      const headerHeight = this.element.querySelector('.panel-header')?.clientHeight || 40;
+      const slideDistance = panelHeight - headerHeight - 10; // Keep header + 10px visible
+      this.element.style.transform = `translateY(${slideDistance}px)`;
+    } else {
+      // Slide back up to original position
+      this.element.style.transform = 'translateY(0)';
     }
   }
   
