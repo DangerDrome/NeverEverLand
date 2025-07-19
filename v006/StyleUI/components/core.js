@@ -59,7 +59,7 @@ StyleUI.utils = {
 StyleUI.events = {
     listeners: new Map(),
     
-    on: (element, event, handler) => {
+    on: (element, event, handler, options) => {
         if (!StyleUI.events.listeners.has(element)) {
             StyleUI.events.listeners.set(element, new Map());
         }
@@ -68,14 +68,14 @@ StyleUI.events = {
             elementListeners.set(event, new Set());
         }
         elementListeners.get(event).add(handler);
-        element.addEventListener(event, handler);
+        element.addEventListener(event, handler, options);
     },
     
-    off: (element, event, handler) => {
+    off: (element, event, handler, options) => {
         const elementListeners = StyleUI.events.listeners.get(element);
         if (elementListeners && elementListeners.has(event)) {
             elementListeners.get(event).delete(handler);
-            element.removeEventListener(event, handler);
+            element.removeEventListener(event, handler, options);
         }
     },
     

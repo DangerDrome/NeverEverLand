@@ -22,6 +22,7 @@ import { MinimapPanel } from '@ui/MinimapPanel';
 import { TilePalette } from '@ui/TilePalette';
 import { SunControlPanel } from '@ui/SunControlPanel';
 import { SHADOW_MAP_SIZE, MAX_PIXEL_RATIO } from '@core/constants';
+import { isMobile, isTouchDevice } from '../utils/mobile';
 
 /**
  * Main tile editor class
@@ -138,19 +139,24 @@ export class TileEditor {
     
     // Defer UI panel creation to ensure StyleUI is ready
     requestAnimationFrame(() => {
-      this.infoPanel = new InfoPanel(this.container, this);
-      this.minimapPanel = new MinimapPanel(this.container, this);
+      // Always create tile palette
       this.tilePalette = new TilePalette(this.container, this);
-      this.sunControlPanel = new SunControlPanel(this.container, this);
       
-      // Give minimap access to tile system
-      if (this.minimapPanel) {
-        this.minimapPanel.setTileSystem(this.tileSystem);
-      }
-      
-      // Sun control panel is always visible
-      if (this.sunControlPanel) {
-        this.sunControlPanel.setVisible(true);
+      // Only create desktop panels if not on mobile
+      if (!isMobile()) {
+        this.infoPanel = new InfoPanel(this.container, this);
+        this.minimapPanel = new MinimapPanel(this.container, this);
+        this.sunControlPanel = new SunControlPanel(this.container, this);
+        
+        // Give minimap access to tile system
+        if (this.minimapPanel) {
+          this.minimapPanel.setTileSystem(this.tileSystem);
+        }
+        
+        // Sun control panel is visible on desktop
+        if (this.sunControlPanel) {
+          this.sunControlPanel.setVisible(true);
+        }
       }
     });
   }
@@ -388,6 +394,13 @@ export class TileEditor {
     this.renderer.domElement.addEventListener('wheel', this.onWheel.bind(this));
     this.renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
     
+    // Touch events for mobile
+    if (isTouchDevice()) {
+      this.renderer.domElement.addEventListener('touchstart', this.onTouchStart.bind(this));
+      this.renderer.domElement.addEventListener('touchmove', this.onTouchMove.bind(this));
+      this.renderer.domElement.addEventListener('touchend', this.onTouchEnd.bind(this));
+    }
+    
     // Keyboard events
     if (this.config.enableShortcuts) {
       window.addEventListener('keydown', this.onKeyDown.bind(this));
@@ -523,6 +536,108 @@ export class TileEditor {
     }
     
     this.endInteraction();
+  }
+
+  // Touch event properties for mobile
+  private touchStartData: { x: number; y: number; time: number } | null = null;
+  private lastTouchDistance: number = 0;
+  private touchPanning: boolean = false;
+
+  /**
+   * Handle touch start
+   */
+  private onTouchStart(event: TouchEvent): void {
+    event.preventDefault();
+    
+    if (event.touches.length === 1) {
+      // Single touch - for placing/erasing or panning
+      const touch = event.touches[0];
+      this.touchStartData = {
+        x: touch.clientX,
+        y: touch.clientY,
+        time: Date.now()
+      };
+      
+      // Update mouse position for highlighting
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      this.mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
+      this.mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
+      this.updateGridHighlight();
+    } else if (event.touches.length === 2) {
+      // Two touches - for pinch zoom
+      const touch1 = event.touches[0];
+      const touch2 = event.touches[1];
+      this.lastTouchDistance = Math.hypot(
+        touch2.clientX - touch1.clientX,
+        touch2.clientY - touch1.clientY
+      );
+    }
+  }
+
+  /**
+   * Handle touch move
+   */
+  private onTouchMove(event: TouchEvent): void {
+    event.preventDefault();
+    
+    if (event.touches.length === 1 && this.touchStartData) {
+      // Single touch - pan or draw
+      const touch = event.touches[0];
+      const deltaX = touch.clientX - this.touchStartData.x;
+      const deltaY = touch.clientY - this.touchStartData.y;
+      
+      // Start panning if moved more than threshold
+      if (!this.touchPanning && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
+        this.touchPanning = true;
+        this.startInteraction();
+        this.camera.startPan(this.touchStartData.x, this.touchStartData.y);
+      }
+      
+      if (this.touchPanning) {
+        this.camera.updatePan(touch.clientX, touch.clientY);
+      }
+    } else if (event.touches.length === 2) {
+      // Two touches - pinch zoom
+      const touch1 = event.touches[0];
+      const touch2 = event.touches[1];
+      const distance = Math.hypot(
+        touch2.clientX - touch1.clientX,
+        touch2.clientY - touch1.clientY
+      );
+      
+      if (this.lastTouchDistance > 0) {
+        const delta = (this.lastTouchDistance - distance) * 3; // Scale factor for touch zoom
+        this.startInteraction();
+        this.camera.zoom(delta);
+        this.state.cameraZoom = this.camera.getZoomLevel();
+      }
+      
+      this.lastTouchDistance = distance;
+    }
+  }
+
+  /**
+   * Handle touch end
+   */
+  private onTouchEnd(event: TouchEvent): void {
+    if (this.touchStartData && !this.touchPanning && event.changedTouches.length === 1) {
+      // Check if it was a tap (short duration, minimal movement)
+      const timeDiff = Date.now() - this.touchStartData.time;
+      if (timeDiff < 300 && this.state.highlightedCell) {
+        // Treat as a tap - place or erase
+        if (this.state.mode === EditorMode.Place) {
+          this.placeVoxel(this.state.highlightedCell);
+        } else if (this.state.mode === EditorMode.Erase) {
+          this.removeVoxel(this.state.highlightedCell);
+        }
+      }
+    }
+    
+    // Reset touch state
+    this.touchStartData = null;
+    this.touchPanning = false;
+    this.lastTouchDistance = 0;
+    this.stopInteraction();
   }
 
   /**

@@ -1,0 +1,143 @@
+/* Mobile-specific styles */
+
+/* Mobile viewport */
+@media (max-width: 768px) {
+    /* Smaller buttons for mobile */
+    .btn {
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--font-size-sm);
+    }
+    
+    .tool-button {
+        width: 32px !important;
+        height: 32px !important;
+        min-width: 32px !important;
+    }
+    
+    .voxel-button {
+        width: 32px !important;
+        height: 32px !important;
+        min-width: 32px !important;
+    }
+    
+    .tool-button i[data-lucide],
+    .tool-button svg,
+    .voxel-button i[data-lucide],
+    .voxel-button svg {
+        width: 20px !important;
+        height: 20px !important;
+    }
+    
+    /* Adjust panel styles for mobile */
+    .panel {
+        border-radius: var(--radius-lg);
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+    }
+    
+    .panel-header {
+        padding: var(--space-3) var(--space-4);
+        min-height: 40px;
+        cursor: move;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+    }
+    
+    .panel-title {
+        font-size: var(--font-size-xs);
+    }
+    
+    .panel-body {
+        padding: var(--space-3);
+    }
+    
+    /* Tile palette specific mobile styles */
+    .tile-palette {
+        background-color: rgba(26, 26, 26, 0.95);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+    }
+    
+    .tile-palette .panel-body {
+        padding: 0 !important;
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Hide coordinate display on mobile */
+    #coordinates {
+        display: none;
+    }
+    
+    /* Ensure panels are above the canvas */
+    .panel {
+        z-index: 1000 !important;
+    }
+    
+    /* Prevent text selection during touch */
+    * {
+        -webkit-touch-callout: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+    
+    /* Allow scrolling in panel bodies */
+    .panel-body {
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Optimize for touch targets */
+    button,
+    .btn,
+    .icon-button {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    
+    /* Smaller close button */
+    .panel-close {
+        width: 32px;
+        height: 32px;
+    }
+    
+    /* Hide tooltips on mobile */
+    .tooltip {
+        display: none !important;
+    }
+}
+
+/* High resolution mobile screens */
+@media (max-width: 768px) and (-webkit-min-device-pixel-ratio: 2) {
+    .panel {
+        border: 0.5px solid rgba(255, 255, 255, 0.1);
+    }
+}
+
+/* Landscape mobile */
+@media (max-width: 768px) and (orientation: landscape) {
+    .tile-palette {
+        max-height: 90vh !important;
+        top: 10px !important;
+        transform: none !important;
+    }
+}
+
+/* Touch device specific */
+@media (hover: none) and (pointer: coarse) {
+    /* Larger touch targets */
+    .btn,
+    .icon-button {
+        transition: none;
+    }
+    
+    /* Remove hover effects */
+    .btn:hover,
+    .icon-button:hover {
+        transform: none;
+    }
+    
+    /* Active state for touch feedback */
+    .btn:active,
+    .icon-button:active {
+        transform: scale(0.95);
+    }
+}

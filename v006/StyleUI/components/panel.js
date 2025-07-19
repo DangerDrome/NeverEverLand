@@ -99,6 +99,7 @@ StyleUI.Panel = class {
         if (this.options.draggable) {
             const header = this.element.querySelector('.panel-header');
             
+            // Mouse events
             StyleUI.events.on(header, 'mousedown', (e) => {
                 if (e.target.closest('.panel-controls')) return;
                 this.startDrag(e);
@@ -111,6 +112,24 @@ StyleUI.Panel = class {
             StyleUI.events.on(document, 'mouseup', () => {
                 this.endDrag();
             });
+            
+            // Touch events with passive: false to allow preventDefault
+            StyleUI.events.on(header, 'touchstart', (e) => {
+                if (e.target.closest('.panel-controls')) return;
+                this.startDrag(e);
+                e.preventDefault(); // Prevent scrolling
+            }, { passive: false });
+            
+            StyleUI.events.on(document, 'touchmove', (e) => {
+                if (this.isDragging) {
+                    this.drag(e);
+                    e.preventDefault(); // Prevent scrolling while dragging
+                }
+            }, { passive: false });
+            
+            StyleUI.events.on(document, 'touchend', () => {
+                this.endDrag();
+            });
         }
     }
     
@@ -119,19 +138,31 @@ StyleUI.Panel = class {
         this.element.classList.add('panel-dragging');
         
         const rect = this.element.getBoundingClientRect();
+        
+        // Handle both mouse and touch events
+        const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+        const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+        
         this.dragOffset = {
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top
+            x: clientX - rect.left,
+            y: clientY - rect.top
         };
         
-        e.preventDefault();
+        // Only preventDefault if it exists (mouse events)
+        if (e.preventDefault) {
+            e.preventDefault();
+        }
     }
     
     drag(e) {
         if (!this.isDragging) return;
         
-        const x = e.clientX - this.dragOffset.x;
-        const y = e.clientY - this.dragOffset.y;
+        // Handle both mouse and touch events
+        const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+        const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+        
+        const x = clientX - this.dragOffset.x;
+        const y = clientY - this.dragOffset.y;
         
         this.element.style.position = 'fixed';
         this.element.style.left = `${x}px`;
@@ -244,6 +275,9 @@ StyleUI.Panel = class {
             StyleUI.events.off(header, 'mousedown');
             StyleUI.events.off(document, 'mousemove');
             StyleUI.events.off(document, 'mouseup');
+            StyleUI.events.off(header, 'touchstart', null, { passive: false });
+            StyleUI.events.off(document, 'touchmove', null, { passive: false });
+            StyleUI.events.off(document, 'touchend');
         }
         
         this.element.remove();

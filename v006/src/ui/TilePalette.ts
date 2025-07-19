@@ -1,6 +1,7 @@
 import { TileEditor } from '@core/TileEditor';
 import { VoxelType, VOXEL_PROPERTIES, VoxelTypeColors } from '@core/VoxelTypes';
 import { EditorMode } from '../types';
+import { isMobile } from '../utils/mobile';
 
 /**
  * Tile palette panel for voxel/tile creation and tools
@@ -29,10 +30,22 @@ export class TilePalette {
   private init(): void {
     // Create main palette container
     const content = document.createElement('div');
-    content.style.display = 'flex';
-    content.style.gap = 'var(--space-4)';
-    content.style.alignItems = 'center';
-    content.style.padding = '0';
+    
+    if (isMobile()) {
+      // Mobile: vertical layout
+      content.style.display = 'flex';
+      content.style.flexDirection = 'column';
+      content.style.gap = 'var(--space-2)';
+      content.style.padding = '0';
+      content.style.maxHeight = '60vh';
+      content.style.overflowY = 'auto';
+    } else {
+      // Desktop: horizontal layout
+      content.style.display = 'flex';
+      content.style.gap = 'var(--space-4)';
+      content.style.alignItems = 'center';
+      content.style.padding = '0';
+    }
     
     // Create tools section
     const toolsSection = this.createToolsSection();
@@ -40,8 +53,13 @@ export class TilePalette {
     
     // Add separator
     const separator = document.createElement('div');
-    separator.style.width = '1px';
-    separator.style.height = '40px';
+    if (isMobile()) {
+      separator.style.width = '100%';
+      separator.style.height = '1px';
+    } else {
+      separator.style.width = '1px';
+      separator.style.height = '40px';
+    }
     separator.style.backgroundColor = 'var(--border-color)';
     content.appendChild(separator);
     
@@ -49,49 +67,52 @@ export class TilePalette {
     const voxelsSection = this.createVoxelsSection();
     content.appendChild(voxelsSection);
     
-    // Add another separator
-    const separator2 = document.createElement('div');
-    separator2.style.width = '1px';
-    separator2.style.height = '40px';
-    separator2.style.backgroundColor = 'var(--border-color)';
-    content.appendChild(separator2);
-    
-    // Create layer controls section
-    const layerSection = this.createLayerSection();
-    content.appendChild(layerSection);
-    
-    // Add another separator
-    const separator3 = document.createElement('div');
-    separator3.style.width = '1px';
-    separator3.style.height = '40px';
-    separator3.style.backgroundColor = 'var(--border-color)';
-    content.appendChild(separator3);
-    
-    // Create sky controls section
-    const skySection = this.createSkySection();
-    content.appendChild(skySection);
-    
-    // Add another separator
-    const separator4 = document.createElement('div');
-    separator4.style.width = '1px';
-    separator4.style.height = '40px';
-    separator4.style.backgroundColor = 'var(--border-color)';
-    content.appendChild(separator4);
-    
-    // Create test section
-    const testSection = this.createTestSection();
-    content.appendChild(testSection);
-    
-    // Add another separator
-    const separator5 = document.createElement('div');
-    separator5.style.width = '1px';
-    separator5.style.height = '40px';
-    separator5.style.backgroundColor = 'var(--border-color)';
-    content.appendChild(separator5);
-    
-    // Create clear section
-    const clearSection = this.createClearSection();
-    content.appendChild(clearSection);
+    // Only add extra sections on desktop
+    if (!isMobile()) {
+      // Add another separator
+      const separator2 = document.createElement('div');
+      separator2.style.width = '1px';
+      separator2.style.height = '40px';
+      separator2.style.backgroundColor = 'var(--border-color)';
+      content.appendChild(separator2);
+      
+      // Create layer controls section
+      const layerSection = this.createLayerSection();
+      content.appendChild(layerSection);
+      
+      // Add another separator
+      const separator3 = document.createElement('div');
+      separator3.style.width = '1px';
+      separator3.style.height = '40px';
+      separator3.style.backgroundColor = 'var(--border-color)';
+      content.appendChild(separator3);
+      
+      // Create sky controls section
+      const skySection = this.createSkySection();
+      content.appendChild(skySection);
+      
+      // Add another separator
+      const separator4 = document.createElement('div');
+      separator4.style.width = '1px';
+      separator4.style.height = '40px';
+      separator4.style.backgroundColor = 'var(--border-color)';
+      content.appendChild(separator4);
+      
+      // Create test section
+      const testSection = this.createTestSection();
+      content.appendChild(testSection);
+      
+      // Add another separator
+      const separator5 = document.createElement('div');
+      separator5.style.width = '1px';
+      separator5.style.height = '40px';
+      separator5.style.backgroundColor = 'var(--border-color)';
+      content.appendChild(separator5);
+      
+      // Create clear section
+      const clearSection = this.createClearSection();
+      content.appendChild(clearSection);
+    }
     
     // Create the panel
     this.element = window.UI.panel('Tile Palette', content, {
@@ -113,13 +134,26 @@ export class TilePalette {
         titleElement.innerHTML = iconHTML + titleElement.textContent;
       }
       
-      // Override any default positioning to ensure centering works
+      // Override positioning based on device
       this.element.style.position = 'fixed';
-      this.element.style.left = '50%';
-      this.element.style.transform = 'translateX(-50%)';
-      this.element.style.bottom = '80px';
-      this.element.style.top = 'auto';
-      this.element.style.right = 'auto';
+      
+      if (isMobile()) {
+        // Mobile: vertical panel on the right
+        this.element.style.right = '10px';
+        this.element.style.top = '50%';
+        this.element.style.transform = 'translateY(-50%)';
+        this.element.style.bottom = 'auto';
+        this.element.style.left = 'auto';
+        this.element.style.width = '80px';
+        this.element.style.maxHeight = '70vh';
+      } else {
+        // Desktop: horizontal panel at bottom center
+        this.element.style.left = '50%';
+        this.element.style.transform = 'translateX(-50%)';
+        this.element.style.bottom = '80px';
+        this.element.style.top = 'auto';
+        this.element.style.right = 'auto';
+      }
       
       // Panel body already has proper padding from CSS
       
@@ -155,16 +189,24 @@ export class TilePalette {
   
   private createToolsSection(): HTMLElement {
     const section = document.createElement('div');
-    section.style.display = 'flex';
-    section.style.gap = 'var(--space-2)';
     
-    // Add label
-    const label = document.createElement('div');
-    label.style.fontSize = 'var(--font-size-xs)';
-    label.style.color = 'var(--text-secondary)';
-    label.style.marginRight = 'var(--space-2)';
-    label.textContent = 'Tools:';
-    section.appendChild(label);
+    if (isMobile()) {
+      section.style.display = 'grid';
+      section.style.gridTemplateColumns = 'repeat(2, 1fr)';
+      section.style.gap = 'var(--space-1)';
+      section.style.padding = 'var(--space-2)';
+    } else {
+      section.style.display = 'flex';
+      section.style.gap = 'var(--space-2)';
+      
+      // Add label (desktop only)
+      const label = document.createElement('div');
+      label.style.fontSize = 'var(--font-size-xs)';
+      label.style.color = 'var(--text-secondary)';
+      label.style.marginRight = 'var(--space-2)';
+      label.textContent = 'Tools:';
+      section.appendChild(label);
+    }
     
     // Tool definitions
     const tools: Array<{mode: EditorMode, icon: string, tooltip: string}> = [
@@ -203,18 +245,26 @@ export class TilePalette {
   
   private createVoxelsSection(): HTMLElement {
     const section = document.createElement('div');
-    section.style.display = 'flex';
-    section.style.gap = 'var(--space-2)';
-    section.style.flexWrap = 'wrap';
-    section.style.maxWidth = '600px';
     
-    // Add label
-    const label = document.createElement('div');
-    label.style.fontSize = 'var(--font-size-xs)';
-    label.style.color = 'var(--text-secondary)';
-    label.style.marginRight = 'var(--space-2)';
-    label.textContent = 'Voxels:';
-    section.appendChild(label);
+    if (isMobile()) {
+      section.style.display = 'grid';
+      section.style.gridTemplateColumns = 'repeat(2, 1fr)';
+      section.style.gap = 'var(--space-1)';
+      section.style.padding = 'var(--space-2)';
+    } else {
+      section.style.display = 'flex';
+      section.style.gap = 'var(--space-2)';
+      section.style.flexWrap = 'wrap';
+      section.style.maxWidth = '600px';
+      
+      // Add label (desktop only)
+      const label = document.createElement('div');
+      label.style.fontSize = 'var(--font-size-xs)';
+      label.style.color = 'var(--text-secondary)';
+      label.style.marginRight = 'var(--space-2)';
+      label.textContent = 'Voxels:';
+      section.appendChild(label);
+    }
     
     // Voxel types to show (skip Air) with icons
     const voxelTypes = [

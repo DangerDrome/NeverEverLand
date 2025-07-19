@@ -31,6 +31,7 @@ import '../StyleUI/css/toast.css';
 import '../StyleUI/css/icons.css';
 import '../StyleUI/css/animations.css';
 import '../StyleUI/css/ultrathin.css';
+import '../StyleUI/css/mobile.css';
 
 // Wait for StyleUI to be ready
 declare global {

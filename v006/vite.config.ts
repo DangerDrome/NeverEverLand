@@ -13,6 +13,7 @@ export default defineConfig({
       '@ui': resolve(__dirname, './src/ui'),
       '@types': resolve(__dirname, './src/types'),
       '@config': resolve(__dirname, './src/config'),
+      '@utils': resolve(__dirname, './src/utils'),
     },
   },
   build: {
