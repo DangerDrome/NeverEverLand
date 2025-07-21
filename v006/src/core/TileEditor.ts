@@ -23,6 +23,10 @@ import { TilePalette } from '@ui/TilePalette';
 import { SunControlPanel } from '@ui/SunControlPanel';
 import { SHADOW_MAP_SIZE, MAX_PIXEL_RATIO } from '@core/constants';
 import { isMobile, isTouchDevice } from '../utils/mobile';
+import { TiltShiftPass } from '@core/TiltShiftPass';
+import { GammaPass } from '@core/GammaPass';
+import { BloomPass } from '@core/BloomPass';
+import { EffectsPanel } from '@ui/EffectsPanel';
 
 /**
  * Main tile editor class
@@ -38,7 +42,13 @@ export class TileEditor {
   // Post-processing
   private composer!: EffectComposer;
   private ssaoPass!: SSAOPass;
+  private tiltShiftPass!: TiltShiftPass;
+  private gammaPass!: GammaPass;
+  private bloomPass!: BloomPass;
   private aoEnabled: boolean = false; // Will be set from config
+  private tiltShiftEnabled: boolean = false;
+  private gammaEnabled: boolean = false;
+  private bloomEnabled: boolean = false;
   
   // Tile system
   private tileSystem!: SimpleTileSystem;
@@ -71,6 +81,7 @@ export class TileEditor {
   
   // Placement mode
   private stackMode: boolean = true;
+  private tileSize: number = 1.0;
   
   // Sky system
   private skyEnabled: boolean = false;
@@ -86,6 +97,7 @@ export class TileEditor {
   private minimapPanel: MinimapPanel | null = null;
   private tilePalette: TilePalette | null = null;
   private sunControlPanel: SunControlPanel | null = null;
+  private effectsPanel: EffectsPanel | null = null;
   
   // Preview
   private previewMesh: THREE.Mesh | null = null;
@@ -147,6 +159,7 @@ export class TileEditor {
         this.infoPanel = new InfoPanel(this.container, this);
         this.minimapPanel = new MinimapPanel(this.container, this);
         this.sunControlPanel = new SunControlPanel(this.container, this);
+        this.effectsPanel = new EffectsPanel(this.container, this);
         
         // Give minimap access to tile system
         if (this.minimapPanel) {
@@ -258,8 +271,8 @@ export class TileEditor {
       emissiveIntensity: 0.3,
     });
     
-    // Create preview mesh (same geometry as tiles)
-    const geometry = new THREE.BoxGeometry(1, 0.1, 1);
+    // Create preview mesh (uses current tile size)
+    const geometry = new THREE.BoxGeometry(this.tileSize, 0.1, this.tileSize);
     this.previewMesh = new THREE.Mesh(geometry, this.previewMaterial);
     this.previewMesh.visible = false;
     this.scene.add(this.previewMesh);
@@ -278,16 +291,16 @@ export class TileEditor {
     this.directionalLight.position.set(5, 10, 5);
     this.directionalLight.castShadow = true;
     
-    // Primary shadow properties
+    // Primary shadow properties - cover full grid area
     const cfg = globalConfig.getConfig();
     this.directionalLight.shadow.mapSize.width = cfg.shadowMapSize;
     this.directionalLight.shadow.mapSize.height = cfg.shadowMapSize;
     this.directionalLight.shadow.camera.near = 1;
-    this.directionalLight.shadow.camera.far = 30;
-    this.directionalLight.shadow.camera.left = -15;
-    this.directionalLight.shadow.camera.right = 15;
-    this.directionalLight.shadow.camera.top = 15;
-    this.directionalLight.shadow.camera.bottom = -15;
+    this.directionalLight.shadow.camera.far = 100;
+    this.directionalLight.shadow.camera.left = -60;
+    this.directionalLight.shadow.camera.right = 60;
+    this.directionalLight.shadow.camera.top = 60;
+    this.directionalLight.shadow.camera.bottom = -60;
     this.directionalLight.shadow.bias = -0.0005;
     
     this.scene.add(this.directionalLight);
@@ -298,15 +311,15 @@ export class TileEditor {
       this.secondaryLight.position.set(-3, 8, -3); // Opposite angle
       this.secondaryLight.castShadow = true;
     
-    // Secondary shadow properties (smaller, softer)
+    // Secondary shadow properties (smaller for performance but still cover grid)
     this.secondaryLight.shadow.mapSize.width = 512; // Smaller for performance
     this.secondaryLight.shadow.mapSize.height = 512;
     this.secondaryLight.shadow.camera.near = 1;
-    this.secondaryLight.shadow.camera.far = 25;
-    this.secondaryLight.shadow.camera.left = -12;
-    this.secondaryLight.shadow.camera.right = 12;
-    this.secondaryLight.shadow.camera.top = 12;
-    this.secondaryLight.shadow.camera.bottom = -12;
+    this.secondaryLight.shadow.camera.far = 80;
+    this.secondaryLight.shadow.camera.left = -50;
+    this.secondaryLight.shadow.camera.right = 50;
+    this.secondaryLight.shadow.camera.top = 50;
+    this.secondaryLight.shadow.camera.bottom = -50;
     this.secondaryLight.shadow.bias = -0.001;
       
       this.scene.add(this.secondaryLight);
@@ -349,6 +362,9 @@ export class TileEditor {
   private initPostProcessing(): void {
     const cfg = globalConfig.getConfig();
     this.aoEnabled = cfg.ambientOcclusionEnabled;
+    this.tiltShiftEnabled = false; // Start disabled
+    this.gammaEnabled = false;
+    this.bloomEnabled = false;
     
     if (!cfg.postProcessingEnabled) {
       return; // Skip post-processing setup entirely
@@ -363,15 +379,32 @@ export class TileEditor {
       this.composer.addPass(renderPass);
       
       // Add SSAO pass with optimized settings
-      this.ssaoPass = new SSAOPass(this.scene, this.camera.getCamera());
+      if (this.aoEnabled) {
+        this.ssaoPass = new SSAOPass(this.scene, this.camera.getCamera());
+        this.ssaoPass.kernelRadius = 8; // Smaller radius for performance
+        this.ssaoPass.minDistance = 0.01;
+        this.ssaoPass.maxDistance = 0.1; // Short range for better performance
+        this.ssaoPass.output = SSAOPass.OUTPUT.Default;
+        this.composer.addPass(this.ssaoPass);
+      }
       
-      // Ultrathink AO settings - minimal but effective
-      this.ssaoPass.kernelRadius = 8; // Smaller radius for performance
-      this.ssaoPass.minDistance = 0.01;
-      this.ssaoPass.maxDistance = 0.1; // Short range for better performance
-      this.ssaoPass.output = SSAOPass.OUTPUT.Default;
-      
-      this.composer.addPass(this.ssaoPass);
+      // Add tilt-shift pass
+      this.tiltShiftPass = new TiltShiftPass(
+        this.container.clientWidth,
+        this.container.clientHeight
+      );
+      this.tiltShiftPass.enabled = this.tiltShiftEnabled;
+      this.composer.addPass(this.tiltShiftPass);
+
+      // Add Bloom pass (before gamma for better results)
+      this.bloomPass = new BloomPass(this.container.clientWidth, this.container.clientHeight);
+      this.bloomPass.enabled = this.bloomEnabled;
+      this.composer.addPass(this.bloomPass);
+
+      // Add Gamma pass (should be last to adjust final output)
+      this.gammaPass = new GammaPass();
+      this.gammaPass.enabled = this.gammaEnabled;
+      this.composer.addPass(this.gammaPass);
       
       // Set composer size
       this.composer.setSize(this.container.clientWidth, this.container.clientHeight);
@@ -380,6 +413,9 @@ export class TileEditor {
     } catch (error) {
       console.warn('Post-processing failed to initialize, falling back to direct rendering:', error);
       this.aoEnabled = false; // Disable AO if initialization failed
+      this.tiltShiftEnabled = false;
+      this.gammaEnabled = false;
+      this.bloomEnabled = false;
     }
   }
 
@@ -707,6 +743,18 @@ export class TileEditor {
       case 'O':
         this.toggleAmbientOcclusion();
         break;
+      case 't':
+      case 'T':
+        this.toggleTiltShift();
+        break;
+      case 'p':
+      case 'P':
+        this.toggleGamma();
+        break;
+      case 'b':
+      case 'B':
+        this.toggleBloom();
+        break;
     }
   }
 
@@ -722,6 +770,12 @@ export class TileEditor {
     if (this.composer) {
       this.composer.setSize(width, height);
     }
+    if (this.tiltShiftPass) {
+      this.tiltShiftPass.setSize(width, height);
+    }
+    if (this.bloomPass) {
+      this.bloomPass.setSize(width, height);
+    }
   }
 
   /**
@@ -730,20 +784,22 @@ export class TileEditor {
   private updateGridHighlight(): void {
     const worldPos = this.getMouseWorldPosition();
     if (worldPos) {
-      const gridCoord = CoordinateUtils.worldToGrid(worldPos);
+      // Use tile size as grid cell size for snapping
+      const gridCoord = CoordinateUtils.worldToGrid(worldPos, this.tileSize);
       
       // Update highlighted cell
       if (!this.state.highlightedCell || !CoordinateUtils.coordsEqual(this.state.highlightedCell, gridCoord)) {
         this.state.highlightedCell = gridCoord;
-        this.grid.highlightCell(gridCoord);
+        this.grid.highlightCell(gridCoord, this.tileSize);
         
         // Update preview position
         if (this.previewMesh && this.state.mode === EditorMode.Place) {
-          const worldHeight = this.tileSystem.getWorldHeight(gridCoord);
+          const baseWorldHeight = this.tileSystem.getBaseWorldHeight(gridCoord, this.tileSize);
+          // Position preview at the sub-grid location
           this.previewMesh.position.set(
-            gridCoord.x + 0.5,
-            worldHeight + 0.05,
-            gridCoord.z + 0.5
+            gridCoord.x * this.tileSize + this.tileSize * 0.5,
+            baseWorldHeight + 0.05,
+            gridCoord.z * this.tileSize + this.tileSize * 0.5
           );
           this.previewMesh.visible = true;
           
@@ -763,8 +819,9 @@ export class TileEditor {
         if (this.coordinateDisplay && this.config.showCoordinates) {
           const mode = this.state.mode === EditorMode.Place ? `Place ${VoxelType[this.selectedVoxelType]}` :
                       this.state.mode === EditorMode.Erase ? 'Erase' : 'Select';
-          const height = this.tileSystem.getWorldHeight(gridCoord);
-          this.coordinateDisplay.textContent = `Grid: (${gridCoord.x}, ${gridCoord.z}) | Height: ${height.toFixed(1)}m | Mode: ${mode}`;
+          const baseHeight = this.tileSystem.getBaseWorldHeight(gridCoord, this.tileSize);
+          const subGridPos = `(${(gridCoord.x * this.tileSize).toFixed(2)}, ${(gridCoord.z * this.tileSize).toFixed(2)})`;
+          this.coordinateDisplay.textContent = `Sub-Grid: ${subGridPos} | Height: ${baseHeight.toFixed(1)}m | Mode: ${mode}`;
         }
       }
     } else {
@@ -979,6 +1036,36 @@ export class TileEditor {
   }
   
   /**
+   * Set tile size (called by TilePalette)
+   */
+  public setTileSize(size: number): void {
+    this.tileSize = size;
+    this.tileSystem.setTileSize(size);
+    this.updatePreviewGeometry();
+    console.log('Tile size:', size.toFixed(1) + 'x' + size.toFixed(1));
+  }
+  
+  /**
+   * Update preview mesh geometry to match current tile size
+   */
+  private updatePreviewGeometry(): void {
+    if (this.previewMesh) {
+      // Dispose old geometry
+      this.previewMesh.geometry.dispose();
+      
+      // Create new geometry with current tile size
+      this.previewMesh.geometry = new THREE.BoxGeometry(this.tileSize, 0.1, this.tileSize);
+    }
+  }
+  
+  /**
+   * Get current tile size
+   */
+  public getTileSize(): number {
+    return this.tileSize;
+  }
+  
+  /**
    * Start interaction (panning/zooming) - disable expensive operations
    */
   private startInteraction(): void {
@@ -1028,6 +1115,79 @@ export class TileEditor {
    */
   public setAmbientOcclusion(enabled: boolean): void {
     this.aoEnabled = enabled;
+  }
+  
+  /**
+   * Toggle tilt-shift effect
+   */
+  public toggleTiltShift(enabled?: boolean): void {
+    this.tiltShiftEnabled = enabled !== undefined ? enabled : !this.tiltShiftEnabled;
+    if (this.tiltShiftPass) {
+      this.tiltShiftPass.enabled = this.tiltShiftEnabled;
+    }
+    console.log('Tilt-shift:', this.tiltShiftEnabled ? 'ON' : 'OFF');
+  }
+
+  /**
+   * Set tilt-shift focus position
+   */
+  public setTiltShiftFocus(position: number): void {
+    if (this.tiltShiftPass) {
+      this.tiltShiftPass.focusPosition = position;
+      console.log('Tilt-shift focus position:', position);
+    }
+  }
+
+  /**
+   * Set tilt-shift blur strength
+   */
+  public setTiltShiftBlur(strength: number): void {
+    if (this.tiltShiftPass) {
+      this.tiltShiftPass.blurStrength = strength;
+      console.log('Tilt-shift blur strength:', strength);
+    }
+  }
+
+  /**
+   * Toggle Gamma effect
+   */
+  public toggleGamma(enabled?: boolean): void {
+    this.gammaEnabled = enabled !== undefined ? enabled : !this.gammaEnabled;
+    if (this.gammaPass) {
+      this.gammaPass.enabled = this.gammaEnabled;
+    }
+    console.log('Gamma:', this.gammaEnabled ? 'ON' : 'OFF');
+  }
+
+  /**
+   * Set Gamma exposure
+   */
+  public setGammaExposure(exposure: number): void {
+    if (this.gammaPass) {
+      this.gammaPass.gamma = exposure;
+      console.log('Gamma exposure:', exposure);
+    }
+  }
+
+  /**
+   * Toggle Bloom effect
+   */
+  public toggleBloom(enabled?: boolean): void {
+    this.bloomEnabled = enabled !== undefined ? enabled : !this.bloomEnabled;
+    if (this.bloomPass) {
+      this.bloomPass.enabled = this.bloomEnabled;
+    }
+    console.log('Bloom:', this.bloomEnabled ? 'ON' : 'OFF');
+  }
+
+  /**
+   * Set Bloom intensity
+   */
+  public setBloomIntensity(intensity: number): void {
+    if (this.bloomPass) {
+      this.bloomPass.strength = intensity;
+      console.log('Bloom strength:', intensity);
+    }
   }
   
   /**
@@ -1152,12 +1312,12 @@ export class TileEditor {
           );
         }
         
-        // Update primary shadow camera
-        this.directionalLight.shadow.camera.far = 40;
-        this.directionalLight.shadow.camera.left = -20;
-        this.directionalLight.shadow.camera.right = 20;
-        this.directionalLight.shadow.camera.top = 20;
-        this.directionalLight.shadow.camera.bottom = -20;
+        // Update primary shadow camera - maintain full grid coverage
+        this.directionalLight.shadow.camera.far = 100;
+        this.directionalLight.shadow.camera.left = -60;
+        this.directionalLight.shadow.camera.right = 60;
+        this.directionalLight.shadow.camera.top = 60;
+        this.directionalLight.shadow.camera.bottom = -60;
         this.directionalLight.shadow.camera.updateProjectionMatrix();
         
         // Update secondary light to maintain relative angle to primary sun
@@ -1186,12 +1346,12 @@ export class TileEditor {
           // High sun = weaker fill light
           this.secondaryLight.intensity = 0.3 * (1 - elevation * 0.5); // 0.3 to 0.15
           
-          // Update secondary shadow camera
-          this.secondaryLight.shadow.camera.far = 30;
-          this.secondaryLight.shadow.camera.left = -15;
-          this.secondaryLight.shadow.camera.right = 15;
-          this.secondaryLight.shadow.camera.top = 15;
-          this.secondaryLight.shadow.camera.bottom = -15;
+          // Update secondary shadow camera - maintain grid coverage
+          this.secondaryLight.shadow.camera.far = 80;
+          this.secondaryLight.shadow.camera.left = -50;
+          this.secondaryLight.shadow.camera.right = 50;
+          this.secondaryLight.shadow.camera.top = 50;
+          this.secondaryLight.shadow.camera.bottom = -50;
           this.secondaryLight.shadow.camera.updateProjectionMatrix();
         }
         
@@ -1250,11 +1410,29 @@ export class TileEditor {
       if (this.sunControlPanel && !this.isInteracting) {
         this.sunControlPanel.update();
       }
+      if (this.effectsPanel) {
+        this.effectsPanel.update();
+      }
     }
     
-    // Render scene - skip post-processing during interaction for performance
-    if (this.aoEnabled && this.composer && !this.isInteracting) {
+    // Render scene - use post-processing when effects are enabled
+    // Tilt-shift stays active during interaction for smooth experience
+    const hasEffects = this.aoEnabled || this.tiltShiftEnabled || this.gammaEnabled || this.bloomEnabled;
+    const shouldUsePostProcessing = hasEffects && this.composer && 
+      (!this.isInteracting || this.tiltShiftEnabled);
+    
+    if (shouldUsePostProcessing) {
+      // Temporarily disable expensive SSAO during interaction for performance
+      if (this.ssaoPass && this.isInteracting) {
+        this.ssaoPass.enabled = false;
+      }
+      
       this.composer.render();
+      
+      // Restore SSAO to proper state after render
+      if (this.ssaoPass) {
+        this.ssaoPass.enabled = this.aoEnabled;
+      }
     } else {
       this.renderer.render(this.scene, this.camera.getCamera());
     }
@@ -1323,6 +1501,14 @@ export class TileEditor {
     }
     this.renderer.dispose();
     
+    // Dispose preview mesh
+    if (this.previewMesh) {
+      this.previewMesh.geometry.dispose();
+      if (this.previewMaterial) {
+        this.previewMaterial.dispose();
+      }
+    }
+    
     // Dispose of UI elements
     if (this.infoPanel) {
       this.infoPanel.dispose();
@@ -1335,6 +1521,9 @@ export class TileEditor {
     }
     if (this.sunControlPanel) {
       this.sunControlPanel.dispose();
+    }
+    if (this.effectsPanel) {
+      this.effectsPanel.dispose();
     }
     
     // Remove event listeners

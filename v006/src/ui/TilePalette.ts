@@ -14,6 +14,7 @@ export class TilePalette {
   // Selected states
   private selectedTool: EditorMode = EditorMode.Place;
   private selectedVoxelType: VoxelType = VoxelType.Grass;
+  private currentTileSize: number = 1.0; // Current tile scale factor
   
   // UI elements
   private toolButtons: Map<EditorMode, HTMLElement> = new Map();
@@ -492,7 +493,71 @@ export class TilePalette {
     // Store tooltip info to create later
     this.tooltipsToCreate.push({ element: stackButton.element, content: 'Stack Mode' });
     
+    // Tile size toggle button
+    const sizeButton = window.UI.button({
+      variant: 'ghost',
+      size: 'sm',
+      icon: 'square',
+      className: 'tool-button',
+      onClick: () => this.cycleTileSize()
+    });
+    section.appendChild(sizeButton.element);
+    
+    // Store tooltip info to create later
+    this.tooltipsToCreate.push({ element: sizeButton.element, content: 'Tile Size: 1.0x1.0' });
+    
+    // Store reference for updating tooltip
+    (sizeButton.element as any).sizeTooltip = 'Tile Size: 1.0x1.0';
+    (this as any).sizeButton = sizeButton.element;
+    
     return section;
+  }
+  
+  /**
+   * Cycle through tile sizes: 1.0 -> 0.5 -> 0.25 -> 1.0
+   */
+  private cycleTileSize(): void {
+    if (this.currentTileSize === 1.0) {
+      this.currentTileSize = 0.5;
+    } else if (this.currentTileSize === 0.5) {
+      this.currentTileSize = 0.25;
+    } else {
+      this.currentTileSize = 1.0;
+    }
+    
+    // Update button icon based on size
+    const sizeButton = (this as any).sizeButton;
+    if (sizeButton) {
+      const icon = sizeButton.querySelector('i[data-lucide]');
+      if (icon) {
+        if (this.currentTileSize === 1.0) {
+          icon.setAttribute('data-lucide', 'square');
+        } else if (this.currentTileSize === 0.5) {
+          icon.setAttribute('data-lucide', 'minimize-2');
+        } else {
+          icon.setAttribute('data-lucide', 'dot');
+        }
+        // Refresh the icon
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+      }
+      
+      // Update tooltip
+      const tooltipContent = `Tile Size: ${this.currentTileSize.toFixed(1)}x${this.currentTileSize.toFixed(1)}`;
+      (sizeButton as any).sizeTooltip = tooltipContent;
+      
+      // Update existing tooltip if it exists
+      const tooltip = document.querySelector(`[data-tooltip-target="${sizeButton.id}"]`);
+      if (tooltip) {
+        tooltip.textContent = tooltipContent;
+      }
+    }
+    
+    // Notify editor of size change
+    this.editor.setTileSize(this.currentTileSize);
+    
+    console.log(`Tile size: ${this.currentTileSize.toFixed(1)}x${this.currentTileSize.toFixed(1)}`);
   }
   
   /**

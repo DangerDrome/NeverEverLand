@@ -146,17 +146,29 @@ export class DimetricGrid {
   }
 
   /**
-   * Highlight a grid cell
+   * Highlight a grid cell (supports sub-grid highlighting)
    */
-  public highlightCell(coord: GridCoordinate): void {
+  public highlightCell(coord: GridCoordinate, cellSize: number = this.config.cellSize): void {
     if (!this.highlightMesh) return;
     
-    const worldPos = CoordinateUtils.gridToWorld(coord, this.config.cellSize);
-    // Center the highlight in the cell (grid coords are at cell corners)
+    // Update highlight mesh size if needed
+    const currentGeometry = this.highlightMesh.geometry as THREE.PlaneGeometry;
+    const currentSize = currentGeometry.parameters.width;
+    if (Math.abs(currentSize - cellSize) > 0.001) {
+      // Dispose old geometry and create new one with correct size
+      currentGeometry.dispose();
+      const newGeometry = new THREE.PlaneGeometry(cellSize, cellSize);
+      newGeometry.rotateX(-Math.PI / 2);
+      this.highlightMesh.geometry = newGeometry;
+    }
+    
+    // Position highlight at sub-grid location
+    const worldX = coord.x * cellSize + cellSize * 0.5;
+    const worldZ = coord.z * cellSize + cellSize * 0.5;
     this.highlightMesh.position.set(
-      worldPos.x + this.config.cellSize * 0.5, 
+      worldX, 
       0.01, // Slightly above ground
-      worldPos.z + this.config.cellSize * 0.5
+      worldZ
     );
     this.highlightMesh.visible = true;
   }

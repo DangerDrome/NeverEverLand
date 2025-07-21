@@ -14,11 +14,12 @@ export class SimpleTileSystem {
   private materialCache: Map<string, THREE.Material> = new Map();
   private layerHeight: number = 0.1; // Height of each layer
   private maxLayers: number = 50; // Maximum height in layers
+  private tileSize: number = 1.0; // Current tile scale factor
   
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     // Make tiles thin (10cm tall) so they sit on the grid like floor tiles
-    this.tileGeometry = new THREE.BoxGeometry(1, 0.1, 1);
+    this.tileGeometry = new THREE.BoxGeometry(this.tileSize, 0.1, this.tileSize);
     this.initMaterials();
   }
   
@@ -104,12 +105,14 @@ export class SimpleTileSystem {
     if (!material) return;
     
     const mesh = new THREE.Mesh(this.tileGeometry, material);
-    // Center tile in grid cell and position based on layer
+    // Position tile based on sub-grid coordinates and tile size
     const yPos = this.layerHeight / 2 + (layer * this.layerHeight);
-    mesh.position.set(coord.x + 0.5, yPos, coord.z + 0.5); 
+    const worldX = coord.x * this.tileSize + this.tileSize * 0.5;
+    const worldZ = coord.z * this.tileSize + this.tileSize * 0.5;
+    mesh.position.set(worldX, yPos, worldZ); 
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    mesh.userData = { type, coord, layer };
+    mesh.userData = { type, coord, layer, tileSize: this.tileSize };
     
     this.tiles.set(key, mesh);
     this.scene.add(mesh);
@@ -205,6 +208,19 @@ export class SimpleTileSystem {
   }
   
   /**
+   * Get world height at sub-grid coordinate (based on containing full grid cell)
+   */
+  public getBaseWorldHeight(subGridCoord: GridCoordinate, tileSize: number): number {
+    // Convert sub-grid coordinate to the containing full grid cell
+    const fullGridCoord: GridCoordinate = {
+      x: Math.floor(subGridCoord.x * tileSize),
+      z: Math.floor(subGridCoord.z * tileSize)
+    };
+    
+    return this.getWorldHeight(fullGridCoord);
+  }
+  
+  /**
    * Get all placed tiles
    */
   public getAllTiles(): Map<string, { coord: GridCoordinate; type: VoxelType }> {
@@ -237,6 +253,28 @@ export class SimpleTileSystem {
       mesh.geometry.dispose();
     });
     this.tiles.clear();
+  }
+  
+  /**
+   * Set tile size for new tiles only (doesn't affect existing tiles)
+   */
+  public setTileSize(size: number): void {
+    this.tileSize = size;
+    
+    // Dispose old geometry
+    this.tileGeometry.dispose();
+    
+    // Create new geometry with updated size for future tiles
+    this.tileGeometry = new THREE.BoxGeometry(this.tileSize, 0.1, this.tileSize);
+    
+    console.log(`Tile size set to ${size.toFixed(1)}x${size.toFixed(1)} for new tiles`);
+  }
+  
+  /**
+   * Get current tile size
+   */
+  public getTileSize(): number {
+    return this.tileSize;
   }
   
   /**
