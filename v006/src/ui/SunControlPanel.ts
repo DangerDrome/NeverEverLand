@@ -26,7 +26,7 @@ export class SunControlPanel {
   private sunAngle: number = 45; // degrees
   private sunElevation: number = 60; // degrees
   private isDragging: boolean = false;
-  private snappingEnabled: boolean = true;
+  private snappingEnabled: boolean = false;
   
   // Display elements
   private angleDisplay!: HTMLElement;
@@ -149,6 +149,14 @@ export class SunControlPanel {
         }
       }
     });
+    
+    // Force button size to match other panels
+    snapButton.element.style.setProperty('width', '40px', 'important');
+    snapButton.element.style.setProperty('height', '40px', 'important');
+    snapButton.element.style.setProperty('min-width', '40px', 'important');
+    snapButton.element.style.setProperty('padding', '0', 'important');
+    snapButton.element.style.setProperty('position', 'relative', 'important');
+    
     snapRow.appendChild(snapButton.element);
     
     controls.appendChild(snapRow);
@@ -183,6 +191,23 @@ export class SunControlPanel {
       if (window.lucide) {
         window.lucide.createIcons();
       }
+      
+      // Apply icon styling after a delay to ensure Lucide processes icons
+      setTimeout(() => {
+        const snapButton = this.element?.querySelector('.tool-button[data-testid], .tool-button') as HTMLElement;
+        if (snapButton) {
+          const snapIcon = snapButton.querySelector('svg, i[data-lucide]');
+          if (snapIcon) {
+            (snapIcon as HTMLElement).style.setProperty('position', 'absolute', 'important');
+            (snapIcon as HTMLElement).style.setProperty('top', '50%', 'important');
+            (snapIcon as HTMLElement).style.setProperty('left', '50%', 'important');
+            (snapIcon as HTMLElement).style.setProperty('transform', 'translate(-50%, -50%)', 'important');
+            (snapIcon as HTMLElement).style.setProperty('width', '24px', 'important');
+            (snapIcon as HTMLElement).style.setProperty('height', '24px', 'important');
+            (snapIcon as HTMLElement).style.setProperty('stroke-width', '1.5px', 'important');
+          }
+        }
+      }, 100);
     }
     
     // Initialize mini scene

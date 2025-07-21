@@ -14,7 +14,7 @@ export class TilePalette {
   // Selected states
   private selectedTool: EditorMode = EditorMode.Place;
   private selectedVoxelType: VoxelType = VoxelType.Grass;
-  private currentTileSize: number = 1.0; // Current tile scale factor
+  private currentTileSize: number = 0.1; // Current tile scale factor
   
   // UI elements
   private toolButtons: Map<EditorMode, HTMLElement> = new Map();
@@ -203,7 +203,7 @@ export class TilePalette {
       collapsible: true,
       closable: false,
       draggable: true,
-      resizable: !isMobile(), // Disable resizing on mobile
+      resizable: false, // Disable resizing completely
       startCollapsed: false,
       // Don't specify position - let CSS handle centering
       onCollapse: isMobile() ? (collapsed: boolean) => this.handleMobileCollapse(collapsed) : undefined
@@ -242,13 +242,18 @@ export class TilePalette {
           (panelBody as HTMLElement).style.minHeight = '140px';
           (panelBody as HTMLElement).style.display = 'flex !important'; // Override collapsed state
           (panelBody as HTMLElement).style.alignItems = 'stretch';
-          (panelBody as HTMLElement).style.padding = 'var(--space-2)';
-          (panelBody as HTMLElement).style.paddingRight = '0'; // Remove right padding on mobile
+          // Padding is now handled by CSS rule
         }
         
         // Add custom CSS to override panel-collapsed behavior on mobile
         const style = document.createElement('style');
         style.textContent = `
+          /* Custom padding for tile palette */
+          .tile-palette .panel-body {
+            padding: var(--space-8) !important;
+            padding-top: var(--space-2) !important;
+          }
+          
           @media (max-width: 768px) {
             .tile-palette.panel-collapsed .panel-body {
               display: flex !important;
@@ -257,7 +262,8 @@ export class TilePalette {
               opacity: 1 !important;
             }
             .tile-palette .panel-body {
-              padding: var(--space-2) 0 var(--space-2) var(--space-2) !important;
+              padding: var(--space-8) !important;
+              padding-top: var(--space-2) !important;
             }
             .tile-palette .panel-body > div {
               padding-right: 0 !important;
@@ -275,9 +281,22 @@ export class TilePalette {
         document.head.appendChild(style);
       } else {
         // Desktop: horizontal panel at bottom center
+        this.element.style.bottom = '80px';
+        
+        // Set initial position immediately to avoid drag conflicts
         this.element.style.left = '50%';
         this.element.style.transform = 'translateX(-50%)';
-        this.element.style.bottom = '80px';
+        
+        // After StyleUI initializes, replace transform with calculated position
+        requestAnimationFrame(() => {
+          if (this.element) {
+            const rect = this.element.getBoundingClientRect();
+            const leftPos = rect.left;
+            this.element.style.transform = 'none';
+            this.element.style.left = `${leftPos}px`;
+          }
+        });
+        // Padding is now handled by CSS rule
         this.element.style.top = 'auto';
         this.element.style.right = 'auto';
       }
@@ -285,6 +304,9 @@ export class TilePalette {
       // Panel body already has proper padding from CSS
       
       this.container.appendChild(this.element);
+      
+      // Set initial tile size on editor
+      this.editor.setTileSize(this.currentTileSize);
       
       // Initialize lucide icons
       if (window.lucide) {
@@ -317,29 +339,38 @@ export class TilePalette {
   private createToolsSection(): HTMLElement {
     const section = document.createElement('div');
     section.style.display = 'flex';
+    section.style.flexDirection = 'column';
     section.style.gap = 'var(--space-2)';
-    section.style.alignItems = 'center';
+    section.style.alignItems = 'flex-start';
     section.style.flexShrink = '0';
     
-    // Mobile: vertical layout
-    if (isMobile()) {
-      section.style.flexDirection = 'column';
-    }
-    
     if (!isMobile()) {
-      // Add label (desktop only)
+      // Add label above buttons
       const label = document.createElement('div');
       label.style.fontSize = 'var(--font-size-xs)';
       label.style.color = 'var(--text-secondary)';
-      label.style.marginRight = 'var(--space-2)';
-      label.textContent = 'Tools:';
+      label.style.fontWeight = '600';
+      label.style.textAlign = 'left';
+      label.textContent = 'Tools';
       section.appendChild(label);
+    }
+    
+    // Create buttons container
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.style.display = 'flex';
+    buttonsContainer.style.gap = 'var(--space-2)';
+    buttonsContainer.style.alignItems = 'center';
+    buttonsContainer.style.alignSelf = 'center';
+    
+    // Mobile: vertical layout for buttons
+    if (isMobile()) {
+      buttonsContainer.style.flexDirection = 'column';
     }
     
     // Tool definitions
     const tools: Array<{mode: EditorMode, icon: string, tooltip: string}> = [
-      { mode: EditorMode.Select, icon: 'mouse-pointer', tooltip: 'Select (1)' },
-      { mode: EditorMode.Place, icon: 'plus-square', tooltip: 'Place (2)' },
+      { mode: EditorMode.Place, icon: 'plus-square', tooltip: 'Place (1)' },
+      { mode: EditorMode.Select, icon: 'mouse-pointer', tooltip: 'Select (2)' },
       { mode: EditorMode.Erase, icon: 'eraser', tooltip: 'Erase (3)' },
     ];
     
@@ -360,11 +391,13 @@ export class TilePalette {
       button.style.flexShrink = '0';
       
       this.toolButtons.set(tool.mode, button);
-      section.appendChild(button);
+      buttonsContainer.appendChild(button);
       
       // Store tooltip info to create later
       this.tooltipsToCreate.push({ element: button, content: tool.tooltip });
     });
+    
+    section.appendChild(buttonsContainer);
     
     // Initialize lucide icons
     if (window.lucide) {
@@ -376,32 +409,43 @@ export class TilePalette {
   
   private createVoxelsSection(): HTMLElement {
     const section = document.createElement('div');
+    section.style.display = 'flex';
+    section.style.flexDirection = 'column';
+    section.style.gap = 'var(--space-2)';
+    section.style.alignItems = 'flex-start';
+    section.style.flexShrink = '0';
     
-    if (isMobile()) {
-      // Mobile: 2-row grid layout
-      section.style.display = 'grid';
-      section.style.gridTemplateRows = 'repeat(2, 1fr)';
-      section.style.gridAutoFlow = 'column';
-      section.style.gap = 'var(--space-2)';
-      section.style.justifyContent = 'center';
-      section.style.alignItems = 'center';
-      section.style.padding = '0 var(--space-2)';
-    } else {
-      // Desktop: horizontal flex layout, no wrapping
-      section.style.display = 'flex';
-      section.style.gap = 'var(--space-2)';
-      section.style.alignItems = 'center';
-      section.style.flexWrap = 'nowrap'; // Prevent vertical stacking
-      section.style.flexShrink = '0';
-      
-      // Add label (desktop only)
+    if (!isMobile()) {
+      // Add label above buttons
       const label = document.createElement('div');
       label.style.fontSize = 'var(--font-size-xs)';
       label.style.color = 'var(--text-secondary)';
-      label.style.marginRight = 'var(--space-2)';
-      label.style.flexShrink = '0';
-      label.textContent = 'Voxels:';
+      label.style.fontWeight = '600';
+      label.style.textAlign = 'left';
+      label.textContent = 'Voxels';
       section.appendChild(label);
+    }
+    
+    // Create buttons container
+    const buttonsContainer = document.createElement('div');
+    
+    if (isMobile()) {
+      // Mobile: 2-row grid layout
+      buttonsContainer.style.display = 'grid';
+      buttonsContainer.style.gridTemplateRows = 'repeat(2, 1fr)';
+      buttonsContainer.style.gridAutoFlow = 'column';
+      buttonsContainer.style.gap = 'var(--space-2)';
+      buttonsContainer.style.justifyContent = 'center';
+      buttonsContainer.style.alignItems = 'center';
+      buttonsContainer.style.padding = '0 var(--space-2)';
+      buttonsContainer.style.alignSelf = 'center';
+    } else {
+      // Desktop: horizontal flex layout, no wrapping
+      buttonsContainer.style.display = 'flex';
+      buttonsContainer.style.gap = 'var(--space-2)';
+      buttonsContainer.style.alignItems = 'center';
+      buttonsContainer.style.flexWrap = 'nowrap'; // Prevent vertical stacking
+      buttonsContainer.style.alignSelf = 'center';
     }
     
     // Voxel types to show (skip Air) with icons
@@ -448,11 +492,13 @@ export class TilePalette {
       button.style.flexShrink = '0';
       
       this.voxelButtons.set(type, button);
-      section.appendChild(button);
+      buttonsContainer.appendChild(button);
       
       // Store tooltip info to create later
       this.tooltipsToCreate.push({ element: button, content: `${props.name} (${index + 4})` });
     });
+    
+    section.appendChild(buttonsContainer);
     
     return section;
   }
@@ -463,15 +509,34 @@ export class TilePalette {
   private createLayerSection(): HTMLElement {
     const section = document.createElement('div');
     section.style.display = 'flex';
-    section.style.alignItems = 'center';
+    section.style.flexDirection = 'column';
+    section.style.alignItems = 'flex-start';
     section.style.gap = 'var(--space-2)';
     
+    if (!isMobile()) {
+      // Add label above buttons
+      const label = document.createElement('div');
+      label.style.fontSize = 'var(--font-size-xs)';
+      label.style.color = 'var(--text-secondary)';
+      label.style.fontWeight = '600';
+      label.style.textAlign = 'left';
+      label.textContent = 'Modes';
+      section.appendChild(label);
+    }
+    
+    // Create buttons container
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.style.display = 'flex';
+    buttonsContainer.style.alignItems = 'center';
+    buttonsContainer.style.gap = 'var(--space-2)';
+    buttonsContainer.style.alignSelf = 'center';
+    
     // Track stack mode state
-    let stackEnabled = true;
+    let stackEnabled = false; // Start disabled by default
     
     // Stack mode toggle button
     const stackButton = window.UI.button({
-      variant: 'primary', // Start enabled
+      variant: 'ghost', // Start disabled
       size: 'sm',
       icon: 'layers',
       className: 'tool-button',
@@ -488,60 +553,74 @@ export class TilePalette {
         }
       }
     });
-    section.appendChild(stackButton.element);
+    buttonsContainer.appendChild(stackButton.element);
+    
+    // Set initial stack mode in editor
+    this.editor.setStackMode(stackEnabled);
     
     // Store tooltip info to create later
     this.tooltipsToCreate.push({ element: stackButton.element, content: 'Stack Mode' });
     
     // Tile size toggle button
     const sizeButton = window.UI.button({
-      variant: 'ghost',
+      variant: 'secondary',
       size: 'sm',
-      icon: 'square',
+      text: '0.1',
       className: 'tool-button',
       onClick: () => this.cycleTileSize()
     });
-    section.appendChild(sizeButton.element);
+    
+    // Style the button text with monospace font and dark background
+    sizeButton.element.style.fontFamily = 'var(--font-mono)';
+    sizeButton.element.style.fontSize = 'var(--font-size-xs)';
+    sizeButton.element.style.fontWeight = '600';
+    sizeButton.element.style.backgroundColor = 'var(--bg-layer-4)';
+    sizeButton.element.style.color = 'var(--text-primary)';
+    
+    buttonsContainer.appendChild(sizeButton.element);
     
     // Store tooltip info to create later
-    this.tooltipsToCreate.push({ element: sizeButton.element, content: 'Tile Size: 1.0x1.0' });
+    this.tooltipsToCreate.push({ element: sizeButton.element, content: 'Tile Size: 0.1x0.1' });
     
     // Store reference for updating tooltip
-    (sizeButton.element as any).sizeTooltip = 'Tile Size: 1.0x1.0';
+    (sizeButton.element as any).sizeTooltip = 'Tile Size: 0.1x0.1';
     (this as any).sizeButton = sizeButton.element;
+    
+    section.appendChild(buttonsContainer);
     
     return section;
   }
   
   /**
-   * Cycle through tile sizes: 1.0 -> 0.5 -> 0.25 -> 1.0
+   * Cycle through tile sizes: 0.1 -> 0.25 -> 0.5 -> 1.0 -> 0.1
    */
   private cycleTileSize(): void {
-    if (this.currentTileSize === 1.0) {
+    if (this.currentTileSize === 0.1) {
+      this.currentTileSize = 0.25;
+    } else if (this.currentTileSize === 0.25) {
       this.currentTileSize = 0.5;
     } else if (this.currentTileSize === 0.5) {
-      this.currentTileSize = 0.25;
-    } else {
       this.currentTileSize = 1.0;
+    } else {
+      this.currentTileSize = 0.1;
     }
     
-    // Update button icon based on size
+    // Update button text based on size
     const sizeButton = (this as any).sizeButton;
     if (sizeButton) {
-      const icon = sizeButton.querySelector('i[data-lucide]');
-      if (icon) {
-        if (this.currentTileSize === 1.0) {
-          icon.setAttribute('data-lucide', 'square');
-        } else if (this.currentTileSize === 0.5) {
-          icon.setAttribute('data-lucide', 'minimize-2');
-        } else {
-          icon.setAttribute('data-lucide', 'dot');
-        }
-        // Refresh the icon
-        if (window.lucide) {
-          window.lucide.createIcons();
-        }
-      }
+      // Update button text to show current size
+      sizeButton.textContent = this.currentTileSize.toFixed(1);
+      
+      // Ensure button maintains proper styling and background
+      sizeButton.classList.remove('btn-ghost');
+      sizeButton.classList.add('btn-secondary');
+      
+      // Reapply custom text styling and dark background
+      sizeButton.style.fontFamily = 'var(--font-mono)';
+      sizeButton.style.fontSize = 'var(--font-size-xs)';
+      sizeButton.style.fontWeight = '600';
+      sizeButton.style.backgroundColor = 'var(--bg-layer-4)';
+      sizeButton.style.color = 'var(--text-primary)';
       
       // Update tooltip
       const tooltipContent = `Tile Size: ${this.currentTileSize.toFixed(1)}x${this.currentTileSize.toFixed(1)}`;
@@ -566,7 +645,57 @@ export class TilePalette {
   private createClearSection(): HTMLElement {
     const section = document.createElement('div');
     section.style.display = 'flex';
-    section.style.alignItems = 'center';
+    section.style.flexDirection = 'column';
+    section.style.alignItems = 'flex-start';
+    section.style.gap = 'var(--space-2)';
+    
+    if (!isMobile()) {
+      // Add label above buttons
+      const label = document.createElement('div');
+      label.style.fontSize = 'var(--font-size-xs)';
+      label.style.color = 'var(--text-secondary)';
+      label.style.fontWeight = '600';
+      label.style.textAlign = 'left';
+      label.textContent = 'Actions';
+      section.appendChild(label);
+    }
+    
+    // Create buttons container
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.style.display = 'flex';
+    buttonsContainer.style.alignItems = 'center';
+    buttonsContainer.style.gap = 'var(--space-2)';
+    buttonsContainer.style.alignSelf = 'center';
+    
+    // Undo button
+    const undoBtn = window.UI.button({
+      variant: 'ghost',
+      size: 'sm',
+      icon: 'undo-2',
+      className: 'tool-button',
+      onClick: () => {
+        this.editor.undo();
+      }
+    });
+    buttonsContainer.appendChild(undoBtn.element);
+    
+    // Store tooltip info to create later
+    this.tooltipsToCreate.push({ element: undoBtn.element, content: 'Undo (Ctrl+Z)' });
+    
+    // Redo button
+    const redoBtn = window.UI.button({
+      variant: 'ghost',
+      size: 'sm',
+      icon: 'redo-2',
+      className: 'tool-button',
+      onClick: () => {
+        this.editor.redo();
+      }
+    });
+    buttonsContainer.appendChild(redoBtn.element);
+    
+    // Store tooltip info to create later
+    this.tooltipsToCreate.push({ element: redoBtn.element, content: 'Redo (Ctrl+Y)' });
     
     // Clear all button
     const clearBtn = window.UI.button({
@@ -596,7 +725,9 @@ export class TilePalette {
       clearBtn.element.classList.remove('btn-danger');
       clearBtn.element.classList.add('btn-ghost');
     });
-    section.appendChild(clearBtn.element);
+    buttonsContainer.appendChild(clearBtn.element);
+    
+    section.appendChild(buttonsContainer);
     
     // Store tooltip info to create later
     this.tooltipsToCreate.push({ element: clearBtn.element, content: 'Clear All Blocks' });
@@ -610,8 +741,27 @@ export class TilePalette {
   private createSkySection(): HTMLElement {
     const section = document.createElement('div');
     section.style.display = 'flex';
-    section.style.alignItems = 'center';
+    section.style.flexDirection = 'column';
+    section.style.alignItems = 'flex-start';
     section.style.gap = 'var(--space-2)';
+    
+    if (!isMobile()) {
+      // Add label above buttons
+      const label = document.createElement('div');
+      label.style.fontSize = 'var(--font-size-xs)';
+      label.style.color = 'var(--text-secondary)';
+      label.style.fontWeight = '600';
+      label.style.textAlign = 'left';
+      label.textContent = 'Sky';
+      section.appendChild(label);
+    }
+    
+    // Create buttons container
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.style.display = 'flex';
+    buttonsContainer.style.alignItems = 'center';
+    buttonsContainer.style.gap = 'var(--space-2)';
+    buttonsContainer.style.alignSelf = 'center';
     
     // Track toggle states
     let skyEnabled = false;
@@ -636,7 +786,7 @@ export class TilePalette {
         }
       }
     });
-    section.appendChild(skyButton.element);
+    buttonsContainer.appendChild(skyButton.element);
     
     // Store tooltip info to create later
     this.tooltipsToCreate.push({ element: skyButton.element, content: 'Toggle Sky' });
@@ -660,10 +810,12 @@ export class TilePalette {
         }
       }
     });
-    section.appendChild(aoButton.element);
+    buttonsContainer.appendChild(aoButton.element);
     
     // Store tooltip info to create later
     this.tooltipsToCreate.push({ element: aoButton.element, content: 'Ambient Occlusion' });
+    
+    section.appendChild(buttonsContainer);
     
     // Initialize lucide icons
     if (window.lucide) {
@@ -676,7 +828,20 @@ export class TilePalette {
   private createTestSection(): HTMLElement {
     const section = document.createElement('div');
     section.style.display = 'flex';
-    section.style.alignItems = 'center';
+    section.style.flexDirection = 'column';
+    section.style.alignItems = 'flex-start';
+    section.style.gap = 'var(--space-2)';
+    
+    if (!isMobile()) {
+      // Add label above button
+      const label = document.createElement('div');
+      label.style.fontSize = 'var(--font-size-xs)';
+      label.style.color = 'var(--text-secondary)';
+      label.style.fontWeight = '600';
+      label.style.textAlign = 'left';
+      label.textContent = 'Test';
+      section.appendChild(label);
+    }
     
     // Stress test button - icon only
     const stressButton = window.UI.button({
@@ -686,6 +851,7 @@ export class TilePalette {
       className: 'tool-button',
       onClick: () => this.runStressTest()
     });
+    stressButton.element.style.alignSelf = 'center';
     
     // Add warning color on hover
     stressButton.element.addEventListener('mouseenter', () => {

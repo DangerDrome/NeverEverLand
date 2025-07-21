@@ -100,7 +100,7 @@ export class InfoPanel {
     if (this.element) {
       this.element.className += ' info-panel debug-panel';
       this.element.style.position = 'fixed';
-      this.element.style.width = '320px';
+      this.element.style.width = '370px'; // Increased from 320px to 370px (+50px)
       this.element.style.height = 'auto';
       this.element.style.top = '20px';
       this.element.style.right = '20px';
@@ -166,8 +166,8 @@ export class InfoPanel {
     this.frameTimeCanvas = this.createMiniGraph('Frame Time', 'warning');
     parent.appendChild(this.frameTimeCanvas);
     
-    // Draw Calls Graph
-    this.drawCallsCanvas = this.createMiniGraph('Draw Calls', 'info');
+    // Draw Calls Graph - use primary instead of info for proper blue styling
+    this.drawCallsCanvas = this.createMiniGraph('Draw Calls', 'primary');
     parent.appendChild(this.drawCallsCanvas);
   }
   
@@ -178,20 +178,20 @@ export class InfoPanel {
     
     // Canvas for graph
     const canvas = document.createElement('canvas');
-    canvas.width = 120;
+    canvas.width = 240; // Doubled from 120 to 240
     canvas.height = 44;
     canvas.style.width = '100%';
     canvas.style.height = '44px';
-    canvas.style.background = 'var(--bg-layer-4)';
+    canvas.style.background = '#0d0d0d'; // Darker background for graphs
     canvas.style.borderRadius = 'var(--radius-sm)';
     container.appendChild(canvas);
     
-    // Label tag
+    // Label tag using StyleUI tag styles like sun control panel
     const label = document.createElement('span');
-    label.className = `tag tag-${colorClass}`;
+    label.className = `tag tag-light-${colorClass}`;
     label.textContent = title;
-    label.style.fontSize = 'var(--font-size-3xs)';
-    label.style.padding = 'var(--space-0-5) var(--space-1)';
+    label.style.fontSize = 'var(--font-size-xs)'; // Reduced from sm to xs
+    label.style.padding = 'var(--space-1) var(--space-2)';
     label.style.position = 'absolute';
     label.style.top = 'var(--space-1)';
     label.style.left = 'var(--space-1)';
@@ -219,7 +219,7 @@ export class InfoPanel {
     table.style.borderCollapse = 'separate';
     table.style.borderSpacing = '0';
     table.style.fontSize = 'var(--font-size-xs)';
-    table.style.backgroundColor = 'var(--bg-layer-3)';
+    table.style.backgroundColor = '#1a1a1a'; // Match mini scene background
     table.style.borderRadius = 'var(--radius-md)';
     table.style.overflow = 'hidden';
     
@@ -470,7 +470,7 @@ export class InfoPanel {
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.5;
     
-    const recentData = data.slice(-40);
+    const recentData = data.slice(-80); // Doubled from 40 to 80 for wider graph
     
     ctx.beginPath();
     recentData.forEach((value, index) => {

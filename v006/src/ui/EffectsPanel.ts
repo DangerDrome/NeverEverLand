@@ -66,10 +66,16 @@ export class EffectsPanel {
       // Position in left middle
       this.element.style.position = 'fixed';
       this.element.style.left = '20px';
-      this.element.style.top = '50%';
-      this.element.style.transform = 'translateY(-50%)';
       this.element.style.width = '280px';
       this.element.style.zIndex = '1000';
+      
+      // Calculate center position without transform to avoid drag conflicts
+      setTimeout(() => {
+        this.centerVertically();
+      }, 50);
+      
+      // Recenter on window resize
+      window.addEventListener('resize', () => this.centerVertically());
       
       this.container.appendChild(this.element);
       
@@ -736,6 +742,18 @@ export class EffectsPanel {
   }
 
   /**
+   * Center the panel vertically
+   */
+  private centerVertically(): void {
+    if (this.element) {
+      const panelHeight = this.element.offsetHeight;
+      const screenHeight = window.innerHeight;
+      const topPos = (screenHeight - panelHeight) / 2;
+      this.element.style.top = `${topPos}px`;
+    }
+  }
+
+  /**
    * Get the panel element
    */
   public getElement(): HTMLElement | null {
@@ -756,5 +774,8 @@ export class EffectsPanel {
     if (this.element && this.element.parentNode) {
       this.element.parentNode.removeChild(this.element);
     }
+    
+    // Remove resize listener
+    window.removeEventListener('resize', () => this.centerVertically());
   }
 } 

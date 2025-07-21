@@ -29,6 +29,36 @@ import { BloomPass } from '@core/BloomPass';
 import { EffectsPanel } from '@ui/EffectsPanel';
 
 /**
+ * Action types for undo/redo system
+ */
+enum ActionType {
+  PLACE = 'PLACE',
+  REMOVE = 'REMOVE'
+}
+
+/**
+ * Represents a single tile in a layer
+ */
+interface TileData {
+  type: VoxelType;
+  layer: number;
+}
+
+/**
+ * Represents an action that can be undone/redone
+ */
+interface EditorAction {
+  type: ActionType;
+  coord: GridCoordinate;
+  // For PLACE actions: what was placed and what was there before
+  placedTiles?: TileData[];
+  removedTiles?: TileData[];
+  // For context
+  stackMode?: boolean;
+  voxelType?: VoxelType;
+}
+
+/**
  * Main tile editor class
  * Coordinates all editor systems and handles user input
  */
@@ -81,7 +111,7 @@ export class TileEditor {
   
   // Placement mode
   private stackMode: boolean = true;
-  private tileSize: number = 1.0;
+  private tileSize: number = 0.1;
   
   // Sky system
   private skyEnabled: boolean = false;
@@ -102,6 +132,11 @@ export class TileEditor {
   // Preview
   private previewMesh: THREE.Mesh | null = null;
   private previewMaterial: THREE.Material | null = null;
+  
+  // Undo/Redo system
+  private undoStack: EditorAction[] = [];
+  private redoStack: EditorAction[] = [];
+  private maxHistorySize: number = 50;
 
   constructor(container: HTMLElement, config?: Partial<EditorConfig>) {
     this.container = container;
@@ -129,7 +164,7 @@ export class TileEditor {
       gridLevel: this.config.defaultGridLevel,
       rotation: TileRotation.Deg0,
       highlightedCell: null,
-      cameraZoom: 20,
+      cameraZoom: 6, // Start zoomed in close to the action
     };
     
     // Apply config settings
@@ -701,16 +736,37 @@ export class TileEditor {
    * Handle keyboard input
    */
   private onKeyDown(event: KeyboardEvent): void {
+    // Handle Ctrl+Z for undo and Ctrl+Y for redo
+    if (event.ctrlKey || event.metaKey) {
+      switch (event.key.toLowerCase()) {
+        case 'z':
+          if (event.shiftKey) {
+            // Ctrl+Shift+Z = Redo (alternative)
+            this.redo();
+          } else {
+            // Ctrl+Z = Undo
+            this.undo();
+          }
+          event.preventDefault();
+          return;
+        case 'y':
+          // Ctrl+Y = Redo
+          this.redo();
+          event.preventDefault();
+          return;
+      }
+    }
+    
     switch (event.key) {
       case 'g':
       case 'G':
         this.toggleGrid();
         break;
       case '1':
-        this.setState({ mode: EditorMode.Select });
+        this.setState({ mode: EditorMode.Place });
         break;
       case '2':
-        this.setState({ mode: EditorMode.Place });
+        this.setState({ mode: EditorMode.Select });
         break;
       case '3':
         this.setState({ mode: EditorMode.Erase });
@@ -888,8 +944,25 @@ export class TileEditor {
    * Place tile at grid position
    */
   private placeVoxel(gridCoord: GridCoordinate): void {
+    // Capture state before placing
+    const beforeState = this.captureTileState(gridCoord);
+    
     // Place based on stack mode
     this.tileSystem.placeTile(gridCoord, this.selectedVoxelType, this.stackMode);
+    
+    // Capture state after placing
+    const afterState = this.captureTileState(gridCoord);
+    
+    // Record action for undo/redo
+    const action: EditorAction = {
+      type: ActionType.PLACE,
+      coord: { ...gridCoord },
+      placedTiles: afterState,
+      removedTiles: beforeState,
+      stackMode: this.stackMode,
+      voxelType: this.selectedVoxelType
+    };
+    this.recordAction(action);
     
     // Update height display
     this.updateHeightDisplay(gridCoord);
@@ -899,7 +972,21 @@ export class TileEditor {
    * Remove tile at grid position
    */
   private removeVoxel(gridCoord: GridCoordinate): void {
-    this.tileSystem.removeTile(gridCoord);
+    // Capture state before removing
+    const beforeState = this.captureTileState(gridCoord);
+    
+    // Only record action if there was something to remove
+    if (beforeState.length > 0) {
+      this.tileSystem.removeTile(gridCoord);
+      
+      // Record action for undo/redo
+      const action: EditorAction = {
+        type: ActionType.REMOVE,
+        coord: { ...gridCoord },
+        removedTiles: beforeState
+      };
+      this.recordAction(action);
+    }
     
     // Update height display
     this.updateHeightDisplay(gridCoord);
@@ -1100,6 +1187,129 @@ export class TileEditor {
   public clearAllTiles(): void {
     this.tileSystem.clear();
     console.log('All tiles cleared');
+    // Clear undo/redo history since all context is lost
+    this.undoStack = [];
+    this.redoStack = [];
+  }
+  
+  /**
+   * Capture the current tile state at a coordinate
+   */
+  private captureTileState(coord: GridCoordinate): TileData[] {
+    const tiles: TileData[] = [];
+    // Get all tiles at this coordinate by checking each layer
+    for (let layer = 0; layer < 50; layer++) { // maxLayers from SimpleTileSystem
+      const key = `${coord.x},${coord.z},${layer}`;
+      const mesh = (this.tileSystem as any).tiles.get(key);
+      if (mesh && mesh.userData) {
+        tiles.push({
+          type: mesh.userData.type,
+          layer: mesh.userData.layer
+        });
+      }
+    }
+    return tiles;
+  }
+  
+  /**
+   * Record an action for undo/redo
+   */
+  private recordAction(action: EditorAction): void {
+    // Add to undo stack
+    this.undoStack.push(action);
+    
+    // Clear redo stack (new action invalidates redo history)
+    this.redoStack = [];
+    
+    // Limit history size
+    if (this.undoStack.length > this.maxHistorySize) {
+      this.undoStack.shift();
+    }
+  }
+  
+  /**
+   * Undo the last action
+   */
+  public undo(): void {
+    const action = this.undoStack.pop();
+    if (!action) {
+      console.log('Nothing to undo');
+      return;
+    }
+    
+    if (action.type === ActionType.PLACE) {
+      // Undo a place action: remove what was placed, restore what was there
+      this.tileSystem.removeTile(action.coord, true); // Remove all at this position
+      
+      // Restore what was there before
+      if (action.removedTiles) {
+        for (const tile of action.removedTiles) {
+          (this.tileSystem as any).placeSingleTile(action.coord, tile.type, tile.layer);
+        }
+      }
+    } else if (action.type === ActionType.REMOVE) {
+      // Undo a remove action: restore what was removed
+      if (action.removedTiles) {
+        for (const tile of action.removedTiles) {
+          (this.tileSystem as any).placeSingleTile(action.coord, tile.type, tile.layer);
+        }
+      }
+    }
+    
+    // Move action to redo stack
+    this.redoStack.push(action);
+    
+    // Update displays
+    if (this.state.highlightedCell && CoordinateUtils.coordsEqual(this.state.highlightedCell, action.coord)) {
+      this.updateHeightDisplay(action.coord);
+    }
+    
+    console.log('Undid action at', action.coord);
+  }
+  
+  /**
+   * Redo the last undone action
+   */
+  public redo(): void {
+    const action = this.redoStack.pop();
+    if (!action) {
+      console.log('Nothing to redo');
+      return;
+    }
+    
+    if (action.type === ActionType.PLACE) {
+      // Redo a place action: place what was originally placed
+      if (action.placedTiles && action.voxelType && action.stackMode !== undefined) {
+        this.tileSystem.placeTile(action.coord, action.voxelType, action.stackMode);
+      }
+    } else if (action.type === ActionType.REMOVE) {
+      // Redo a remove action: remove again
+      this.tileSystem.removeTile(action.coord);
+    }
+    
+    // Move action back to undo stack
+    this.undoStack.push(action);
+    
+    // Update displays
+    if (this.state.highlightedCell && CoordinateUtils.coordsEqual(this.state.highlightedCell, action.coord)) {
+      this.updateHeightDisplay(action.coord);
+    }
+    
+    console.log('Redid action at', action.coord);
+  }
+  
+  /**
+   * Check if undo is available
+   */
+  public canUndo(): boolean {
+    return this.undoStack.length > 0;
+  }
+  
+  /**
+   * Check if redo is available
+   */
+  public canRedo(): boolean {
+    return this.redoStack.length > 0;
   }
   
   /**

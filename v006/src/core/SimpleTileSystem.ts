@@ -14,7 +14,7 @@ export class SimpleTileSystem {
   private materialCache: Map<string, THREE.Material> = new Map();
   private layerHeight: number = 0.1; // Height of each layer
   private maxLayers: number = 50; // Maximum height in layers
-  private tileSize: number = 1.0; // Current tile scale factor
+  private tileSize: number = 0.1; // Current tile scale factor
   
   constructor(scene: THREE.Scene) {
     this.scene = scene;
