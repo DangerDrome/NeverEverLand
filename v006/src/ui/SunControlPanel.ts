@@ -164,11 +164,11 @@ export class SunControlPanel {
     content.appendChild(controls);
     
     // Create the panel
-    this.element = window.UI.panel('Sun Control', content, {
-      collapsible: true,
+    this.element = window.UI.panel('Lighting', content, {
+      collapsible: false,
       closable: true,
       draggable: true,
-      resizable: true,
+      resizable: false,
       startCollapsed: false,
       position: 'bottom-right',
     });
@@ -176,11 +176,17 @@ export class SunControlPanel {
     if (this.element) {
       this.element.className += ' sun-control-panel';
       
+      // Set width to match Info panel
+      this.element.style.width = '370px';
+      
       // Add sun icon to the title
       const titleElement = this.element.querySelector('.panel-title');
       if (titleElement) {
-        const iconHTML = '<i data-lucide="sun" style="width: 16px; height: 16px; margin-right: 8px;"></i>';
+        const iconHTML = '<i data-lucide="sun" style="width: 20px; height: 20px; margin-right: 8px; stroke-width: 1px;"></i>';
         titleElement.innerHTML = iconHTML + titleElement.textContent;
+        // Remove bold font weight from panel title and make text dim
+        (titleElement as HTMLElement).style.fontWeight = 'normal';
+        (titleElement as HTMLElement).style.color = 'var(--text-secondary)';
       }
       
       // Don't set inline styles - let CSS handle positioning

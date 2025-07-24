@@ -57,14 +57,17 @@ export class SimpleTileSystem {
   /**
    * Place a tile at grid coordinate
    */
-  public placeTile(coord: GridCoordinate, type: VoxelType, stackOnTop: boolean = true): void {
+  public placeTile(coord: GridCoordinate, type: VoxelType, stackOnTop: boolean = true, replaceExisting: boolean = false): void {
     // Don't place air
     if (type === VoxelType.Air) return;
     
     let startLayer = 0;
     
-    if (stackOnTop) {
-      // Find the top layer and place above it
+    if (replaceExisting) {
+      // Replace mode: remove all existing tiles at this position
+      this.removeTile(coord);
+    } else if (stackOnTop) {
+      // Stack mode: find the top layer and place above it
       const topLayer = this.getTopLayer(coord);
       startLayer = topLayer + 1;
       
@@ -74,24 +77,18 @@ export class SimpleTileSystem {
         return;
       }
     } else {
-      // Replace existing tiles at this position
-      this.removeTile(coord);
+      // No stack, no replace: place at ground level (layer 0) without removing existing
+      startLayer = 0;
+      // Check if layer 0 is already occupied
+      const key = `${coord.x},${coord.z},${startLayer}`;
+      if (this.tiles.has(key)) {
+        // Layer 0 is occupied, don't place anything
+        return;
+      }
     }
     
-    // Special handling for multi-layer tiles
-    if (type === VoxelType.Grass) {
-      // Grass: 3 layers (sand, dirt, grass)
-      this.placeSingleTile(coord, VoxelType.Sand, startLayer);
-      this.placeSingleTile(coord, VoxelType.Dirt, startLayer + 1);
-      this.placeSingleTile(coord, VoxelType.Grass, startLayer + 2);
-    } else if (type === VoxelType.Dirt) {
-      // Dirt: 2 layers (sand, dirt)
-      this.placeSingleTile(coord, VoxelType.Sand, startLayer);
-      this.placeSingleTile(coord, VoxelType.Dirt, startLayer + 1);
-    } else {
-      // Normal single tile placement
-      this.placeSingleTile(coord, type, startLayer);
-    }
+    // Place single tile (removed multi-layer logic for grass and dirt)
+    this.placeSingleTile(coord, type, startLayer);
   }
   
   /**

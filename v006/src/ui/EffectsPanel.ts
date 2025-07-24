@@ -51,9 +51,9 @@ export class EffectsPanel {
     const content = this.createContent();
     
     // Create the panel using StyleUI
-    this.element = (window as any).UI.panel('Effects', content, {
-      icon: 'wand-2',
-      collapsible: true,
+    this.element = (window as any).UI.panel('FX', content, {
+      icon: 'camera',
+      collapsible: false,
       closable: true,
       draggable: true,
       resizable: false,
@@ -62,6 +62,16 @@ export class EffectsPanel {
 
     if (this.element) {
       this.element.className += ' effects-panel';
+      
+      // Add consistent icon styling
+      const titleElement = this.element.querySelector('.panel-title');
+      if (titleElement) {
+        const iconHTML = '<i data-lucide="camera" style="width: 20px; height: 20px; margin-right: 8px; stroke-width: 1px;"></i>';
+        titleElement.innerHTML = iconHTML + titleElement.textContent;
+        // Remove bold font weight from panel title and make text dim
+        (titleElement as HTMLElement).style.fontWeight = 'normal';
+        (titleElement as HTMLElement).style.color = 'var(--text-secondary)';
+      }
       
       // Position in left middle
       this.element.style.position = 'fixed';
@@ -748,7 +758,7 @@ export class EffectsPanel {
     if (this.element) {
       const panelHeight = this.element.offsetHeight;
       const screenHeight = window.innerHeight;
-      const topPos = (screenHeight - panelHeight) / 2;
+      const topPos = (screenHeight - panelHeight) / 2 + 40; // Add 40px offset to move down
       this.element.style.top = `${topPos}px`;
     }
   }

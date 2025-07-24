@@ -80,7 +80,6 @@ export class InfoPanel {
     }
     
     const content = document.createElement('div');
-    content.style.fontSize = 'var(--font-size-xs)';
     content.style.fontFamily = 'var(--font-mono)';
     
     // Create sections
@@ -88,12 +87,12 @@ export class InfoPanel {
     this.createStatsSection(content);
     
     // Create the panel
-    this.element = window.UI.panel('Info Panel', content, {
+    this.element = window.UI.panel('Info', content, {
       icon: 'activity',
-      collapsible: true,
+      collapsible: false,
       closable: true,
       draggable: true,
-      resizable: true,
+      resizable: false,
       startCollapsed: false,
     });
     
@@ -102,9 +101,19 @@ export class InfoPanel {
       this.element.style.position = 'fixed';
       this.element.style.width = '370px'; // Increased from 320px to 370px (+50px)
       this.element.style.height = 'auto';
-      this.element.style.top = '20px';
+      this.element.style.top = '60px';
       this.element.style.right = '20px';
       this.element.style.zIndex = '1000';
+      
+      // Add consistent icon styling
+      const titleElement = this.element.querySelector('.panel-title');
+      if (titleElement) {
+        const iconHTML = '<i data-lucide="activity" style="width: 20px; height: 20px; margin-right: 8px; stroke-width: 1px;"></i>';
+        titleElement.innerHTML = iconHTML + titleElement.textContent;
+        // Remove bold font weight from panel title and make text dim
+        (titleElement as HTMLElement).style.fontWeight = 'normal';
+        (titleElement as HTMLElement).style.color = 'var(--text-secondary)';
+      }
       
       this.container.appendChild(this.element);
     }
@@ -114,6 +123,7 @@ export class InfoPanel {
     const section = document.createElement('div');
     section.className = 'debug-section';
     section.style.marginBottom = 'var(--space-3)';
+    section.style.fontSize = 'var(--font-size-xs)';
     
     const title = document.createElement('h4');
     title.textContent = '3D Info';
@@ -206,6 +216,7 @@ export class InfoPanel {
     const section = document.createElement('div');
     section.className = 'debug-section';
     section.style.marginBottom = 'var(--space-3)';
+    section.style.fontSize = 'var(--font-size-xs)';
     
     const title = document.createElement('h4');
     title.textContent = 'Stats';

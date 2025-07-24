@@ -138,6 +138,8 @@ export class TileEditor {
   private redoStack: EditorAction[] = [];
   private maxHistorySize: number = 50;
 
+  private replaceMode: boolean = false;
+
   constructor(container: HTMLElement, config?: Partial<EditorConfig>) {
     this.container = container;
     this.clock = new THREE.Clock();
@@ -297,9 +299,9 @@ export class TileEditor {
    * Initialize preview mesh
    */
   private initPreview(): void {
-    // Create semi-transparent preview material
+    // Create semi-transparent preview material with contrasting cyan color
     this.previewMaterial = new THREE.MeshPhongMaterial({
-      color: 0xffffff,
+      color: 0x00FFFF, // Bright cyan for visibility
       transparent: true,
       opacity: 0.5,
       emissive: 0x444444,
@@ -843,42 +845,60 @@ export class TileEditor {
       // Use tile size as grid cell size for snapping
       const gridCoord = CoordinateUtils.worldToGrid(worldPos, this.tileSize);
       
+      // Always update preview position for perfect mouse alignment
+      if (this.previewMesh && this.state.mode === EditorMode.Place) {
+        // Calculate which layer the voxel will be placed at based on current mode settings
+        let targetLayer = 0;
+        const shouldStackOnTop = !this.replaceMode && this.stackMode;
+        
+        if (this.replaceMode) {
+          // Replace mode: place at layer 0
+          targetLayer = 0;
+        } else if (shouldStackOnTop) {
+          // Stack mode: place on top of existing tiles
+          const topLayer = this.tileSystem.getTopLayer(gridCoord);
+          targetLayer = topLayer + 1;
+        } else {
+          // No stack, no replace: place at layer 0
+          targetLayer = 0;
+        }
+        
+        // Position preview using the same logic as actual tile placement
+        const layerHeight = 0.1; // Same as SimpleTileSystem.layerHeight
+        const actualYPos = layerHeight / 2 + (targetLayer * layerHeight);
+        
+        // Clamp preview Y position to stay close to mouse cursor for better UX
+        // If the actual placement would be more than 2 units above mouse intersection, 
+        // show preview closer to mouse but with reduced opacity to indicate it's not the real position
+        const maxYOffset = 2.0; // Maximum distance above mouse intersection
+        const mouseY = worldPos.y; // This is typically 0 from ground plane intersection
+        const clampedYPos = Math.min(actualYPos, mouseY + maxYOffset);
+        const isPreviewClamped = clampedYPos < actualYPos;
+        
+        this.previewMesh.position.set(
+          gridCoord.x * this.tileSize + this.tileSize * 0.5,
+          clampedYPos,
+          gridCoord.z * this.tileSize + this.tileSize * 0.5
+        );
+        this.previewMesh.visible = true;
+        
+        // Update preview color and opacity based on whether it's clamped
+        if (this.previewMaterial) {
+          (this.previewMaterial as THREE.MeshPhongMaterial).color.setHex(0x00FFFF); // Bright cyan for visibility
+          // Reduce opacity if preview is clamped to indicate it's not the exact position
+          (this.previewMaterial as THREE.MeshPhongMaterial).opacity = isPreviewClamped ? 0.3 : 0.5;
+        }
+      } else if (this.previewMesh) {
+        this.previewMesh.visible = false;
+      }
+      
       // Update highlighted cell
       if (!this.state.highlightedCell || !CoordinateUtils.coordsEqual(this.state.highlightedCell, gridCoord)) {
         this.state.highlightedCell = gridCoord;
         this.grid.highlightCell(gridCoord, this.tileSize);
         
-        // Update preview position
-        if (this.previewMesh && this.state.mode === EditorMode.Place) {
-          const baseWorldHeight = this.tileSystem.getBaseWorldHeight(gridCoord, this.tileSize);
-          // Position preview at the sub-grid location
-          this.previewMesh.position.set(
-            gridCoord.x * this.tileSize + this.tileSize * 0.5,
-            baseWorldHeight + 0.05,
-            gridCoord.z * this.tileSize + this.tileSize * 0.5
-          );
-          this.previewMesh.visible = true;
-          
-          // Update preview color based on selected voxel type
-          const voxelProps = VOXEL_PROPERTIES[this.selectedVoxelType];
-          if (voxelProps && this.previewMaterial) {
-            (this.previewMaterial as any).color.setHex(voxelProps.color);
-          }
-          
-          // Update height display for preview
-          this.updateHeightDisplay(gridCoord);
-        } else if (this.previewMesh) {
-          this.previewMesh.visible = false;
-        }
-        
-        // Update coordinate display with height
-        if (this.coordinateDisplay && this.config.showCoordinates) {
-          const mode = this.state.mode === EditorMode.Place ? `Place ${VoxelType[this.selectedVoxelType]}` :
-                      this.state.mode === EditorMode.Erase ? 'Erase' : 'Select';
-          const baseHeight = this.tileSystem.getBaseWorldHeight(gridCoord, this.tileSize);
-          const subGridPos = `(${(gridCoord.x * this.tileSize).toFixed(2)}, ${(gridCoord.z * this.tileSize).toFixed(2)})`;
-          this.coordinateDisplay.textContent = `Sub-Grid: ${subGridPos} | Height: ${baseHeight.toFixed(1)}m | Mode: ${mode}`;
-        }
+        // Update height display for preview
+        this.updateHeightDisplay(gridCoord);
       }
     } else {
       this.grid.clearHighlight();
@@ -887,6 +907,27 @@ export class TileEditor {
       // Hide preview
       if (this.previewMesh) {
         this.previewMesh.visible = false;
+      }
+    }
+    
+    // Update coordinate display with height
+    if (this.coordinateDisplay && this.config.showCoordinates && this.state.highlightedCell) {
+      const mode = this.state.mode === EditorMode.Place ? `Place ${VoxelType[this.selectedVoxelType]}` :
+                  this.state.mode === EditorMode.Erase ? 'Erase' : 'Select';
+      const baseHeight = this.tileSystem.getBaseWorldHeight(this.state.highlightedCell, this.tileSize);
+      const subGridPos = `(${(this.state.highlightedCell.x * this.tileSize).toFixed(2)}, ${(this.state.highlightedCell.z * this.tileSize).toFixed(2)})`;
+      
+      // Update coordinate display (first child)
+      const coordElement = this.coordinateDisplay.children[0] as HTMLElement;
+      if (coordElement) {
+        coordElement.textContent = `Sub-Grid: ${subGridPos} | Height: ${baseHeight.toFixed(1)}m | Mode: ${mode}`;
+      }
+      
+      // Update voxel count display (second child)
+      const voxelCountElement = this.coordinateDisplay.children[1] as HTMLElement;
+      if (voxelCountElement) {
+        const voxelCount = this.tileSystem.getAllTiles().size;
+        voxelCountElement.textContent = `Voxels: ${voxelCount}`;
       }
     }
   }
@@ -947,8 +988,11 @@ export class TileEditor {
     // Capture state before placing
     const beforeState = this.captureTileState(gridCoord);
     
-    // Place based on stack mode
-    this.tileSystem.placeTile(gridCoord, this.selectedVoxelType, this.stackMode);
+    // Place based on replace mode and stack mode
+    // If replace mode is enabled, don't stack on top (replace existing)
+    // If stack mode is enabled and replace mode is disabled, stack on top
+    const shouldStackOnTop = !this.replaceMode && this.stackMode;
+    this.tileSystem.placeTile(gridCoord, this.selectedVoxelType, shouldStackOnTop, this.replaceMode);
     
     // Capture state after placing
     const afterState = this.captureTileState(gridCoord);
@@ -1081,7 +1125,19 @@ export class TileEditor {
     // Update coordinate display to show voxel type and height
     if (this.coordinateDisplay && this.state.highlightedCell) {
       const height = this.tileSystem.getWorldHeight(this.state.highlightedCell);
-      this.coordinateDisplay.textContent = `Grid: (${this.state.highlightedCell.x}, ${this.state.highlightedCell.z}) | Height: ${height.toFixed(1)}m | Voxel: ${VoxelType[this.selectedVoxelType]}`;
+      
+      // Update coordinate display (first child)
+      const coordElement = this.coordinateDisplay.children[0] as HTMLElement;
+      if (coordElement) {
+        coordElement.textContent = `Grid: (${this.state.highlightedCell.x}, ${this.state.highlightedCell.z}) | Height: ${height.toFixed(1)}m | Voxel: ${VoxelType[this.selectedVoxelType]}`;
+      }
+      
+      // Update voxel count display (second child)
+      const voxelCountElement = this.coordinateDisplay.children[1] as HTMLElement;
+      if (voxelCountElement) {
+        const voxelCount = this.tileSystem.getAllTiles().size;
+        voxelCountElement.textContent = `Voxels: ${voxelCount}`;
+      }
     }
   }
 
@@ -1105,12 +1161,9 @@ export class TileEditor {
   public setSelectedVoxelType(type: VoxelType): void {
     this.selectedVoxelType = type;
     
-    // Update preview color
-    if (this.previewMesh) {
-      const voxelProps = VOXEL_PROPERTIES[type];
-      if (voxelProps) {
-        (this.previewMaterial as THREE.MeshPhongMaterial).color.setHex(voxelProps.color);
-      }
+    // Update preview color to use contrasting color for visibility
+    if (this.previewMesh && this.previewMaterial) {
+      (this.previewMaterial as THREE.MeshPhongMaterial).color.setHex(0x00FFFF); // Bright cyan for visibility
     }
   }
   
@@ -1776,5 +1829,9 @@ export class TileEditor {
    */
   public getTileSystem(): SimpleTileSystem {
     return this.tileSystem;
+  }
+
+  public setReplaceMode(enabled: boolean): void {
+    this.replaceMode = enabled;
   }
 }

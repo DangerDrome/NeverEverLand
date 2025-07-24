@@ -102,15 +102,26 @@ export class MinimapPanel {
     // Create the panel
     this.element = window.UI.panel('Minimap', content, {
       icon: 'map',
-      collapsible: true,
+      collapsible: false,
       closable: true,
       draggable: true,
-      resizable: true,
+      resizable: false,
       startCollapsed: false,
     });
     
     if (this.element) {
       this.element.className += ' minimap-panel';
+      
+      // Add consistent icon styling
+      const titleElement = this.element.querySelector('.panel-title');
+      if (titleElement) {
+        const iconHTML = '<i data-lucide="map" style="width: 20px; height: 20px; margin-right: 8px; stroke-width: 1px;"></i>';
+        titleElement.innerHTML = iconHTML + titleElement.textContent;
+        // Remove bold font weight from panel title and make text dim
+        (titleElement as HTMLElement).style.fontWeight = 'normal';
+        (titleElement as HTMLElement).style.color = 'var(--text-secondary)';
+      }
+      
       // Don't override position - let CSS handle it
       this.container.appendChild(this.element);
       

@@ -173,13 +173,92 @@
             border-right-color: #1a1a1a !important;
         }
         
+        /* Menu Bar Styling */
+        .menu-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 40px;
+            background: var(--bg-layer-2);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            padding: 0 var(--space-3);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            font-size: var(--font-size-sm);
+            font-weight: normal;
+            color: var(--text-secondary);
+        }
+        
+        .menu-item {
+            padding: var(--space-2) var(--space-3);
+            cursor: pointer;
+            user-select: none;
+            transition: all var(--transition-fast);
+            border-radius: var(--radius-sm);
+            margin-right: var(--space-1);
+        }
+        
+        .menu-item:hover {
+            background: var(--bg-layer-3);
+            color: var(--text-primary);
+        }
+        
+        .menu-item:active {
+            background: var(--bg-layer-4);
+        }
+        
+        /* Adjust game container to account for menu bar */
+        #game-container {
+            width: 100%;
+            height: calc(100% - 40px);
+            position: absolute;
+            top: 40px;
+            left: 0;
+        }
+        
+        /* Adjust ui-overlay to account for menu bar */
+        #ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: calc(100% - 40px);
+            pointer-events: none;
+            margin-top: 40px;
+        }
+        
     </style>
 </head>
 <body class="dark no-select">
     <div id="app">
+        <!-- Menu Bar -->
+        <div id="menu-bar" class="menu-bar">
+            <div class="menu-item" data-menu="file">
+                <span>File</span>
+            </div>
+            <div class="menu-item" data-menu="edit">
+                <span>Edit</span>
+            </div>
+            <div class="menu-item" data-menu="selection">
+                <span>Selection</span>
+            </div>
+            <div class="menu-item" data-menu="view">
+                <span>View</span>
+            </div>
+            <div class="menu-item" data-menu="help">
+                <span>Help</span>
+            </div>
+        </div>
+        
         <div id="game-container"></div>
         <div id="ui-overlay">
-            <div id="coordinates">Grid: (0, 0)</div>
+            <div id="coordinates">
+                <div>Grid: (0, 0)</div>
+                <div>Voxels: 0</div>
+            </div>
         </div>
     </div>
     

@@ -136,7 +136,6 @@ export class TilePalette {
       const controlsColumn = (content as any).mobileControlsColumn;
       
       // Add each control button to the vertical column
-      // For mobile, we need to extract just the buttons from each section
       // (Stack button is already in the left column)
       
       const skySection = this.createSkySection();
@@ -199,8 +198,8 @@ export class TilePalette {
     }
     
     // Create the panel
-    this.element = window.UI.panel('Tile Palette', content, {
-      collapsible: true,
+    this.element = window.UI.panel('Voxels', content, {
+      collapsible: false,
       closable: false,
       draggable: true,
       resizable: false, // Disable resizing completely
@@ -215,8 +214,11 @@ export class TilePalette {
       // Add palette icon to the title
       const titleElement = this.element.querySelector('.panel-title');
       if (titleElement) {
-        const iconHTML = '<i data-lucide="palette" style="width: 16px; height: 16px; margin-right: 8px;"></i>';
+        const iconHTML = '<i data-lucide="boxes" style="width: 20px; height: 20px; margin-right: 8px; stroke-width: 1px;"></i>';
         titleElement.innerHTML = iconHTML + titleElement.textContent;
+        // Remove bold font weight from panel title and make text dim
+        (titleElement as HTMLElement).style.fontWeight = 'normal';
+        (titleElement as HTMLElement).style.color = 'var(--text-secondary)';
       }
       
       // Override positioning based on device
@@ -560,6 +562,36 @@ export class TilePalette {
     
     // Store tooltip info to create later
     this.tooltipsToCreate.push({ element: stackButton.element, content: 'Stack Mode' });
+
+    // Track replace mode state
+    let replaceEnabled = true; // Start enabled by default
+    
+    // Replace mode toggle button
+    const replaceButton = window.UI.button({
+      variant: 'primary', // Start enabled
+      size: 'sm',
+      icon: 'refresh-cw',
+      className: 'tool-button',
+      onClick: () => {
+        replaceEnabled = !replaceEnabled;
+        this.editor.setReplaceMode(replaceEnabled);
+        // Update button appearance
+        if (replaceEnabled) {
+          replaceButton.element.classList.add('btn-primary');
+          replaceButton.element.classList.remove('btn-ghost');
+        } else {
+          replaceButton.element.classList.remove('btn-primary');
+          replaceButton.element.classList.add('btn-ghost');
+        }
+      }
+    });
+    buttonsContainer.appendChild(replaceButton.element);
+    
+    // Set initial replace mode in editor
+    this.editor.setReplaceMode(replaceEnabled);
+    
+    // Store tooltip info to create later
+    this.tooltipsToCreate.push({ element: replaceButton.element, content: 'Replace Mode' });
     
     // Tile size toggle button
     const sizeButton = window.UI.button({
