@@ -97,6 +97,12 @@ export class TileEditor {
   private groundPlane: THREE.Plane;
   private isPanning: boolean = false;
   private isDrawing: boolean = false;
+  private isTumbling: boolean = false;
+  private tumbleStart: THREE.Vector2 = new THREE.Vector2();
+  private currentRotationAngle: number = 0; // Current rotation in degrees (0, 45, 90, 135, etc.)
+  private targetRotationAngle: number = 0; // Target rotation for smooth transitions
+  private currentElevation: number = 0; // 0 = dimetric, 1 = top, -1 = bottom
+  private targetElevation: number = 0;
   private isErasing: boolean = false;
   private lastDrawnCell: GridCoordinate | null = null;
   
@@ -620,6 +626,40 @@ export class TileEditor {
    * Handle mouse movement
    */
   private onMouseMove(event: MouseEvent): void {
+    // Handle camera tumbling (ALT + left mouse) - snap rotation
+    if (this.isTumbling && event.buttons === 1) {
+      this.startInteraction();
+      const deltaX = event.clientX - this.tumbleStart.x;
+      const deltaY = event.clientY - this.tumbleStart.y;
+      
+      // Calculate rotation based on horizontal mouse movement
+      // Every 100 pixels = 45 degrees
+      const rotationDelta = (deltaX / 100) * 45;
+      let newAngle = this.currentRotationAngle + rotationDelta;
+      
+      // Snap to 45-degree increments
+      const snapAngle = Math.round(newAngle / 45) * 45;
+      
+      // Calculate elevation based on vertical mouse movement
+      // Every 150 pixels = switch between views
+      const elevationDelta = deltaY / 150;
+      let newElevation = this.currentElevation + elevationDelta;
+      
+      // Snap elevation to -1, 0, or 1
+      let snapElevation = 0;
+      if (newElevation < -0.5) snapElevation = -1;
+      else if (newElevation > 0.5) snapElevation = 1;
+      
+      // Update camera if angle or elevation changed
+      if (snapAngle !== this.targetRotationAngle || snapElevation !== this.targetElevation) {
+        this.targetRotationAngle = snapAngle;
+        this.targetElevation = snapElevation;
+        this.updateCameraRotation(snapAngle, snapElevation);
+      }
+      
+      return;
+    }
+    
     // Handle camera panning first
     if (event.buttons === 4) { // Middle mouse button
       this.startInteraction();
@@ -674,7 +714,13 @@ export class TileEditor {
       this.camera.startPan(event.clientX, event.clientY);
       event.preventDefault();
     } else if (event.button === 0) { // Left mouse
-      if (this.state.mode === EditorMode.Place && this.state.highlightedCell) {
+      // Check for ALT key for tumbling
+      if (event.altKey) {
+        this.isTumbling = true;
+        this.startInteraction();
+        this.tumbleStart.set(event.clientX, event.clientY);
+        event.preventDefault();
+      } else if (this.state.mode === EditorMode.Place && this.state.highlightedCell) {
         this.isDrawing = true;
         this.lastDrawnCell = { ...this.state.highlightedCell };
         this.placeVoxel(this.state.highlightedCell);
@@ -708,6 +754,11 @@ export class TileEditor {
     if (event.button === 1) { // Middle mouse
       this.isPanning = false;
       this.camera.endPan();
+      this.endInteraction();
+    } else if (event.button === 0 && this.isTumbling) { // Left mouse
+      this.isTumbling = false;
+      this.currentRotationAngle = this.targetRotationAngle; // Commit the rotation
+      this.currentElevation = this.targetElevation; // Commit the elevation
       this.endInteraction();
     }
   }
@@ -2297,6 +2348,25 @@ export class TileEditor {
       cancelAnimationFrame(this.animationId);
       this.animationId = null;
     }
+  }
+
+  /**
+   * Update camera rotation with snap angles
+   */
+  private updateCameraRotation(angle: number, elevation: number = 0): void {
+    // Normalize angle to 0-360 range
+    const normalizedAngle = ((angle % 360) + 360) % 360;
+    
+    // Apply rotation and elevation to camera
+    this.camera.setRotation(normalizedAngle, elevation);
+    
+    // Update info panel mini scene to match
+    if (this.infoPanel) {
+      this.infoPanel.updateCameraOrientation(normalizedAngle, elevation);
+    }
+    
+    // Update grid highlight since view has changed
+    this.updateGridHighlight();
   }
 
   /**

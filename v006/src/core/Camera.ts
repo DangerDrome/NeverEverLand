@@ -28,6 +28,8 @@ export class DimetricCamera {
   private target: THREE.Vector3;
   private isPanning: boolean = false;
   private panStart: THREE.Vector2;
+  private currentAzimuth: number = DIMETRIC_AZIMUTH;
+  private currentElevationType: number = 0; // 0 = dimetric, 1 = top, -1 = bottom
   
   constructor(aspectRatio: number, frustumSize: number = DEFAULT_FRUSTUM_SIZE) {
     this.frustumSize = frustumSize;
@@ -118,14 +120,8 @@ export class DimetricCamera {
       this.target.x = worldPoint.x - offsetX * scaleFactor;
       this.target.z = worldPoint.z - offsetZ * scaleFactor;
       
-      // Update camera position relative to new target
-      const position = calculateDimetricPosition(100);
-      this.camera.position.set(
-        this.target.x + position.x,
-        this.target.y + position.y,
-        this.target.z + position.z
-      );
-      this.camera.lookAt(this.target);
+      // Update camera position relative to new target using current rotation
+      this.updateCameraPosition();
     }
     
     // Update camera bounds with the stored aspect ratio
@@ -156,20 +152,31 @@ export class DimetricCamera {
     // Convert screen movement to world movement
     const panScale = this.frustumSize * 0.001 * this.panSpeed;
     
-    // Calculate camera's right and up vectors in world space
-    // For dimetric view at 45° azimuth:
-    // Camera right vector projects to world (-0.707, 0, 0.707)
-    // Camera up vector projects to world (-0.5, 0, -0.5) approximately
-    const rightX = -Math.cos(DIMETRIC_AZIMUTH);
-    const rightZ = Math.sin(DIMETRIC_AZIMUTH);
-    const upX = -Math.sin(DIMETRIC_AZIMUTH) * Math.cos(DIMETRIC_ELEVATION);
-    const upZ = -Math.cos(DIMETRIC_AZIMUTH) * Math.cos(DIMETRIC_ELEVATION);
+    // Get camera's right and up vectors for screen-space panning
+    const cameraRight = new THREE.Vector3();
+    const cameraUp = new THREE.Vector3();
     
-    // Apply screen delta to world movement
-    const worldDX = (deltaX * rightX + deltaY * upX) * panScale;
-    const worldDZ = (deltaX * rightZ + deltaY * upZ) * panScale;
+    // Get the camera's world matrix
+    this.camera.updateMatrixWorld();
     
-    // Update target (inverted for natural panning)
+    // Extract right vector (first column of matrix)
+    cameraRight.setFromMatrixColumn(this.camera.matrixWorld, 0);
+    
+    // Extract up vector (second column of matrix)
+    cameraUp.setFromMatrixColumn(this.camera.matrixWorld, 1);
+    
+    // Project these vectors onto the XZ plane for horizontal movement
+    cameraRight.y = 0;
+    cameraRight.normalize();
+    
+    cameraUp.y = 0;
+    cameraUp.normalize();
+    
+    // Apply screen movement to world movement
+    const worldDX = -deltaX * cameraRight.x * panScale + deltaY * cameraUp.x * panScale;
+    const worldDZ = -deltaX * cameraRight.z * panScale + deltaY * cameraUp.z * panScale;
+    
+    // Update target
     this.target.x += worldDX;
     this.target.z += worldDZ;
     
@@ -206,15 +213,33 @@ export class DimetricCamera {
    * Update camera position based on target
    */
   private updateCameraPosition(): void {
-    // Maintain fixed dimetric angle relative to target
     const distance = 100;
-    const elevation = DIMETRIC_ELEVATION;
-    const azimuth = DIMETRIC_AZIMUTH;
+    let elevation: number;
+    let offsetX: number;
+    let offsetZ: number;
+    let height: number;
     
-    const height = distance * Math.sin(elevation);
-    const groundDistance = distance * Math.cos(elevation);
-    const offsetX = groundDistance * Math.cos(azimuth);
-    const offsetZ = groundDistance * Math.sin(azimuth);
+    if (this.currentElevationType === 1) {
+      // Top view - looking straight down
+      elevation = Math.PI / 2; // 90 degrees
+      height = distance;
+      offsetX = 0;
+      offsetZ = 0.001; // Tiny offset to avoid gimbal lock
+    } else if (this.currentElevationType === -1) {
+      // Bottom view - looking straight up
+      elevation = -Math.PI / 2; // -90 degrees
+      height = -distance;
+      offsetX = 0;
+      offsetZ = 0.001; // Tiny offset to avoid gimbal lock
+    } else {
+      // Dimetric view
+      elevation = DIMETRIC_ELEVATION;
+      const azimuth = this.currentAzimuth;
+      const groundDistance = distance * Math.cos(elevation);
+      height = distance * Math.sin(elevation);
+      offsetX = groundDistance * Math.cos(azimuth);
+      offsetZ = groundDistance * Math.sin(azimuth);
+    }
     
     this.camera.position.set(
       this.target.x + offsetX,
@@ -257,6 +282,18 @@ export class DimetricCamera {
       x: (vector.x + 1) * viewport.width / 2,
       y: (-vector.y + 1) * viewport.height / 2,
     };
+  }
+
+  /**
+   * Set camera rotation angle (in degrees) and elevation type
+   * @param degrees - Rotation angle in degrees
+   * @param elevationType - 0 = dimetric, 1 = top view, -1 = bottom view
+   */
+  public setRotation(degrees: number, elevationType: number = 0): void {
+    // Convert degrees to radians and add to base dimetric angle
+    this.currentAzimuth = DIMETRIC_AZIMUTH + (degrees * Math.PI / 180);
+    this.currentElevationType = elevationType;
+    this.updateCameraPosition();
   }
 
   /**

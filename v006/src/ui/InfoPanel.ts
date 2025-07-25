@@ -504,6 +504,44 @@ export class InfoPanel {
     this.axesRenderer.render(this.axesScene, this.axesCamera);
   }
   
+  /**
+   * Update the mini scene camera to match the main camera orientation
+   * @param rotationAngle - Rotation angle in degrees
+   * @param elevationType - 0 = dimetric, 1 = top, -1 = bottom
+   */
+  public updateCameraOrientation(rotationAngle: number, elevationType: number): void {
+    if (!this.axesCamera) return;
+    
+    const distance = 10;
+    let position: { x: number; y: number; z: number };
+    
+    if (elevationType === 1) {
+      // Top view
+      position = { x: 0, y: distance, z: 0.001 };
+    } else if (elevationType === -1) {
+      // Bottom view
+      position = { x: 0, y: -distance, z: 0.001 };
+    } else {
+      // Dimetric view with rotation
+      const basePosition = calculateDimetricPosition(distance);
+      const angleRad = (rotationAngle * Math.PI) / 180;
+      
+      // Rotate the position around Y axis
+      const cosAngle = Math.cos(angleRad);
+      const sinAngle = Math.sin(angleRad);
+      
+      position = {
+        x: basePosition.x * cosAngle - basePosition.z * sinAngle,
+        y: basePosition.y,
+        z: basePosition.x * sinAngle + basePosition.z * cosAngle
+      };
+    }
+    
+    this.axesCamera.position.set(position.x, position.y, position.z);
+    this.axesCamera.lookAt(0, 0, 0);
+    this.axesCamera.updateMatrixWorld(true);
+  }
+  
   private formatNumber(num: number): string {
     if (num >= 1000000) {
       return (num / 1000000).toFixed(1) + 'M';
