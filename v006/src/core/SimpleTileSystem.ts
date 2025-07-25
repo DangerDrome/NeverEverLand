@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GridCoordinate } from '../types';
+import { GridCoordinate, StackDirection } from '../types';
 import { VoxelType, VOXEL_PROPERTIES } from './VoxelTypes';
 
 /**
@@ -55,32 +55,85 @@ export class SimpleTileSystem {
   }
 
   /**
+   * Find the next available position in a given direction
+   */
+  public getNextPositionInDirection(coord: GridCoordinate, direction: StackDirection): GridCoordinate | null {
+    const directionOffsets: Record<StackDirection, { x: number; z: number; layer: number }> = {
+      [StackDirection.Up]: { x: 0, z: 0, layer: 1 },
+      [StackDirection.Down]: { x: 0, z: 0, layer: -1 },
+      [StackDirection.North]: { x: 0, z: 1, layer: 0 },
+      [StackDirection.South]: { x: 0, z: -1, layer: 0 },
+      [StackDirection.East]: { x: 1, z: 0, layer: 0 },
+      [StackDirection.West]: { x: -1, z: 0, layer: 0 }
+    };
+
+    const offset = directionOffsets[direction];
+    
+    if (direction === StackDirection.Up || direction === StackDirection.Down) {
+      // For vertical stacking, return the same coordinate with layer adjustment
+      // This will be handled in placeTile method
+      return coord;
+    } else {
+      // For horizontal stacking, find the edge tile in the given direction
+      let currentCoord = { ...coord };
+      let nextCoord = { x: coord.x + offset.x, z: coord.z + offset.z };
+      
+      // Keep moving in the direction until we find an empty spot
+      while (this.getTile(nextCoord) !== VoxelType.Air) {
+        currentCoord = { ...nextCoord };
+        nextCoord = { x: nextCoord.x + offset.x, z: nextCoord.z + offset.z };
+      }
+      
+      return nextCoord;
+    }
+  }
+
+  /**
    * Place a tile at grid coordinate
    */
-  public placeTile(coord: GridCoordinate, type: VoxelType, stackOnTop: boolean = true, replaceExisting: boolean = false): void {
+  public placeTile(coord: GridCoordinate, type: VoxelType, stackOnTop: boolean = true, replaceExisting: boolean = false, stackDirection: StackDirection = StackDirection.Up): void {
     // Don't place air
     if (type === VoxelType.Air) return;
     
     let startLayer = 0;
+    let actualCoord = coord;
     
     if (replaceExisting) {
       // Replace mode: remove all existing tiles at this position
       this.removeTile(coord);
     } else if (stackOnTop) {
-      // Stack mode: find the top layer and place above it
-      const topLayer = this.getTopLayer(coord);
-      startLayer = topLayer + 1;
-      
-      // Check if we've reached max height
-      if (startLayer >= this.maxLayers) {
-        console.warn('Maximum height reached at', coord);
-        return;
+      // Stack mode: place based on direction
+      if (stackDirection === StackDirection.Up) {
+        // Original behavior: stack on top
+        const topLayer = this.getTopLayer(coord);
+        startLayer = topLayer + 1;
+        
+        // Check if we've reached max height
+        if (startLayer >= this.maxLayers) {
+          console.warn('Maximum height reached at', coord);
+          return;
+        }
+      } else if (stackDirection === StackDirection.Down) {
+        // Stack downward (not common, but included for completeness)
+        startLayer = 0;
+        // Would need to shift existing tiles up, but that's complex
+        // For now, just place at layer 0
+      } else {
+        // Horizontal stacking: find next position in the given direction
+        const nextPos = this.getNextPositionInDirection(coord, stackDirection);
+        if (nextPos) {
+          actualCoord = nextPos;
+          startLayer = 0;
+        } else {
+          console.warn('Could not find valid position in direction', stackDirection);
+          return;
+        }
       }
     } else {
       // No stack, no replace: place at ground level (layer 0) without removing existing
       startLayer = 0;
       // Check if layer 0 is already occupied
-      const key = `${coord.x},${coord.z},${startLayer}`;
+      const key = `${actualCoord.x},${actualCoord.z},${startLayer}`;
       if (this.tiles.has(key)) {
         // Layer 0 is occupied, don't place anything
         return;
@@ -88,7 +141,30 @@ export class SimpleTileSystem {
     }
     
     // Place single tile (removed multi-layer logic for grass and dirt)
-    this.placeSingleTile(coord, type, startLayer);
+    this.placeSingleTile(actualCoord, type, startLayer);
+  }
+  
+  /**
+   * Place a tile at a specific layer (used for face-based placement)
+   */
+  public placeTileAtLayer(coord: GridCoordinate, type: VoxelType, layer: number): void {
+    // Don't place air
+    if (type === VoxelType.Air) return;
+    
+    // Check if layer is valid
+    if (layer < 0 || layer >= this.maxLayers) {
+      console.warn('Invalid layer:', layer);
+      return;
+    }
+    
+    // Check if position is already occupied
+    const key = `${coord.x},${coord.z},${layer}`;
+    if (this.tiles.has(key)) {
+      // Position occupied - don't place
+      return;
+    }
+    
+    this.placeSingleTile(coord, type, layer);
   }
   
   /**
@@ -215,6 +291,13 @@ export class SimpleTileSystem {
     };
     
     return this.getWorldHeight(fullGridCoord);
+  }
+  
+  /**
+   * Get all tile meshes (for raycasting)
+   */
+  public getTileMeshes(): THREE.Mesh[] {
+    return Array.from(this.tiles.values());
   }
   
   /**

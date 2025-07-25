@@ -22,6 +22,7 @@ export enum GridLevel {
   Major = 'major',       // 10m grid
   Standard = 'standard', // 1m grid
   Fine = 'fine',        // 0.5m grid
+  UltraFine = 'ultrafine', // 0.1m grid (tile size)
 }
 
 /**
@@ -42,6 +43,18 @@ export enum TileRotation {
   Deg90 = 90,
   Deg180 = 180,
   Deg270 = 270,
+}
+
+/**
+ * Stack direction for tile placement
+ */
+export enum StackDirection {
+  Up = 'up',        // +Y axis (default)
+  Down = 'down',    // -Y axis
+  North = 'north',  // +Z axis
+  South = 'south',  // -Z axis
+  East = 'east',    // +X axis
+  West = 'west',    // -X axis
 }
 
 /**

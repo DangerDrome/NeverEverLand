@@ -26,11 +26,13 @@ export class DimetricGrid {
         major: 0x888888,
         standard: 0x555555,
         fine: 0x333333,
+        ultraFine: 0x222222,
       },
       opacities: {
         major: 1.0,
         standard: 0.7,
         fine: 0.4,
+        ultraFine: 0.25,
       },
       ...config,
     };
@@ -54,6 +56,9 @@ export class DimetricGrid {
     
     // Fine grid (0.5x0.5 cells) - for precise placement
     this.createGridLevel(GridLevel.Fine, 0.5, this.config.colors.fine, this.config.opacities.fine);
+    
+    // Ultra-fine grid (0.1x0.1 cells) - for tile placement
+    this.createGridLevel(GridLevel.UltraFine, 0.1, this.config.colors.ultraFine || 0x222222, this.config.opacities.ultraFine || 0.25);
   }
 
   /**
@@ -167,7 +172,7 @@ export class DimetricGrid {
     const worldZ = coord.z * cellSize + cellSize * 0.5;
     this.highlightMesh.position.set(
       worldX, 
-      0.01, // Slightly above ground
+      0.001, // Very slightly above ground to prevent z-fighting
       worldZ
     );
     this.highlightMesh.visible = true;
@@ -206,6 +211,13 @@ export class DimetricGrid {
    * Update grid opacity based on camera zoom
    */
   public updateOpacity(zoomLevel: number): void {
+    // Only show ultra-fine grid when very zoomed in
+    if (zoomLevel > 5) {
+      this.setLevelVisible(GridLevel.UltraFine, false);
+    } else {
+      this.setLevelVisible(GridLevel.UltraFine, this.visible);
+    }
+    
     // Fade out fine grid when zoomed out
     if (zoomLevel > 20) {
       this.setLevelVisible(GridLevel.Fine, false);

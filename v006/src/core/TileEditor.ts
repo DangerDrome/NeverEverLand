@@ -13,6 +13,7 @@ import {
   EditorMode, 
   GridLevel, 
   TileRotation,
+  StackDirection,
   WorldPosition,
   CoordinateUtils,
   GridCoordinate 
@@ -55,6 +56,7 @@ interface EditorAction {
   removedTiles?: TileData[];
   // For context
   stackMode?: boolean;
+  stackDirection?: StackDirection;
   voxelType?: VoxelType;
 }
 
@@ -87,6 +89,7 @@ export class TileEditor {
   // Editor state
   private state: EditorState;
   private config: EditorConfig;
+  private targetLayer: number | null = null; // Track target layer for face-based placement
   
   // Input handling
   private mouse: THREE.Vector2;
@@ -111,6 +114,7 @@ export class TileEditor {
   
   // Placement mode
   private stackMode: boolean = true;
+  private stackDirection: StackDirection = StackDirection.Up;
   private tileSize: number = 0.1;
   
   // Sky system
@@ -132,6 +136,12 @@ export class TileEditor {
   // Preview
   private previewMesh: THREE.Mesh | null = null;
   private previewMaterial: THREE.Material | null = null;
+  private faceHighlightMesh: THREE.Mesh | null = null;
+  private faceHighlightMaterial: THREE.Material | null = null;
+  
+  // Alignment lines
+  private alignmentLinesGroup: THREE.Group | null = null;
+  private alignmentLineMaterials: THREE.ShaderMaterial[] = [];
   
   // Undo/Redo system
   private undoStack: EditorAction[] = [];
@@ -166,7 +176,7 @@ export class TileEditor {
       gridLevel: this.config.defaultGridLevel,
       rotation: TileRotation.Deg0,
       highlightedCell: null,
-      cameraZoom: 6, // Start zoomed in close to the action
+      cameraZoom: 3, // Start zoomed in very close to the action
     };
     
     // Apply config settings
@@ -299,9 +309,9 @@ export class TileEditor {
    * Initialize preview mesh
    */
   private initPreview(): void {
-    // Create semi-transparent preview material with contrasting cyan color
+    // Create semi-transparent preview material with contrasting red color
     this.previewMaterial = new THREE.MeshPhongMaterial({
-      color: 0x00FFFF, // Bright cyan for visibility
+      color: 0xFF0000, // Bright red for visibility
       transparent: true,
       opacity: 0.5,
       emissive: 0x444444,
@@ -313,6 +323,129 @@ export class TileEditor {
     this.previewMesh = new THREE.Mesh(geometry, this.previewMaterial);
     this.previewMesh.visible = false;
     this.scene.add(this.previewMesh);
+    
+    // Create face highlight material - bright yellow-orange for visibility
+    this.faceHighlightMaterial = new THREE.MeshBasicMaterial({
+      color: 0xFFA500, // Orange color
+      transparent: true,
+      opacity: 0.3,
+      side: THREE.DoubleSide,
+    });
+    
+    // Create face highlight mesh (a plane that will be positioned on voxel faces)
+    const faceGeometry = new THREE.PlaneGeometry(this.tileSize * 0.98, this.tileSize * 0.98); // Slightly smaller to show edges
+    this.faceHighlightMesh = new THREE.Mesh(faceGeometry, this.faceHighlightMaterial);
+    this.faceHighlightMesh.visible = false;
+    this.scene.add(this.faceHighlightMesh);
+    
+    // Create alignment lines
+    this.initAlignmentLines();
+  }
+  
+  /**
+   * Initialize alignment lines for placement guides
+   */
+  private initAlignmentLines(): void {
+    // Create shader for screen-space distance-based fading
+    const createFadingLineShader = () => {
+      return new THREE.ShaderMaterial({
+        uniforms: {
+          color: { value: new THREE.Color(0x00FF00) },
+          opacity: { value: 0.5 }
+        },
+        vertexShader: `
+          varying vec2 vScreenPos;
+          varying vec3 vWorldPos;
+          
+          void main() {
+            vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            // Convert to screen space coordinates
+            vScreenPos = gl_Position.xy / gl_Position.w;
+          }
+        `,
+        fragmentShader: `
+          uniform vec3 color;
+          uniform float opacity;
+          varying vec2 vScreenPos;
+          varying vec3 vWorldPos;
+          
+          void main() {
+            // Create dashed line effect based on world position
+            // Use the maximum component to handle all axis directions properly
+            float maxCoord = max(abs(vWorldPos.x), max(abs(vWorldPos.y), abs(vWorldPos.z)));
+            float dash = mod(maxCoord * 10.0, 1.0);
+            if (dash > 0.5) discard;
+            
+            // Fade based on distance from screen center
+            float screenDist = length(vScreenPos);
+            float fadeStart = 0.2;
+            float fadeEnd = 1.0;
+            float fadeFactor = 1.0 - smoothstep(fadeStart, fadeEnd, screenDist);
+            
+            gl_FragColor = vec4(color, opacity * fadeFactor);
+          }
+        `,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide
+      });
+    };
+    
+    // Create group to hold all alignment lines
+    this.alignmentLinesGroup = new THREE.Group();
+    this.alignmentLinesGroup.visible = false;
+    
+    // Create edge lines for voxel faces - 12 edges total
+    const createEdgeLine = (start: number[], end: number[]) => {
+      const geometry = new THREE.BufferGeometry();
+      const vertices = new Float32Array([...start, ...end]);
+      geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+      const material = createFadingLineShader();
+      this.alignmentLineMaterials.push(material);
+      return new THREE.LineSegments(geometry, material);
+    };
+    
+    const s = this.tileSize * 0.5; // half size
+    const h = 0.05; // half height
+    const extend = 50; // How far to extend the lines
+    
+    // Top face edges (4 lines)
+    const topNorth = createEdgeLine([-extend, h, -s], [extend, h, -s]);
+    topNorth.name = 'topNorth';
+    const topSouth = createEdgeLine([-extend, h, s], [extend, h, s]);
+    topSouth.name = 'topSouth';
+    const topEast = createEdgeLine([s, h, -extend], [s, h, extend]);
+    topEast.name = 'topEast';
+    const topWest = createEdgeLine([-s, h, -extend], [-s, h, extend]);
+    topWest.name = 'topWest';
+    
+    // Bottom face edges (4 lines)
+    const bottomNorth = createEdgeLine([-extend, -h, -s], [extend, -h, -s]);
+    bottomNorth.name = 'bottomNorth';
+    const bottomSouth = createEdgeLine([-extend, -h, s], [extend, -h, s]);
+    bottomSouth.name = 'bottomSouth';
+    const bottomEast = createEdgeLine([s, -h, -extend], [s, -h, extend]);
+    bottomEast.name = 'bottomEast';
+    const bottomWest = createEdgeLine([-s, -h, -extend], [-s, -h, extend]);
+    bottomWest.name = 'bottomWest';
+    
+    // Vertical edges (4 lines)
+    const vertNE = createEdgeLine([s, -extend, -s], [s, extend, -s]);
+    vertNE.name = 'vertNE';
+    const vertNW = createEdgeLine([-s, -extend, -s], [-s, extend, -s]);
+    vertNW.name = 'vertNW';
+    const vertSE = createEdgeLine([s, -extend, s], [s, extend, s]);
+    vertSE.name = 'vertSE';
+    const vertSW = createEdgeLine([-s, -extend, s], [-s, extend, s]);
+    vertSW.name = 'vertSW';
+    
+    // Add all edge lines to the group
+    this.alignmentLinesGroup.add(topNorth, topSouth, topEast, topWest);
+    this.alignmentLinesGroup.add(bottomNorth, bottomSouth, bottomEast, bottomWest);
+    this.alignmentLinesGroup.add(vertNE, vertNW, vertSE, vertSW);
+    
+    this.scene.add(this.alignmentLinesGroup);
   }
 
   /**
@@ -813,6 +946,10 @@ export class TileEditor {
       case 'B':
         this.toggleBloom();
         break;
+      case 'd':
+      case 'D':
+        this.cycleStackDirection();
+        break;
     }
   }
 
@@ -840,56 +977,69 @@ export class TileEditor {
    * Update grid highlight based on mouse position
    */
   private updateGridHighlight(): void {
+    // First try raycasting against existing voxels
+    const voxelIntersection = this.getVoxelIntersection();
+    
+    if (voxelIntersection && this.previewMesh && this.state.mode === EditorMode.Place) {
+      // Show preview on the face of the intersected voxel
+      const { position, normal, gridCoord, layer, voxelType, localPoint } = voxelIntersection;
+      this.showPreviewOnFace(position, normal, gridCoord, layer, voxelType, localPoint);
+      
+      // Update highlighted cell to the target position
+      const targetCoord = this.getTargetCoordFromFace(gridCoord, normal);
+      if (targetCoord && (!this.state.highlightedCell || !CoordinateUtils.coordsEqual(this.state.highlightedCell, targetCoord))) {
+        this.state.highlightedCell = targetCoord;
+        this.grid.highlightCell(targetCoord, this.tileSize);
+        this.updateHeightDisplay(targetCoord);
+      }
+      return;
+    }
+    
+    // Fall back to ground plane intersection
     const worldPos = this.getMouseWorldPosition();
     if (worldPos) {
+      // Clear target layer and hide face highlight when not on a voxel face
+      this.targetLayer = null;
+      if (this.faceHighlightMesh) {
+        this.faceHighlightMesh.visible = false;
+      }
+      
       // Use tile size as grid cell size for snapping
       const gridCoord = CoordinateUtils.worldToGrid(worldPos, this.tileSize);
       
-      // Always update preview position for perfect mouse alignment
-      if (this.previewMesh && this.state.mode === EditorMode.Place) {
-        // Calculate which layer the voxel will be placed at based on current mode settings
-        let targetLayer = 0;
-        const shouldStackOnTop = !this.replaceMode && this.stackMode;
+      // Check if hovering over empty space (for initial placement)
+      const existingTile = this.tileSystem.getTile(gridCoord);
+      const hasExistingVoxel = existingTile !== VoxelType.Air;
+      
+      // Show preview on ground for initial placement when no voxel exists
+      if (this.previewMesh && this.state.mode === EditorMode.Place && !hasExistingVoxel) {
+        // Calculate preview position - tiles should be centered in their grid cells
+        // Grid lines are at 0, 0.1, 0.2, etc. so cell (0,0) goes from 0 to 0.1
+        const previewX = gridCoord.x * this.tileSize + this.tileSize * 0.5;
+        const previewY = 0.05; // Center of 0.1 tall tile, bottom at Y=0
+        const previewZ = gridCoord.z * this.tileSize + this.tileSize * 0.5;
         
-        if (this.replaceMode) {
-          // Replace mode: place at layer 0
-          targetLayer = 0;
-        } else if (shouldStackOnTop) {
-          // Stack mode: place on top of existing tiles
-          const topLayer = this.tileSystem.getTopLayer(gridCoord);
-          targetLayer = topLayer + 1;
-        } else {
-          // No stack, no replace: place at layer 0
-          targetLayer = 0;
-        }
+        // Debug: log positions to verify alignment
+        // console.log(`Grid coord: (${gridCoord.x}, ${gridCoord.z}), Preview pos: (${previewX.toFixed(3)}, ${previewZ.toFixed(3)})`);
         
-        // Position preview using the same logic as actual tile placement
-        const layerHeight = 0.1; // Same as SimpleTileSystem.layerHeight
-        const actualYPos = layerHeight / 2 + (targetLayer * layerHeight);
-        
-        // Clamp preview Y position to stay close to mouse cursor for better UX
-        // If the actual placement would be more than 2 units above mouse intersection, 
-        // show preview closer to mouse but with reduced opacity to indicate it's not the real position
-        const maxYOffset = 2.0; // Maximum distance above mouse intersection
-        const mouseY = worldPos.y; // This is typically 0 from ground plane intersection
-        const clampedYPos = Math.min(actualYPos, mouseY + maxYOffset);
-        const isPreviewClamped = clampedYPos < actualYPos;
-        
-        this.previewMesh.position.set(
-          gridCoord.x * this.tileSize + this.tileSize * 0.5,
-          clampedYPos,
-          gridCoord.z * this.tileSize + this.tileSize * 0.5
-        );
+        this.previewMesh.position.set(previewX, previewY, previewZ);
         this.previewMesh.visible = true;
         
-        // Update preview color and opacity based on whether it's clamped
         if (this.previewMaterial) {
-          (this.previewMaterial as THREE.MeshPhongMaterial).color.setHex(0x00FFFF); // Bright cyan for visibility
-          // Reduce opacity if preview is clamped to indicate it's not the exact position
-          (this.previewMaterial as THREE.MeshPhongMaterial).opacity = isPreviewClamped ? 0.3 : 0.5;
+          (this.previewMaterial as THREE.MeshPhongMaterial).color.setHex(0xFF0000);
+          (this.previewMaterial as THREE.MeshPhongMaterial).opacity = 0.5;
+        }
+        
+        // Don't show alignment lines for ground placement
+        if (this.alignmentLinesGroup) {
+          this.alignmentLinesGroup.visible = false;
         }
       } else if (this.previewMesh) {
         this.previewMesh.visible = false;
+        // Hide alignment lines when not placing
+        if (this.alignmentLinesGroup) {
+          this.alignmentLinesGroup.visible = false;
+        }
       }
       
       // Update highlighted cell
@@ -904,9 +1054,15 @@ export class TileEditor {
       this.grid.clearHighlight();
       this.state.highlightedCell = null;
       
-      // Hide preview
+      // Hide preview, face highlight and alignment lines
       if (this.previewMesh) {
         this.previewMesh.visible = false;
+      }
+      if (this.faceHighlightMesh) {
+        this.faceHighlightMesh.visible = false;
+      }
+      if (this.alignmentLinesGroup) {
+        this.alignmentLinesGroup.visible = false;
       }
     }
     
@@ -953,6 +1109,351 @@ export class TileEditor {
     
     return null;
   }
+  
+  /**
+   * Get intersection with existing voxel meshes
+   */
+  private getVoxelIntersection(): { position: THREE.Vector3; normal: THREE.Vector3; gridCoord: GridCoordinate; layer: number; voxelType: VoxelType; localPoint: THREE.Vector3 } | null {
+    // Update raycaster
+    const cam = this.camera.getCamera();
+    cam.updateMatrixWorld(true);
+    this.raycaster.setFromCamera(this.mouse, cam);
+    
+    // Get all tile meshes from the tile system
+    const tileMeshes = this.tileSystem.getTileMeshes();
+    
+    // Intersect with tile meshes
+    const intersections = this.raycaster.intersectObjects(tileMeshes, false);
+    
+    if (intersections.length > 0) {
+      const intersection = intersections[0];
+      if (intersection.face) {
+        // Get the grid coordinate of the intersected tile
+        const mesh = intersection.object as THREE.Mesh;
+        const gridCoord = mesh.userData.coord as GridCoordinate;
+        
+        // Transform face normal to world space
+        const normalMatrix = new THREE.Matrix3().getNormalMatrix(mesh.matrixWorld);
+        const worldNormal = intersection.face.normal.clone().applyMatrix3(normalMatrix).normalize();
+        
+        // Calculate local point on the voxel face
+        const localPoint = mesh.worldToLocal(intersection.point.clone());
+        
+        return {
+          position: intersection.point.clone(),
+          normal: worldNormal,
+          gridCoord: gridCoord,
+          layer: mesh.userData.layer || 0,
+          voxelType: mesh.userData.type || VoxelType.Grass,
+          localPoint: localPoint
+        };
+      }
+    }
+    
+    return null;
+  }
+  
+  /**
+   * Check if a point is near a voxel edge
+   */
+  private isNearEdge(localPoint: THREE.Vector3, normal: THREE.Vector3): boolean {
+    const edgeThreshold = 0.02; // Within 2cm of edge (relative to tile size)
+    const halfSize = 0.05; // Half of the voxel height (0.1)
+    
+    // Check which face we're on and test the appropriate edges
+    if (Math.abs(normal.y) > 0.5) {
+      // Top/bottom face - check X and Z edges
+      const distToXEdge = Math.min(
+        Math.abs(localPoint.x + halfSize),
+        Math.abs(localPoint.x - halfSize)
+      );
+      const distToZEdge = Math.min(
+        Math.abs(localPoint.z + halfSize),
+        Math.abs(localPoint.z - halfSize)
+      );
+      return distToXEdge < edgeThreshold || distToZEdge < edgeThreshold;
+    } else if (Math.abs(normal.x) > 0.5) {
+      // East/west face - check Y and Z edges
+      const distToYEdge = Math.min(
+        Math.abs(localPoint.y + halfSize),
+        Math.abs(localPoint.y - halfSize)
+      );
+      const distToZEdge = Math.min(
+        Math.abs(localPoint.z + halfSize),
+        Math.abs(localPoint.z - halfSize)
+      );
+      return distToYEdge < edgeThreshold || distToZEdge < edgeThreshold;
+    } else if (Math.abs(normal.z) > 0.5) {
+      // North/south face - check X and Y edges
+      const distToXEdge = Math.min(
+        Math.abs(localPoint.x + halfSize),
+        Math.abs(localPoint.x - halfSize)
+      );
+      const distToYEdge = Math.min(
+        Math.abs(localPoint.y + halfSize),
+        Math.abs(localPoint.y - halfSize)
+      );
+      return distToXEdge < edgeThreshold || distToYEdge < edgeThreshold;
+    }
+    
+    return false;
+  }
+  
+  /**
+   * Show preview on a specific face of a voxel
+   */
+  private showPreviewOnFace(position: THREE.Vector3, normal: THREE.Vector3, sourceCoord: GridCoordinate, sourceLayer: number, voxelType: VoxelType, localPoint: THREE.Vector3): void {
+    if (!this.previewMesh) return;
+    
+    // Show face highlight
+    this.showFaceHighlight(sourceCoord, normal, sourceLayer);
+    
+    // Get the target coordinate based on the face normal
+    const targetCoord = this.getTargetCoordFromFace(sourceCoord, normal);
+    if (!targetCoord) return;
+    
+    // Get the Y position of the source voxel using the actual layer clicked
+    const layerHeight = 0.1;
+    const sourceY = layerHeight / 2 + (sourceLayer * layerHeight);
+    
+    // Position preview at the target location
+    let targetY = sourceY; // Default to same height as source
+    let targetLayerNum = sourceLayer; // Default to same layer as source
+    
+    // Only adjust Y position based on face normal when stack mode is enabled
+    if (this.stackMode) {
+      if (Math.abs(normal.y) > 0.5) {
+        if (normal.y > 0) {
+          // Top face - place above
+          targetLayerNum = sourceLayer + 1;
+          targetY = layerHeight / 2 + (targetLayerNum * layerHeight);
+        } else {
+          // Bottom face - place below
+          targetLayerNum = Math.max(0, sourceLayer - 1);
+          targetY = layerHeight / 2 + (targetLayerNum * layerHeight);
+        }
+      } else {
+        // Side face - place at same layer as the clicked voxel
+        targetLayerNum = sourceLayer;
+        targetY = sourceY;
+      }
+    } else {
+      // When stack mode is off, always preview at ground level (layer 0)
+      targetLayerNum = 0;
+      targetY = layerHeight / 2;
+    }
+    
+    // Store the target layer for placement
+    this.targetLayer = targetLayerNum;
+    
+    this.previewMesh.position.set(
+      targetCoord.x * this.tileSize + this.tileSize * 0.5,
+      targetY,
+      targetCoord.z * this.tileSize + this.tileSize * 0.5
+    );
+    
+    this.previewMesh.visible = true;
+    
+    // Update preview appearance
+    if (this.previewMaterial) {
+      (this.previewMaterial as THREE.MeshPhongMaterial).color.setHex(0xFF0000);
+      (this.previewMaterial as THREE.MeshPhongMaterial).opacity = 0.5;
+    }
+    
+    // Show alignment lines for the hovered voxel face
+    this.updateAlignmentLines(
+      sourceCoord.x * this.tileSize + this.tileSize * 0.5,
+      sourceY,
+      sourceCoord.z * this.tileSize + this.tileSize * 0.5,
+      voxelType,
+      normal
+    );
+  }
+  
+  /**
+   * Show face highlight on the hovered voxel face
+   */
+  private showFaceHighlight(coord: GridCoordinate, normal: THREE.Vector3, layer: number): void {
+    if (!this.faceHighlightMesh) return;
+    
+    // Get the voxel position using the actual layer
+    const layerHeight = 0.1;
+    const voxelY = layerHeight / 2 + (layer * layerHeight);
+    
+    // Calculate face center position
+    const centerX = coord.x * this.tileSize + this.tileSize * 0.5;
+    const centerZ = coord.z * this.tileSize + this.tileSize * 0.5;
+    
+    // Offset the highlight slightly from the face to prevent z-fighting
+    const offset = 0.001;
+    
+    // Position and rotate the highlight based on which face
+    if (Math.abs(normal.y) > 0.5) {
+      // Top or bottom face
+      this.faceHighlightMesh.position.set(
+        centerX,
+        voxelY + (normal.y > 0 ? layerHeight/2 + offset : -layerHeight/2 - offset),
+        centerZ
+      );
+      // Rotate to be horizontal
+      this.faceHighlightMesh.rotation.set(Math.PI / 2, 0, 0);
+    } else if (Math.abs(normal.x) > 0.5) {
+      // East or west face
+      this.faceHighlightMesh.position.set(
+        centerX + (normal.x > 0 ? this.tileSize/2 + offset : -this.tileSize/2 - offset),
+        voxelY,
+        centerZ
+      );
+      // Rotate to face east/west
+      this.faceHighlightMesh.rotation.set(0, Math.PI / 2, 0);
+    } else if (Math.abs(normal.z) > 0.5) {
+      // North or south face
+      this.faceHighlightMesh.position.set(
+        centerX,
+        voxelY,
+        centerZ + (normal.z > 0 ? this.tileSize/2 + offset : -this.tileSize/2 - offset)
+      );
+      // No rotation needed for north/south faces
+      this.faceHighlightMesh.rotation.set(0, 0, 0);
+    }
+    
+    this.faceHighlightMesh.visible = true;
+  }
+  
+  /**
+   * Update alignment lines position and color
+   */
+  private updateAlignmentLines(x: number, y: number, z: number, voxelType: VoxelType, normal?: THREE.Vector3): void {
+    if (!this.alignmentLinesGroup || this.alignmentLineMaterials.length === 0) return;
+    
+    // Get voxel color from properties
+    const voxelProps = VOXEL_PROPERTIES[voxelType];
+    if (voxelProps) {
+      // Update all material colors to match voxel
+      const color = new THREE.Color(voxelProps.color);
+      this.alignmentLineMaterials.forEach(material => {
+        material.uniforms.color.value = color;
+      });
+    }
+    
+    // Hide all lines first
+    this.alignmentLinesGroup.children.forEach(child => {
+      child.visible = false;
+    });
+    
+    if (normal) {
+      // Position the group at the voxel center
+      this.alignmentLinesGroup.position.set(x, y, z);
+      
+      if (Math.abs(normal.y) > 0.5) {
+        // Top/bottom face - show the 4 edge lines of that face
+        if (normal.y > 0) {
+          // Top face
+          const topNorth = this.alignmentLinesGroup.getObjectByName('topNorth');
+          const topSouth = this.alignmentLinesGroup.getObjectByName('topSouth');
+          const topEast = this.alignmentLinesGroup.getObjectByName('topEast');
+          const topWest = this.alignmentLinesGroup.getObjectByName('topWest');
+          if (topNorth) topNorth.visible = true;
+          if (topSouth) topSouth.visible = true;
+          if (topEast) topEast.visible = true;
+          if (topWest) topWest.visible = true;
+        } else {
+          // Bottom face
+          const bottomNorth = this.alignmentLinesGroup.getObjectByName('bottomNorth');
+          const bottomSouth = this.alignmentLinesGroup.getObjectByName('bottomSouth');
+          const bottomEast = this.alignmentLinesGroup.getObjectByName('bottomEast');
+          const bottomWest = this.alignmentLinesGroup.getObjectByName('bottomWest');
+          if (bottomNorth) bottomNorth.visible = true;
+          if (bottomSouth) bottomSouth.visible = true;
+          if (bottomEast) bottomEast.visible = true;
+          if (bottomWest) bottomWest.visible = true;
+        }
+      } else if (Math.abs(normal.x) > 0.5) {
+        // Left/right face - show the 4 edge lines of that face
+        if (normal.x > 0) {
+          // Right face (+X)
+          const topEast = this.alignmentLinesGroup.getObjectByName('topEast');
+          const bottomEast = this.alignmentLinesGroup.getObjectByName('bottomEast');
+          const vertNE = this.alignmentLinesGroup.getObjectByName('vertNE');
+          const vertSE = this.alignmentLinesGroup.getObjectByName('vertSE');
+          if (topEast) topEast.visible = true;
+          if (bottomEast) bottomEast.visible = true;
+          if (vertNE) vertNE.visible = true;
+          if (vertSE) vertSE.visible = true;
+        } else {
+          // Left face (-X)
+          const topWest = this.alignmentLinesGroup.getObjectByName('topWest');
+          const bottomWest = this.alignmentLinesGroup.getObjectByName('bottomWest');
+          const vertNW = this.alignmentLinesGroup.getObjectByName('vertNW');
+          const vertSW = this.alignmentLinesGroup.getObjectByName('vertSW');
+          if (topWest) topWest.visible = true;
+          if (bottomWest) bottomWest.visible = true;
+          if (vertNW) vertNW.visible = true;
+          if (vertSW) vertSW.visible = true;
+        }
+      } else if (Math.abs(normal.z) > 0.5) {
+        // Front/back face - show the 4 edge lines of that face
+        if (normal.z > 0) {
+          // Front face (+Z)
+          const topSouth = this.alignmentLinesGroup.getObjectByName('topSouth');
+          const bottomSouth = this.alignmentLinesGroup.getObjectByName('bottomSouth');
+          const vertSE = this.alignmentLinesGroup.getObjectByName('vertSE');
+          const vertSW = this.alignmentLinesGroup.getObjectByName('vertSW');
+          if (topSouth) topSouth.visible = true;
+          if (bottomSouth) bottomSouth.visible = true;
+          if (vertSE) vertSE.visible = true;
+          if (vertSW) vertSW.visible = true;
+        } else {
+          // Back face (-Z)
+          const topNorth = this.alignmentLinesGroup.getObjectByName('topNorth');
+          const bottomNorth = this.alignmentLinesGroup.getObjectByName('bottomNorth');
+          const vertNE = this.alignmentLinesGroup.getObjectByName('vertNE');
+          const vertNW = this.alignmentLinesGroup.getObjectByName('vertNW');
+          if (topNorth) topNorth.visible = true;
+          if (bottomNorth) bottomNorth.visible = true;
+          if (vertNE) vertNE.visible = true;
+          if (vertNW) vertNW.visible = true;
+        }
+      }
+    } else {
+      // No normal provided, show all lines at the given position
+      this.alignmentLinesGroup.position.set(x, y, z);
+      this.alignmentLinesGroup.children.forEach(child => {
+        child.visible = true;
+      });
+    }
+    
+    // Show the alignment lines
+    this.alignmentLinesGroup.visible = true;
+  }
+  
+  /**
+   * Get target coordinate based on face normal
+   */
+  private getTargetCoordFromFace(sourceCoord: GridCoordinate, normal: THREE.Vector3): GridCoordinate | null {
+    // Determine which face was hit based on normal
+    let offsetX = 0;
+    let offsetZ = 0;
+    
+    // Use a threshold to determine the primary axis
+    const threshold = 0.5;
+    
+    if (Math.abs(normal.x) > threshold) {
+      offsetX = normal.x > 0 ? 1 : -1;
+    } else if (Math.abs(normal.z) > threshold) {
+      offsetZ = normal.z > 0 ? 1 : -1;
+    }
+    
+    // For vertical faces, we still use the same coordinate but stack vertically
+    if (Math.abs(normal.y) > threshold) {
+      return sourceCoord;
+    }
+    
+    return {
+      x: sourceCoord.x + offsetX,
+      z: sourceCoord.z + offsetZ
+    };
+  }
 
   /**
    * Handle left click
@@ -985,31 +1486,40 @@ export class TileEditor {
    * Place tile at grid position
    */
   private placeVoxel(gridCoord: GridCoordinate): void {
-    // Capture state before placing
-    const beforeState = this.captureTileState(gridCoord);
+    // Use the highlighted cell which has already been calculated based on face detection
+    const targetCoord = this.state.highlightedCell || gridCoord;
     
-    // Place based on replace mode and stack mode
-    // If replace mode is enabled, don't stack on top (replace existing)
-    // If stack mode is enabled and replace mode is disabled, stack on top
-    const shouldStackOnTop = !this.replaceMode && this.stackMode;
-    this.tileSystem.placeTile(gridCoord, this.selectedVoxelType, shouldStackOnTop, this.replaceMode);
+    // Capture state before placing
+    const beforeState = this.captureTileState(targetCoord);
+    
+    // Check if we have a specific layer from face detection
+    if (this.targetLayer !== null && this.stackMode) {
+      // Use specific layer placement for face-based placement only in stack mode
+      this.tileSystem.placeTileAtLayer(targetCoord, this.selectedVoxelType, this.targetLayer);
+      this.targetLayer = null; // Reset after use
+    } else {
+      // Fall back to normal placement logic
+      const shouldStackOnTop = !this.replaceMode && this.stackMode;
+      this.tileSystem.placeTile(targetCoord, this.selectedVoxelType, shouldStackOnTop, this.replaceMode, this.stackDirection);
+    }
     
     // Capture state after placing
-    const afterState = this.captureTileState(gridCoord);
+    const afterState = this.captureTileState(targetCoord);
     
     // Record action for undo/redo
     const action: EditorAction = {
       type: ActionType.PLACE,
-      coord: { ...gridCoord },
+      coord: { ...targetCoord },
       placedTiles: afterState,
       removedTiles: beforeState,
       stackMode: this.stackMode,
+      stackDirection: this.stackDirection,
       voxelType: this.selectedVoxelType
     };
     this.recordAction(action);
     
     // Update height display
-    this.updateHeightDisplay(gridCoord);
+    this.updateHeightDisplay(targetCoord);
   }
 
   /**
@@ -1163,7 +1673,7 @@ export class TileEditor {
     
     // Update preview color to use contrasting color for visibility
     if (this.previewMesh && this.previewMaterial) {
-      (this.previewMaterial as THREE.MeshPhongMaterial).color.setHex(0x00FFFF); // Bright cyan for visibility
+      (this.previewMaterial as THREE.MeshPhongMaterial).color.setHex(0xFF0000); // Bright cyan for visibility
     }
   }
   
@@ -1173,6 +1683,40 @@ export class TileEditor {
   public setStackMode(enabled: boolean): void {
     this.stackMode = enabled;
     console.log('Stack mode:', enabled ? 'ON' : 'OFF');
+  }
+  
+  /**
+   * Set stack direction (called by TilePalette)
+   */
+  public setStackDirection(direction: StackDirection): void {
+    this.stackDirection = direction;
+    console.log('Stack direction:', direction);
+  }
+  
+  /**
+   * Get current stack direction
+   */
+  public getStackDirection(): StackDirection {
+    return this.stackDirection;
+  }
+  
+  /**
+   * Cycle through stack directions
+   */
+  public cycleStackDirection(): void {
+    const directions = [
+      StackDirection.Up,
+      StackDirection.North,
+      StackDirection.East,
+      StackDirection.South,
+      StackDirection.West
+    ];
+    
+    const currentIndex = directions.indexOf(this.stackDirection);
+    const nextIndex = (currentIndex + 1) % directions.length;
+    this.stackDirection = directions[nextIndex]!;
+    
+    console.log('Stack direction:', this.stackDirection);
   }
   
   /**
@@ -1195,6 +1739,14 @@ export class TileEditor {
       
       // Create new geometry with current tile size
       this.previewMesh.geometry = new THREE.BoxGeometry(this.tileSize, 0.1, this.tileSize);
+    }
+    
+    if (this.faceHighlightMesh) {
+      // Dispose old geometry
+      this.faceHighlightMesh.geometry.dispose();
+      
+      // Create new geometry with current tile size
+      this.faceHighlightMesh.geometry = new THREE.PlaneGeometry(this.tileSize * 0.98, this.tileSize * 0.98);
     }
   }
   
@@ -1333,7 +1885,8 @@ export class TileEditor {
     if (action.type === ActionType.PLACE) {
       // Redo a place action: place what was originally placed
       if (action.placedTiles && action.voxelType && action.stackMode !== undefined) {
-        this.tileSystem.placeTile(action.coord, action.voxelType, action.stackMode);
+        const direction = action.stackDirection || StackDirection.Up;
+        this.tileSystem.placeTile(action.coord, action.voxelType, action.stackMode, false, direction);
       }
     } else if (action.type === ActionType.REMOVE) {
       // Redo a remove action: remove again
@@ -1714,6 +2267,7 @@ export class TileEditor {
       this.fpsTime = 0;
     }
   }
+  
 
 
   /**
@@ -1770,6 +2324,24 @@ export class TileEditor {
       if (this.previewMaterial) {
         this.previewMaterial.dispose();
       }
+    }
+    
+    // Dispose face highlight mesh
+    if (this.faceHighlightMesh) {
+      this.faceHighlightMesh.geometry.dispose();
+      if (this.faceHighlightMaterial) {
+        this.faceHighlightMaterial.dispose();
+      }
+    }
+    
+    // Dispose alignment lines
+    if (this.alignmentLinesGroup) {
+      this.alignmentLinesGroup.traverse((child) => {
+        if (child instanceof THREE.Line || child instanceof THREE.LineSegments) {
+          child.geometry.dispose();
+        }
+      });
+      this.alignmentLineMaterials.forEach(material => material.dispose());
     }
     
     // Dispose of UI elements

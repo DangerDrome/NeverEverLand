@@ -53,12 +53,14 @@ export interface GridConfig {
     major: number;
     standard: number;
     fine: number;
+    ultraFine?: number;
   };
   /** Grid line opacities */
   opacities: {
     major: number;
     standard: number;
     fine: number;
+    ultraFine?: number;
   };
 }
 

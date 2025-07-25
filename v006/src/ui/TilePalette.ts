@@ -534,25 +534,16 @@ export class TilePalette {
     buttonsContainer.style.alignSelf = 'center';
     
     // Track stack mode state
-    let stackEnabled = false; // Start disabled by default
+    let stackEnabled = true; // Start enabled by default (matching TileEditor initialization)
     
     // Stack mode toggle button
     const stackButton = window.UI.button({
-      variant: 'ghost', // Start disabled
+      variant: 'primary', // Start enabled
       size: 'sm',
       icon: 'layers',
       className: 'tool-button',
       onClick: () => {
-        stackEnabled = !stackEnabled;
-        this.editor.setStackMode(stackEnabled);
-        // Update button appearance
-        if (stackEnabled) {
-          stackButton.element.classList.add('btn-primary');
-          stackButton.element.classList.remove('btn-ghost');
-        } else {
-          stackButton.element.classList.remove('btn-primary');
-          stackButton.element.classList.add('btn-ghost');
-        }
+        // This will be replaced below, but needed for initial creation
       }
     });
     buttonsContainer.appendChild(stackButton.element);
@@ -562,6 +553,64 @@ export class TilePalette {
     
     // Store tooltip info to create later
     this.tooltipsToCreate.push({ element: stackButton.element, content: 'Stack Mode' });
+    
+    // Stack direction button (only visible when stack mode is enabled)
+    const directionButton = window.UI.button({
+      variant: 'ghost',
+      size: 'sm',
+      icon: 'arrow-up',
+      className: 'tool-button',
+      onClick: () => {
+        this.editor.cycleStackDirection();
+        // Update icon based on direction
+        const direction = this.editor.getStackDirection();
+        const iconMap = {
+          'up': 'arrow-up',
+          'down': 'arrow-down',
+          'north': 'arrow-up',
+          'south': 'arrow-down',
+          'east': 'arrow-right',
+          'west': 'arrow-left'
+        };
+        const icon = iconMap[direction as keyof typeof iconMap] || 'arrow-up';
+        
+        // Update button icon
+        const iconElement = directionButton.element.querySelector('svg');
+        if (iconElement && window.UI.icon) {
+          iconElement.outerHTML = window.UI.icon(icon);
+        }
+        
+        // Update tooltip
+        const directionTooltip = `Stack: ${direction.charAt(0).toUpperCase() + direction.slice(1)} (D)`;
+        if ((directionButton.element as any).tooltip) {
+          (directionButton.element as any).tooltip.setContent(directionTooltip);
+        }
+      }
+    });
+    directionButton.element.style.display = 'flex'; // Show initially since stack mode starts enabled
+    buttonsContainer.appendChild(directionButton.element);
+    
+    // Store tooltip info to create later
+    this.tooltipsToCreate.push({ element: directionButton.element, content: 'Stack: Up (D)' });
+    
+    // Update stack button click handler to also show/hide direction button
+    const originalStackHandler = () => {
+      stackEnabled = !stackEnabled;
+      this.editor.setStackMode(stackEnabled);
+      // Update button appearance
+      if (stackEnabled) {
+        stackButton.element.classList.add('btn-primary');
+        stackButton.element.classList.remove('btn-ghost');
+      } else {
+        stackButton.element.classList.remove('btn-primary');
+        stackButton.element.classList.add('btn-ghost');
+      }
+      // Show/hide direction button
+      directionButton.element.style.display = stackEnabled ? 'flex' : 'none';
+    };
+    
+    // Replace the onclick handler
+    stackButton.element.onclick = originalStackHandler;
 
     // Track replace mode state
     let replaceEnabled = true; // Start enabled by default
