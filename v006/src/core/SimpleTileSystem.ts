@@ -358,6 +358,39 @@ export class SimpleTileSystem {
   }
   
   /**
+   * Serialize all tiles to a simple format
+   */
+  public serialize(): Array<{x: number; z: number; layer: number; type: VoxelType}> {
+    const tileData: Array<{x: number; z: number; layer: number; type: VoxelType}> = [];
+    
+    this.tiles.forEach((mesh, key) => {
+      const { coord, layer, type } = mesh.userData;
+      tileData.push({
+        x: coord.x,
+        z: coord.z,
+        layer: layer,
+        type: type
+      });
+    });
+    
+    return tileData;
+  }
+  
+  /**
+   * Deserialize tiles from saved data
+   */
+  public deserialize(tileData: Array<{x: number; z: number; layer: number; type: VoxelType}>): void {
+    // Clear existing tiles
+    this.clear();
+    
+    // Recreate tiles from saved data
+    tileData.forEach(tile => {
+      const coord: GridCoordinate = { x: tile.x, z: tile.z };
+      this.placeSingleTile(coord, tile.type, tile.layer);
+    });
+  }
+
+  /**
    * Dispose of resources
    */
   public dispose(): void {

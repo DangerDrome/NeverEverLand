@@ -29,6 +29,15 @@ import { GammaPass } from '@core/GammaPass';
 import { BloomPass } from '@core/BloomPass';
 import { EffectsPanel } from '@ui/EffectsPanel';
 
+// Extend window type to include styleUI
+declare global {
+  interface Window {
+    styleUI?: {
+      showToast: (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
+    };
+  }
+}
+
 /**
  * Action types for undo/redo system
  */
@@ -922,6 +931,15 @@ export class TileEditor {
    * Handle keyboard input
    */
   private onKeyDown(event: KeyboardEvent): void {
+    // Don't process shortcuts if user is typing in an input field
+    const activeElement = document.activeElement;
+    if (activeElement && 
+        (activeElement.tagName === 'INPUT' || 
+         activeElement.tagName === 'TEXTAREA' ||
+         activeElement.getAttribute('contenteditable') === 'true')) {
+      return;
+    }
+    
     // Handle Ctrl+Z for undo and Ctrl+Y for redo
     if (event.ctrlKey || event.metaKey) {
       switch (event.key.toLowerCase()) {
@@ -2372,6 +2390,246 @@ export class TileEditor {
   /**
    * Dispose of resources
    */
+  /**
+   * Show save dialog
+   */
+  public showSaveDialog(): void {
+    // Create modal content
+    const content = document.createElement('div');
+    content.style.padding = 'var(--space-3) 0';
+    
+    // Add description
+    const description = document.createElement('p');
+    description.style.marginBottom = 'var(--space-4)';
+    description.style.color = 'var(--text-secondary)';
+    description.style.fontSize = 'var(--font-size-sm)';
+    description.textContent = 'Enter a name for your level:';
+    content.appendChild(description);
+    
+    // Create input
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'form-input';
+    input.placeholder = 'My Level';
+    input.value = `Level ${new Date().toLocaleDateString()}`;
+    input.style.width = '100%';
+    content.appendChild(input);
+    
+    // Create modal
+    const modal = (window as any).UI.modal({
+      title: 'Save Level',
+      content: content,
+      size: 'sm',
+      footer: [
+        {
+          text: 'Cancel',
+          variant: 'secondary',
+          onClick: () => modal.close()
+        },
+        {
+          text: 'Save',
+          variant: 'primary',
+          onClick: () => {
+            const filename = input.value.trim() || 'Untitled Level';
+            this.saveLevel(filename);
+            modal.close();
+          }
+        }
+      ]
+    });
+    
+    // Show modal
+    modal.open();
+    
+    // Focus input and select text
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 100);
+    
+    // Handle enter key
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const filename = input.value.trim() || 'Untitled Level';
+        this.saveLevel(filename);
+        modal.close();
+      }
+    });
+  }
+  
+  /**
+   * Save the current level to a JSON file
+   */
+  public saveLevel(filename: string = 'level'): void {
+    // Generate thumbnail first
+    const thumbnail = this.generateThumbnail();
+    
+    // Get tile data from the tile system
+    const tiles = this.tileSystem.serialize();
+    
+    // Create save data object
+    const saveData = {
+      version: 1,
+      tiles: tiles,
+      camera: {
+        zoom: this.camera.getCamera().zoom,
+        x: this.camera.getTarget().x,
+        z: this.camera.getTarget().z
+      },
+      thumbnail: thumbnail
+    };
+    
+    // Convert to JSON
+    const json = JSON.stringify(saveData, null, 2);
+    
+    // Sanitize filename
+    const sanitizedFilename = filename
+      .replace(/[^a-z0-9\s\-_]/gi, '') // Remove special characters
+      .replace(/\s+/g, '_') // Replace spaces with underscores
+      .toLowerCase() || 'level';
+    
+    // Create blob and download
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${sanitizedFilename}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    // Save to recent levels in localStorage
+    this.addToRecentLevels(a.download, saveData);
+    
+    // Show success message
+    if (window.styleUI && window.styleUI.showToast) {
+      window.styleUI.showToast(`Level saved as ${a.download}`, 'success');
+    }
+  }
+  
+  /**
+   * Generate a thumbnail of the current scene
+   */
+  private generateThumbnail(): string {
+    // Set thumbnail size
+    const thumbnailWidth = 128;
+    const thumbnailHeight = 96;
+    
+    // Create a temporary renderer for the thumbnail
+    const thumbnailRenderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: true,
+      preserveDrawingBuffer: true
+    });
+    thumbnailRenderer.setSize(thumbnailWidth, thumbnailHeight);
+    thumbnailRenderer.setPixelRatio(1); // Use pixel ratio 1 for consistent thumbnails
+    
+    // Copy renderer settings
+    thumbnailRenderer.shadowMap.enabled = this.renderer.shadowMap.enabled;
+    thumbnailRenderer.shadowMap.type = this.renderer.shadowMap.type;
+    thumbnailRenderer.toneMapping = this.renderer.toneMapping;
+    thumbnailRenderer.toneMappingExposure = this.renderer.toneMappingExposure;
+    
+    // Render the scene with the thumbnail renderer
+    thumbnailRenderer.render(this.scene, this.camera.getCamera());
+    
+    // Get the data URL
+    const dataURL = thumbnailRenderer.domElement.toDataURL('image/jpeg', 0.7);
+    
+    // Clean up the temporary renderer
+    thumbnailRenderer.dispose();
+    
+    // Return base64 string without the data URL prefix
+    return dataURL.replace(/^data:image\/jpeg;base64,/, '');
+  }
+  
+  /**
+   * Add a level to the recent levels list
+   */
+  private addToRecentLevels(filename: string, levelData: any): void {
+    try {
+      const recentLevels = this.getRecentLevels();
+      
+      // Add new level to the beginning
+      recentLevels.unshift({
+        name: filename,
+        timestamp: Date.now(),
+        data: levelData
+      });
+      
+      // Keep only the last 10 levels
+      if (recentLevels.length > 10) {
+        recentLevels.length = 10;
+      }
+      
+      localStorage.setItem('nevereverland-recent-levels', JSON.stringify(recentLevels));
+    } catch (e) {
+      console.warn('Failed to save to recent levels:', e);
+    }
+  }
+  
+  /**
+   * Get recent levels from localStorage
+   */
+  private getRecentLevels(): any[] {
+    try {
+      const stored = localStorage.getItem('nevereverland-recent-levels');
+      return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  
+  /**
+   * Load a level from a JSON file
+   */
+  public loadLevel(file: File): void {
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      try {
+        const json = e.target?.result as string;
+        const saveData = JSON.parse(json);
+        
+        // Validate save data
+        if (!saveData.version || !saveData.tiles) {
+          throw new Error('Invalid save file format');
+        }
+        
+        // Clear current level and load tiles
+        this.tileSystem.deserialize(saveData.tiles);
+        
+        // Restore camera position if available
+        if (saveData.camera) {
+          if (saveData.camera.zoom) {
+            this.camera.getCamera().zoom = saveData.camera.zoom;
+            this.camera.getCamera().updateProjectionMatrix();
+          }
+          if (saveData.camera.x !== undefined && saveData.camera.z !== undefined) {
+            this.camera.setTarget(saveData.camera.x, 0, saveData.camera.z);
+          }
+        }
+        
+        // Clear undo/redo history
+        this.undoStack = [];
+        this.redoStack = [];
+        
+        // Show success message
+        if (window.styleUI && window.styleUI.showToast) {
+          window.styleUI.showToast('Level loaded successfully', 'success');
+        }
+      } catch (error) {
+        console.error('Failed to load level:', error);
+        if (window.styleUI && window.styleUI.showToast) {
+          window.styleUI.showToast('Failed to load level: ' + error.message, 'error');
+        }
+      }
+    };
+    
+    reader.readAsText(file);
+  }
+
   public dispose(): void {
     this.stop();
     

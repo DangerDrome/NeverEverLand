@@ -267,7 +267,534 @@
     
     <!-- StyleUI Components are now imported in main.ts -->
     
+    <!-- Hidden file input for loading levels -->
+    <input type="file" id="load-level-input" accept=".json" style="display: none;">
+    
     <!-- Main Application -->
     <script type="module" src="/src/main.ts"></script>
+    
+    <!-- Menu handling script -->
+    <script>
+        // Simple menu handling
+        document.addEventListener('DOMContentLoaded', function() {
+            const menuItems = document.querySelectorAll('.menu-item');
+            let activeDropdown = null;
+            
+            // Create dropdown menus
+            const menus = {
+                file: [
+                    { label: 'Save Level', action: 'save-level' },
+                    { label: 'Load Level', action: 'load-level' },
+                    { label: 'Recent Saves', action: 'recent-levels', submenu: [] },
+                    { type: 'separator' },
+                    { label: 'Reload', action: 'reload' }
+                ],
+                edit: [
+                    { label: 'Undo', action: 'undo', shortcut: 'Ctrl+Z' },
+                    { label: 'Redo', action: 'redo', shortcut: 'Ctrl+Y' },
+                    { type: 'separator' },
+                    { label: 'Clear All', action: 'clear-all' }
+                ],
+                selection: [
+                    { label: 'Select All', action: 'select-all' },
+                    { label: 'Select None', action: 'select-none' }
+                ],
+                view: [
+                    { label: 'Toggle Grid', action: 'toggle-grid', shortcut: 'G' },
+                    { label: 'Reset Camera', action: 'reset-camera', shortcut: 'F' }
+                ],
+                help: [
+                    { label: 'About', action: 'about' }
+                ]
+            };
+            
+            // Create dropdown elements
+            menuItems.forEach(menuItem => {
+                const menuName = menuItem.getAttribute('data-menu');
+                const menuOptions = menus[menuName];
+                
+                if (menuOptions) {
+                    const dropdown = document.createElement('div');
+                    dropdown.className = 'menu-dropdown';
+                    dropdown.style.cssText = `
+                        position: fixed;
+                        background: var(--bg-layer-2);
+                        border: 1px solid var(--border-color);
+                        border-radius: var(--radius-md);
+                        padding: var(--space-1) 0;
+                        min-width: 200px;
+                        z-index: 99999 !important;
+                        display: none;
+                        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+                    `;
+                    
+                    menuOptions.forEach(option => {
+                        if (option.type === 'separator') {
+                            const separator = document.createElement('div');
+                            separator.style.cssText = `
+                                height: 1px;
+                                background: var(--border-color);
+                                margin: var(--space-1) 0;
+                            `;
+                            dropdown.appendChild(separator);
+                        } else {
+                            const item = document.createElement('div');
+                            item.className = 'menu-dropdown-item';
+                            item.setAttribute('data-action', option.action);
+                            item.style.cssText = `
+                                padding: var(--space-2) var(--space-3);
+                                cursor: pointer;
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                                transition: background var(--transition-fast);
+                                position: relative;
+                            `;
+                            
+                            const label = document.createElement('span');
+                            label.textContent = option.label;
+                            item.appendChild(label);
+                            
+                            if (option.shortcut) {
+                                const shortcut = document.createElement('span');
+                                shortcut.textContent = option.shortcut;
+                                shortcut.style.cssText = `
+                                    font-size: var(--font-size-xs);
+                                    opacity: 0.6;
+                                    margin-left: var(--space-4);
+                                `;
+                                item.appendChild(shortcut);
+                            } else if (option.submenu) {
+                                const arrow = document.createElement('span');
+                                arrow.textContent = '▶';
+                                arrow.style.cssText = `
+                                    font-size: var(--font-size-xs);
+                                    opacity: 0.6;
+                                    margin-left: var(--space-4);
+                                `;
+                                item.appendChild(arrow);
+                                
+                                // Create submenu
+                                const submenu = document.createElement('div');
+                                submenu.className = 'menu-submenu';
+                                submenu.style.cssText = `
+                                    position: fixed;
+                                    background: var(--bg-layer-2);
+                                    border: 1px solid var(--border-color);
+                                    border-radius: var(--radius-md);
+                                    padding: var(--space-1) 0;
+                                    min-width: 280px;
+                                    z-index: 100000 !important;
+                                    display: none;
+                                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+                                `;
+                                
+                                // Update submenu when hovering
+                                let submenuTimeout;
+                                
+                                item.addEventListener('mouseenter', () => {
+                                    clearTimeout(submenuTimeout);
+                                    updateRecentLevelsSubmenu(submenu);
+                                    
+                                    // Position the submenu relative to the item
+                                    const itemRect = item.getBoundingClientRect();
+                                    const dropdownRect = item.parentElement.getBoundingClientRect();
+                                    submenu.style.position = 'fixed';
+                                    submenu.style.left = (dropdownRect.right - 4) + 'px'; // Slight overlap for better hover
+                                    submenu.style.top = itemRect.top + 'px';
+                                    
+                                    submenu.style.display = 'block';
+                                });
+                                
+                                item.addEventListener('mouseleave', (e) => {
+                                    // Check if we're moving to the submenu
+                                    const toElement = e.relatedTarget;
+                                    if (toElement && (submenu.contains(toElement) || toElement === submenu)) {
+                                        return; // Don't hide if moving to submenu
+                                    }
+                                    
+                                    // Add a small delay to allow moving to submenu
+                                    submenuTimeout = setTimeout(() => {
+                                        submenu.style.display = 'none';
+                                    }, 100);
+                                });
+                                
+                                // Keep submenu visible when hovering over it
+                                submenu.addEventListener('mouseenter', () => {
+                                    clearTimeout(submenuTimeout);
+                                    submenu.style.display = 'block';
+                                });
+                                
+                                submenu.addEventListener('mouseleave', (e) => {
+                                    // Check if we're moving back to the parent item
+                                    const toElement = e.relatedTarget;
+                                    if (toElement && (item.contains(toElement) || toElement === item)) {
+                                        return; // Don't hide if moving to parent
+                                    }
+                                    
+                                    submenuTimeout = setTimeout(() => {
+                                        submenu.style.display = 'none';
+                                    }, 100);
+                                });
+                                
+                                // Append submenu to body for proper stacking
+                                document.body.appendChild(submenu);
+                                item.submenu = submenu;
+                            }
+                            
+                            item.addEventListener('mouseenter', () => {
+                                item.style.background = 'var(--bg-layer-3)';
+                            });
+                            
+                            item.addEventListener('mouseleave', () => {
+                                item.style.background = 'transparent';
+                            });
+                            
+                            if (!option.submenu) {
+                                item.addEventListener('click', (e) => {
+                                    e.stopPropagation();
+                                    handleMenuAction(option.action);
+                                    closeDropdowns();
+                                });
+                            }
+                            
+                            dropdown.appendChild(item);
+                        }
+                    });
+                    
+                    menuItem.style.position = 'relative';
+                    // Append to body instead of menuItem to ensure proper stacking
+                    document.body.appendChild(dropdown);
+                    
+                    // Store reference for positioning
+                    menuItem.dropdown = dropdown;
+                }
+                
+                menuItem.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const dropdown = menuItem.dropdown;
+                    
+                    if (activeDropdown && activeDropdown !== dropdown) {
+                        activeDropdown.style.display = 'none';
+                    }
+                    
+                    if (dropdown) {
+                        // Position the dropdown relative to the menu item
+                        const rect = menuItem.getBoundingClientRect();
+                        dropdown.style.position = 'fixed';
+                        dropdown.style.left = rect.left + 'px';
+                        dropdown.style.top = rect.bottom + 'px';
+                        
+                        dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+                        activeDropdown = dropdown.style.display === 'block' ? dropdown : null;
+                    }
+                });
+            });
+            
+            // Close dropdowns when clicking outside
+            document.addEventListener('click', closeDropdowns);
+            
+            function closeDropdowns() {
+                const dropdowns = document.querySelectorAll('.menu-dropdown');
+                dropdowns.forEach(dropdown => {
+                    dropdown.style.display = 'none';
+                });
+                const submenus = document.querySelectorAll('.menu-submenu');
+                submenus.forEach(submenu => {
+                    submenu.style.display = 'none';
+                });
+                activeDropdown = null;
+            }
+            
+            // Handle menu actions
+            function handleMenuAction(action) {
+                if (action === 'reload') {
+                    window.location.reload();
+                    return;
+                }
+                
+                if (!window.editor) return;
+                
+                switch (action) {
+                    case 'save-level':
+                        window.editor.showSaveDialog();
+                        break;
+                    case 'load-level':
+                        document.getElementById('load-level-input').click();
+                        break;
+                    case 'undo':
+                        window.editor.undo();
+                        break;
+                    case 'redo':
+                        window.editor.redo();
+                        break;
+                    case 'clear-all':
+                        if (confirm('Are you sure you want to clear all tiles?')) {
+                            window.editor.clearAll();
+                        }
+                        break;
+                    case 'toggle-grid':
+                        window.editor.toggleGrid();
+                        break;
+                    case 'reset-camera':
+                        window.editor.resetCamera();
+                        break;
+                    case 'about':
+                        alert('NeverEverLand v006 - Tile Editor\n\nAn isometric tile editor built with Three.js');
+                        break;
+                    default:
+                        // Handle loading recent levels
+                        if (action.startsWith('load-recent-')) {
+                            const levelData = action.replace('load-recent-', '');
+                            loadRecentLevel(levelData);
+                        }
+                }
+            }
+            
+            // Update recent levels submenu
+            function updateRecentLevelsSubmenu(submenu) {
+                submenu.innerHTML = '';
+                const recentLevels = getRecentLevels();
+                
+                if (recentLevels.length === 0) {
+                    const emptyItem = document.createElement('div');
+                    emptyItem.style.cssText = `
+                        padding: var(--space-2) var(--space-3);
+                        color: var(--text-secondary);
+                        font-style: italic;
+                    `;
+                    emptyItem.textContent = 'No recently saved levels';
+                    submenu.appendChild(emptyItem);
+                } else {
+                    recentLevels.forEach((level, index) => {
+                        const item = document.createElement('div');
+                        item.className = 'menu-dropdown-item';
+                        item.style.cssText = `
+                            padding: var(--space-2);
+                            cursor: pointer;
+                            transition: background var(--transition-fast);
+                            display: flex;
+                            align-items: center;
+                            gap: var(--space-2);
+                        `;
+                        
+                        // Add thumbnail if available
+                        if (level.data && level.data.thumbnail) {
+                            const thumbnail = document.createElement('img');
+                            thumbnail.src = 'data:image/jpeg;base64,' + level.data.thumbnail;
+                            thumbnail.style.cssText = `
+                                width: 64px;
+                                height: 48px;
+                                object-fit: cover;
+                                border-radius: var(--radius-sm);
+                                border: 1px solid var(--border-color);
+                            `;
+                            item.appendChild(thumbnail);
+                        } else {
+                            // Placeholder for levels without thumbnails
+                            const placeholder = document.createElement('div');
+                            placeholder.style.cssText = `
+                                width: 64px;
+                                height: 48px;
+                                background: var(--bg-layer-3);
+                                border-radius: var(--radius-sm);
+                                border: 1px solid var(--border-color);
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                font-size: var(--font-size-xs);
+                                color: var(--text-secondary);
+                            `;
+                            placeholder.textContent = 'No preview';
+                            item.appendChild(placeholder);
+                        }
+                        
+                        // Text container
+                        const textContainer = document.createElement('div');
+                        textContainer.style.cssText = `
+                            flex: 1;
+                            min-width: 0;
+                        `;
+                        
+                        const label = document.createElement('div');
+                        label.textContent = level.name;
+                        label.style.cssText = `
+                            font-weight: 500;
+                            white-space: nowrap;
+                            overflow: hidden;
+                            text-overflow: ellipsis;
+                        `;
+                        
+                        const date = document.createElement('div');
+                        date.textContent = new Date(level.timestamp).toLocaleDateString();
+                        date.style.cssText = `
+                            font-size: var(--font-size-xs);
+                            color: var(--text-secondary);
+                            margin-top: 2px;
+                        `;
+                        
+                        textContainer.appendChild(label);
+                        textContainer.appendChild(date);
+                        item.appendChild(textContainer);
+                        
+                        item.addEventListener('mouseenter', () => {
+                            item.style.background = 'var(--bg-layer-3)';
+                        });
+                        
+                        item.addEventListener('mouseleave', () => {
+                            item.style.background = 'transparent';
+                        });
+                        
+                        item.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            handleMenuAction('load-recent-' + index);
+                            closeDropdowns();
+                        });
+                        
+                        submenu.appendChild(item);
+                    });
+                    
+                    // Add separator and clear button if there are recent levels
+                    if (recentLevels.length > 0) {
+                        // Add separator
+                        const separator = document.createElement('div');
+                        separator.style.cssText = `
+                            height: 1px;
+                            background: var(--border-color);
+                            margin: var(--space-1) 0;
+                        `;
+                        submenu.appendChild(separator);
+                        
+                        // Add clear button
+                        const clearButton = document.createElement('div');
+                        clearButton.className = 'menu-dropdown-item';
+                        clearButton.style.cssText = `
+                            padding: var(--space-2) var(--space-3);
+                            cursor: pointer;
+                            transition: background var(--transition-fast);
+                            text-align: center;
+                            color: var(--text-secondary);
+                            font-size: var(--font-size-sm);
+                        `;
+                        clearButton.textContent = 'Clear Recent';
+                        
+                        clearButton.addEventListener('mouseenter', () => {
+                            clearButton.style.background = 'var(--bg-layer-3)';
+                            clearButton.style.color = 'var(--text-primary)';
+                        });
+                        
+                        clearButton.addEventListener('mouseleave', () => {
+                            clearButton.style.background = 'transparent';
+                            clearButton.style.color = 'var(--text-secondary)';
+                        });
+                        
+                        clearButton.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            if (confirm('Clear all recent saves?')) {
+                                localStorage.removeItem('nevereverland-recent-levels');
+                                updateRecentLevelsSubmenu(submenu);
+                            }
+                        });
+                        
+                        submenu.appendChild(clearButton);
+                    }
+                }
+            }
+            
+            // Get recent levels from localStorage
+            function getRecentLevels() {
+                try {
+                    const stored = localStorage.getItem('nevereverland-recent-levels');
+                    return stored ? JSON.parse(stored) : [];
+                } catch (e) {
+                    return [];
+                }
+            }
+            
+            // Load a recent level
+            function loadRecentLevel(index) {
+                const recentLevels = getRecentLevels();
+                if (recentLevels[index]) {
+                    const levelData = recentLevels[index].data;
+                    // Create a fake file object for the editor's loadLevel method
+                    const blob = new Blob([JSON.stringify(levelData)], { type: 'application/json' });
+                    const file = new File([blob], recentLevels[index].name, { type: 'application/json' });
+                    window.editor.loadLevel(file);
+                }
+            }
+            
+            // Handle file input for loading levels
+            document.getElementById('load-level-input').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file && window.editor) {
+                    window.editor.loadLevel(file);
+                }
+                // Reset the input so the same file can be loaded again
+                e.target.value = '';
+            });
+        });
+    </script>
+    
+    <!-- Panel z-index management -->
+    <script>
+        // Global z-index management for panels
+        (function() {
+            let highestZIndex = 1000;
+            const panels = new Map();
+            
+            // Function to bring panel to front
+            function bringPanelToFront(panel) {
+                highestZIndex++;
+                panel.style.zIndex = highestZIndex;
+            }
+            
+            // Monitor for new panels
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    mutation.addedNodes.forEach((node) => {
+                        if (node.nodeType === 1 && node.classList && node.classList.contains('panel')) {
+                            // Track this panel
+                            panels.set(node, true);
+                            
+                            // Add click handler to bring to front
+                            node.addEventListener('mousedown', () => {
+                                bringPanelToFront(node);
+                            });
+                            
+                            // Also handle when dragging starts
+                            const dragObserver = new MutationObserver((mutations) => {
+                                mutations.forEach((mutation) => {
+                                    if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                                        if (node.classList.contains('panel-dragging')) {
+                                            bringPanelToFront(node);
+                                        }
+                                    }
+                                });
+                            });
+                            
+                            dragObserver.observe(node, {
+                                attributes: true,
+                                attributeFilter: ['class']
+                            });
+                        }
+                    });
+                });
+            });
+            
+            // Start observing
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+            
+            // Handle existing panels
+            document.querySelectorAll('.panel').forEach(panel => {
+                panels.set(panel, true);
+                panel.addEventListener('mousedown', () => {
+                    bringPanelToFront(panel);
+                });
+            });
+        })();
+    </script>
 </body>
 </html>

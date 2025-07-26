@@ -12,6 +12,8 @@
     z-index: var(--z-modal);
     opacity: 0;
     transition: opacity var(--transition-normal);
+    will-change: opacity;
+    transform: translateZ(0);
 }
 
 .modal-backdrop.modal-open {
@@ -40,7 +42,6 @@
     align-items: center;
     justify-content: space-between;
     padding: var(--space-5);
-    border-bottom: 1px solid var(--border-color);
 }
 
 .modal-title {
@@ -85,7 +86,6 @@
     justify-content: flex-end;
     gap: var(--space-3);
     padding: var(--space-5);
-    border-top: 1px solid var(--border-color);
 }
 
 /* Modal Sizes */
