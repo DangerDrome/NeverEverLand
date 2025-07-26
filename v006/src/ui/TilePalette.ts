@@ -522,7 +522,7 @@ export class TilePalette {
       label.style.color = 'var(--text-secondary)';
       label.style.fontWeight = '600';
       label.style.textAlign = 'left';
-      label.textContent = 'Modes';
+      label.textContent = 'Build Options';
       section.appendChild(label);
     }
     
@@ -552,7 +552,7 @@ export class TilePalette {
     this.editor.setStackMode(stackEnabled);
     
     // Store tooltip info to create later
-    this.tooltipsToCreate.push({ element: stackButton.element, content: 'Stack Mode' });
+    this.tooltipsToCreate.push({ element: stackButton.element, content: 'Stack Mode (T) - Build upward on existing tiles' });
     
     // Stack direction button (only visible when stack mode is enabled)
     const directionButton = window.UI.button({
@@ -640,7 +640,16 @@ export class TilePalette {
     this.editor.setReplaceMode(replaceEnabled);
     
     // Store tooltip info to create later
-    this.tooltipsToCreate.push({ element: replaceButton.element, content: 'Replace Mode' });
+    this.tooltipsToCreate.push({ element: replaceButton.element, content: 'Replace Mode (V) - Replace existing tiles instead of stacking' });
+    
+    // Add a visual separator
+    const separator = document.createElement('div');
+    separator.style.width = '1px';
+    separator.style.height = '20px';
+    separator.style.backgroundColor = 'var(--border-color)';
+    separator.style.margin = '0 var(--space-1)';
+    separator.style.opacity = '0.5';
+    buttonsContainer.appendChild(separator);
     
     // Tile size toggle button
     const sizeButton = window.UI.button({
@@ -661,7 +670,7 @@ export class TilePalette {
     buttonsContainer.appendChild(sizeButton.element);
     
     // Store tooltip info to create later
-    this.tooltipsToCreate.push({ element: sizeButton.element, content: 'Tile Size: 0.1x0.1' });
+    this.tooltipsToCreate.push({ element: sizeButton.element, content: 'Grid Cell Size: 0.1x0.1 (Click to cycle through sizes)' });
     
     // Store reference for updating tooltip
     (sizeButton.element as any).sizeTooltip = 'Tile Size: 0.1x0.1';

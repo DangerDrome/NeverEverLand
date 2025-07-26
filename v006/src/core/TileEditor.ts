@@ -99,6 +99,10 @@ export class TileEditor {
   private state: EditorState;
   private config: EditorConfig;
   private targetLayer: number | null = null; // Track target layer for face-based placement
+  private dragStartLayer: number | null = null; // Layer where drag started for consistent placement
+  private dragConstraint: 'horizontal' | 'vertical' | 'free' | null = null; // Constraint for current drag
+  private dragStartPos: THREE.Vector2 | null = null; // Mouse position at drag start
+  private dragDirection: THREE.Vector3 | null = null; // Detected or forced drag direction
   
   // Input handling
   private mouse: THREE.Vector2;
@@ -127,7 +131,18 @@ export class TileEditor {
   private uiUpdateTime: number = 0;
   private UI_UPDATE_INTERVAL: number = 1000 / 30; // Will be updated from config
   
-  // Placement mode
+  // Placement mode options - How these work together:
+  // 1. Stack Mode (ON): Tiles can be placed on top of existing tiles
+  //    - Click on top face → builds upward
+  //    - Click on side face → builds at same level
+  //    - Stack Direction controls preferred direction when auto-stacking
+  // 2. Stack Mode (OFF): All tiles placed at ground level (Y=0)
+  // 3. Replace Mode (ON): New tiles replace existing tiles at same position
+  // 4. Replace Mode (OFF): New tiles stack on top of existing tiles
+  // Common combinations:
+  //    - Stack ON + Replace OFF = Build upward (Minecraft creative)
+  //    - Stack OFF + Replace ON = Ground-only painting
+  //    - Stack ON + Replace ON = Edit existing structures
   private stackMode: boolean = true;
   private stackDirection: StackDirection = StackDirection.Up;
   private tileSize: number = 0.1;
@@ -686,23 +701,88 @@ export class TileEditor {
     if (!this.isPanning && !this.isInteracting) {
       this.updateGridHighlight();
       
+      // Check if we should start drawing (mouse moved while button is down)
+      if (!this.isDrawing && !this.isErasing && event.buttons === 1 && this.lastDrawnCell && this.state.mode === EditorMode.Place) {
+        // Start drawing mode if we've moved away from the initial cell
+        if (!CoordinateUtils.coordsEqual(this.lastDrawnCell, this.state.highlightedCell)) {
+          this.isDrawing = true;
+        }
+      }
+      
       // Handle continuous drawing/erasing while dragging
       // Additional check: ensure mouse buttons are actually pressed
       if ((this.isDrawing || this.isErasing) && this.state.highlightedCell && event.buttons > 0) {
-        // Check if we've moved to a new cell
-        if (!this.lastDrawnCell || !CoordinateUtils.coordsEqual(this.lastDrawnCell, this.state.highlightedCell)) {
-          // Interpolate between last position and current to fill gaps
-          if (this.lastDrawnCell) {
-            this.drawLine(this.lastDrawnCell, this.state.highlightedCell, this.isDrawing);
-          } else {
-            // First cell
-            if (this.isDrawing) {
-              this.placeVoxel(this.state.highlightedCell);
+        // Auto-detect drag direction if not yet determined
+        if (this.isDrawing && this.dragConstraint === null && this.dragStartPos && !this.dragDirection) {
+          const currentPos = new THREE.Vector2(event.clientX, event.clientY);
+          const delta = currentPos.sub(this.dragStartPos);
+          
+          // Need minimum movement to determine direction (10 pixels)
+          if (delta.length() > 10) {
+            const angle = Math.atan2(delta.y, delta.x);
+            const absAngle = Math.abs(angle);
+            
+            // Determine if movement is more horizontal or vertical
+            // Consider 45-degree cone for each direction
+            if (absAngle < Math.PI / 4 || absAngle > 3 * Math.PI / 4) {
+              // Horizontal movement
+              this.dragConstraint = 'horizontal';
+              this.dragDirection = new THREE.Vector3(1, 0, 0); // Will be adjusted based on camera
             } else {
-              this.removeVoxel(this.state.highlightedCell);
+              // Vertical movement
+              this.dragConstraint = 'vertical';
+              this.dragDirection = new THREE.Vector3(0, 1, 0);
             }
           }
-          this.lastDrawnCell = { ...this.state.highlightedCell };
+        }
+        
+        // Apply constraints to placement
+        let targetCell = this.state.highlightedCell;
+        let targetLayer = this.dragStartLayer || 0;
+        
+        if (this.isDrawing && this.dragConstraint === 'vertical' && this.stackMode) {
+          // For vertical building, calculate layer based on mouse Y movement
+          if (this.dragStartPos) {
+            const yDelta = event.clientY - this.dragStartPos.y;
+            // Every 20 pixels = 1 layer change
+            const layerDelta = Math.round(-yDelta / 20); // Negative because up is negative Y
+            targetLayer = Math.max(0, (this.dragStartLayer || 0) + layerDelta);
+            
+            // Keep X,Z from the start position for pure vertical building
+            if (this.lastDrawnCell) {
+              targetCell = { x: this.lastDrawnCell.x, z: this.lastDrawnCell.z };
+            }
+          }
+        }
+        
+        // Check if we've moved to a new cell or layer
+        const cellChanged = !this.lastDrawnCell || !CoordinateUtils.coordsEqual(this.lastDrawnCell, targetCell);
+        const layerChanged = this.isDrawing && this.targetLayer !== targetLayer;
+        
+        if (cellChanged || layerChanged) {
+          if (this.isDrawing) {
+            // Set the target layer for vertical building
+            const originalLayer = this.targetLayer;
+            this.targetLayer = targetLayer;
+            
+            // Interpolate between positions
+            if (this.lastDrawnCell && this.dragConstraint !== 'vertical') {
+              this.drawLine(this.lastDrawnCell, targetCell, true);
+            } else {
+              this.placeVoxel(targetCell);
+            }
+            
+            this.targetLayer = originalLayer;
+          } else if (this.isErasing) {
+            // Erasing logic remains the same
+            if (this.lastDrawnCell) {
+              this.drawLine(this.lastDrawnCell, targetCell, false);
+            } else {
+              this.removeVoxel(targetCell);
+            }
+          }
+          
+          this.lastDrawnCell = { ...targetCell };
         }
       } else if (event.buttons === 0) {
         // No buttons pressed - ensure drawing/erasing states are cleared
@@ -730,8 +810,38 @@ export class TileEditor {
         this.tumbleStart.set(event.clientX, event.clientY);
         event.preventDefault();
       } else if (this.state.mode === EditorMode.Place && this.state.highlightedCell) {
-        this.isDrawing = true;
+        // Don't set isDrawing yet - wait for mouse movement to distinguish click from drag
         this.lastDrawnCell = { ...this.state.highlightedCell };
+        
+        // Capture drag start position for direction detection
+        this.dragStartPos = new THREE.Vector2(event.clientX, event.clientY);
+        
+        // Determine constraint based on modifier keys
+        if (event.shiftKey && !event.ctrlKey) {
+          this.dragConstraint = 'horizontal'; // Force horizontal
+        } else if (event.ctrlKey && !event.shiftKey) {
+          this.dragConstraint = 'vertical'; // Force vertical
+        } else {
+          this.dragConstraint = null; // Auto-detect from first movement
+        }
+        
+        // Smart layer detection for drag start
+        const voxelIntersection = this.getVoxelIntersection();
+        if (voxelIntersection && this.stackMode) {
+          const { normal, layer } = voxelIntersection;
+          // Only go up a layer if clicking directly on a top face AND holding shift
+          if (Math.abs(normal.y) > 0.5 && normal.y > 0 && event.shiftKey) {
+            this.dragStartLayer = layer + 1;
+          } else {
+            // For side faces or top face without shift, stay at the clicked voxel's layer
+            this.dragStartLayer = layer;
+          }
+        } else {
+          // No voxel intersection or stack mode off - use ground level
+          this.dragStartLayer = 0;
+        }
+        
+        // Place initial voxel - this will use targetLayer for single clicks
         this.placeVoxel(this.state.highlightedCell);
       } else if (this.state.mode === EditorMode.Erase && this.state.highlightedCell) {
         this.isErasing = true;
@@ -758,6 +868,10 @@ export class TileEditor {
     this.isDrawing = false;
     this.isErasing = false;
     this.lastDrawnCell = null;
+    this.dragStartLayer = null; // Clear drag start layer
+    this.dragConstraint = null; // Clear drag constraint
+    this.dragStartPos = null; // Clear drag start position
+    this.dragDirection = null; // Clear drag direction
     
     // Handle specific button releases
     if (event.button === 1) { // Middle mouse
@@ -1046,8 +1160,11 @@ export class TileEditor {
    * Update grid highlight based on mouse position
    */
   private updateGridHighlight(): void {
-    // First try raycasting against existing voxels
-    const voxelIntersection = this.getVoxelIntersection();
+    // If we're dragging, skip voxel intersection to keep preview at consistent layer
+    const skipVoxelIntersection = this.isDrawing && this.dragStartLayer !== null;
+    
+    // First try raycasting against existing voxels (unless we're dragging)
+    const voxelIntersection = skipVoxelIntersection ? null : this.getVoxelIntersection();
     
     if (voxelIntersection && this.previewMesh && this.state.mode === EditorMode.Place) {
       // Show preview on the face of the intersected voxel
@@ -1080,12 +1197,29 @@ export class TileEditor {
       const existingTile = this.tileSystem.getTile(gridCoord);
       const hasExistingVoxel = existingTile !== VoxelType.Air;
       
-      // Show preview on ground for initial placement when no voxel exists
-      if (this.previewMesh && this.state.mode === EditorMode.Place && !hasExistingVoxel) {
+      // Show preview for placement - during dragging or on empty cells
+      const showPreview = this.previewMesh && this.state.mode === EditorMode.Place && 
+                         (!hasExistingVoxel || (this.isDrawing && this.dragStartLayer !== null));
+      
+      if (showPreview) {
         // Calculate preview position - tiles should be centered in their grid cells
         // Grid lines are at 0, 0.1, 0.2, etc. so cell (0,0) goes from 0 to 0.1
         const previewX = gridCoord.x * this.tileSize + this.tileSize * 0.5;
-        const previewY = 0.05; // Center of 0.1 tall tile, bottom at Y=0
+        // Calculate preview Y position based on drag constraint
+        let previewY = 0.05; // Default ground level
+        
+        if (this.isDrawing && this.dragStartLayer !== null) {
+          if (this.dragConstraint === 'vertical' && this.dragStartPos && this.stackMode) {
+            // For vertical dragging, show preview at the calculated layer
+            const yDelta = this.mouse.y * 2 - (this.dragStartPos.y / window.innerHeight * 2 - 1);
+            const layerDelta = Math.round(yDelta * 5); // Adjust sensitivity
+            const targetLayer = Math.max(0, this.dragStartLayer + layerDelta);
+            previewY = 0.05 + targetLayer * 0.1;
+          } else {
+            // Horizontal dragging - maintain start layer
+            previewY = 0.05 + this.dragStartLayer * 0.1;
+          }
+        }
         const previewZ = gridCoord.z * this.tileSize + this.tileSize * 0.5;
         
         // Debug: log positions to verify alignment
@@ -1142,10 +1276,18 @@ export class TileEditor {
       const baseHeight = this.tileSystem.getBaseWorldHeight(this.state.highlightedCell, this.tileSize);
       const subGridPos = `(${(this.state.highlightedCell.x * this.tileSize).toFixed(2)}, ${(this.state.highlightedCell.z * this.tileSize).toFixed(2)})`;
       
+      // Add drag constraint indicator
+      let constraintInfo = '';
+      if (this.isDrawing && this.dragConstraint) {
+        const constraintText = this.dragConstraint === 'horizontal' ? 'Horizontal' : 
+                              this.dragConstraint === 'vertical' ? 'Vertical' : 'Free';
+        constraintInfo = ` | Drag: ${constraintText}`;
+      }
+      
       // Update coordinate display (first child)
       const coordElement = this.coordinateDisplay.children[0] as HTMLElement;
       if (coordElement) {
-        coordElement.textContent = `Sub-Grid: ${subGridPos} | Height: ${baseHeight.toFixed(1)}m | Mode: ${mode}`;
+        coordElement.textContent = `Sub-Grid: ${subGridPos} | Height: ${baseHeight.toFixed(1)}m | Mode: ${mode}${constraintInfo}`;
       }
       
       // Update voxel count display (second child)
@@ -1561,11 +1703,17 @@ export class TileEditor {
     // Capture state before placing
     const beforeState = this.captureTileState(targetCoord);
     
-    // Check if we have a specific layer from face detection
-    if (this.targetLayer !== null && this.stackMode) {
+    // When dragging, use the drag start layer for consistent placement
+    const layerToUse = this.isDrawing && this.dragStartLayer !== null ? this.dragStartLayer : this.targetLayer;
+    
+    // Check if we have a specific layer from face detection or drag start
+    if (layerToUse !== null && this.stackMode) {
       // Use specific layer placement for face-based placement only in stack mode
-      this.tileSystem.placeTileAtLayer(targetCoord, this.selectedVoxelType, this.targetLayer);
-      this.targetLayer = null; // Reset after use
+      this.tileSystem.placeTileAtLayer(targetCoord, this.selectedVoxelType, layerToUse);
+      // Only reset targetLayer if we're not dragging
+      if (!this.isDrawing) {
+        this.targetLayer = null;
+      }
     } else {
       // Fall back to normal placement logic
       const shouldStackOnTop = !this.replaceMode && this.stackMode;
