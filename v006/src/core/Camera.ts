@@ -101,13 +101,17 @@ export class DimetricCamera {
     
     // Normalize delta and apply zoom speed
     const normalizedDelta = THREE.MathUtils.clamp(delta, -100, 100) / 100;
-    const zoomFactor = 1 + normalizedDelta * this.zoomSpeed * 50;
+    const zoomFactor = 1 + normalizedDelta * this.zoomSpeed;
+    
+    // console.log(`Camera zoom - delta: ${delta}, normalizedDelta: ${normalizedDelta}, zoomSpeed: ${this.zoomSpeed}, zoomFactor: ${zoomFactor}, oldFrustum: ${oldFrustumSize}`);
     
     this.frustumSize = THREE.MathUtils.clamp(
       this.frustumSize * zoomFactor,
       this.minZoom,
       this.maxZoom
     );
+    
+    // console.log(`New frustum size: ${this.frustumSize}`);
     
     // If world point provided, zoom towards that point
     if (worldPoint) {

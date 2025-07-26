@@ -98,6 +98,7 @@ export interface EditorState {
   rotation: TileRotation;
   highlightedCell: GridCoordinate | null;
   cameraZoom: number;
+  selectedVoxels: Set<string>; // Keys are "x,z,layer"
 }
 
 /**

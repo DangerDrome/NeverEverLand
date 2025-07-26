@@ -15,7 +15,7 @@ export const DEFAULT_GRID_DEPTH = 100;
 export const DEFAULT_FRUSTUM_SIZE = 20;
 export const MIN_ZOOM = 2;
 export const MAX_ZOOM = 100;
-export const ZOOM_SPEED = 0.001;
+export const ZOOM_SPEED = 0.5;
 export const PAN_SPEED = 1;
 
 // Rendering constants

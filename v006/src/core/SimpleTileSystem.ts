@@ -160,7 +160,8 @@ export class SimpleTileSystem {
     // Check if position is already occupied
     const key = `${coord.x},${coord.z},${layer}`;
     if (this.tiles.has(key)) {
-      // Position occupied - don't place
+      // Position occupied - silently ignore
+      // console.warn(`Cannot place tile at (${coord.x}, ${coord.z}, layer ${layer}) - position already occupied`);
       return;
     }
     
@@ -223,6 +224,20 @@ export class SimpleTileSystem {
     // Cache the material
     this.materialCache.set(cacheKey, material);
     return material;
+  }
+  
+  /**
+   * Remove a tile at a specific layer
+   */
+  public removeTileAtLayer(coord: GridCoordinate, layer: number): void {
+    const key = `${coord.x},${coord.z},${layer}`;
+    const mesh = this.tiles.get(key);
+    
+    if (mesh) {
+      this.scene.remove(mesh);
+      mesh.geometry.dispose();
+      this.tiles.delete(key);
+    }
   }
   
   /**
