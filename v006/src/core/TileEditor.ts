@@ -116,6 +116,9 @@ export class TileEditor {
   private targetRotationAngle: number = 0; // Target rotation for smooth transitions
   private currentElevation: number = 0; // 0 = dimetric, 1 = top, -1 = bottom
   private targetElevation: number = 0;
+  private animatedRotationAngle: number = 0; // For smooth transitions
+  private animatedElevation: number = 0; // For smooth transitions
+  private TUMBLE_SMOOTH_FACTOR: number = 0.15; // How quickly to interpolate (0.1 = slow, 0.3 = fast)
   private isErasing: boolean = false;
   private lastDrawnCell: GridCoordinate | null = null;
   
@@ -315,6 +318,10 @@ export class TileEditor {
   private initCamera(): void {
     const aspect = this.container.clientWidth / this.container.clientHeight;
     this.camera = new DimetricCamera(aspect, this.state.cameraZoom);
+    
+    // Initialize animated values to match initial camera state
+    this.animatedRotationAngle = this.currentRotationAngle;
+    this.animatedElevation = this.currentElevation;
   }
 
   /**
@@ -669,16 +676,14 @@ export class TileEditor {
       const elevationDelta = deltaY / 150;
       let newElevation = this.currentElevation + elevationDelta;
       
-      // Snap elevation to -1, 0, or 1
+      // Snap elevation to 0 only (disable top/bottom views)
       let snapElevation = 0;
-      if (newElevation < -0.5) snapElevation = -1;
-      else if (newElevation > 0.5) snapElevation = 1;
       
       // Update camera if angle or elevation changed
       if (snapAngle !== this.targetRotationAngle || snapElevation !== this.targetElevation) {
         this.targetRotationAngle = snapAngle;
         this.targetElevation = snapElevation;
-        this.updateCameraRotation(snapAngle, snapElevation);
+        // Don't update camera directly - let animation handle it
       }
       
       return;
@@ -2425,6 +2430,17 @@ export class TileEditor {
     
     // Update FPS
     this.updateFPS(delta);
+    
+    // Smooth camera tumbling animation
+    if (Math.abs(this.animatedRotationAngle - this.targetRotationAngle) > 0.1 || 
+        Math.abs(this.animatedElevation - this.targetElevation) > 0.01) {
+      // Lerp rotation angle
+      this.animatedRotationAngle += (this.targetRotationAngle - this.animatedRotationAngle) * this.TUMBLE_SMOOTH_FACTOR;
+      this.animatedElevation += (this.targetElevation - this.animatedElevation) * this.TUMBLE_SMOOTH_FACTOR;
+      
+      // Update camera with interpolated values
+      this.updateCameraRotation(this.animatedRotationAngle, this.animatedElevation);
+    }
     
     // No need to update tile system - it's immediate
     
