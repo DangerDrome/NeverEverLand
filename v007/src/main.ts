@@ -219,7 +219,48 @@ class VoxelApp {
         // Continue drawing if mouse is held down (brush mode only)
         if (event.buttons && this.drawingSystem!.isDrawing && 
             this.drawingSystem!.toolMode === 'brush' && hit) {
-            const pos = this.drawingSystem!.drawMode === 'add' ? hit.adjacentPos : hit.voxelPos;
+            let pos;
+            
+            // When adding voxels, constrain to the initial drawing surface
+            if (this.drawingSystem!.drawMode === 'add' && this.drawingSystem!.drawingSurface) {
+                const voxelSize = this.voxelEngine!.getVoxelSize();
+                const normal = this.drawingSystem!.drawingSurface.normal;
+                
+                // Determine which axis is dominant in the normal
+                const absX = Math.abs(normal.x);
+                const absY = Math.abs(normal.y);
+                const absZ = Math.abs(normal.z);
+                
+                if (absY > absX && absY > absZ) {
+                    // Horizontal surface (floor/ceiling)
+                    // Use hit point for X/Z but constrain Y
+                    pos = {
+                        x: Math.floor(hit.point.x / voxelSize + 0.5),
+                        y: this.drawingSystem!.drawingSurface.basePos.y,
+                        z: Math.floor(hit.point.z / voxelSize + 0.5)
+                    };
+                } else if (absX > absY && absX > absZ) {
+                    // Vertical surface facing X (east/west wall)
+                    // Constrain X, use hit point for Y/Z
+                    pos = {
+                        x: this.drawingSystem!.drawingSurface.basePos.x,
+                        y: Math.floor(hit.point.y / voxelSize + 0.5),
+                        z: Math.floor(hit.point.z / voxelSize + 0.5)
+                    };
+                } else {
+                    // Vertical surface facing Z (north/south wall)
+                    // Constrain Z, use hit point for X/Y
+                    pos = {
+                        x: Math.floor(hit.point.x / voxelSize + 0.5),
+                        y: Math.floor(hit.point.y / voxelSize + 0.5),
+                        z: this.drawingSystem!.drawingSurface.basePos.z
+                    };
+                }
+            } else {
+                // For removal or if no surface stored, use normal logic
+                pos = this.drawingSystem!.drawMode === 'add' ? hit.adjacentPos : hit.voxelPos;
+            }
+            
             this.drawingSystem!.applyBrush(pos.x, pos.y, pos.z);
         }
     }

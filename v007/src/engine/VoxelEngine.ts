@@ -28,6 +28,11 @@ export class VoxelEngine {
         this.undoRedoManager = new UndoRedoManager(this);
     }
     
+    // Getter for voxel size
+    getVoxelSize(): number {
+        return this.voxelSize;
+    }
+    
     
     // Create position key for voxel storage
     private positionKey(x: number, y: number, z: number): string {
@@ -182,9 +187,16 @@ export class VoxelEngine {
                 
                 const point = origin.clone().add(direction.clone().multiplyScalar(t));
                 
+                // Calculate adjacent position based on hit normal (not ray direction)
+                const adjacentPos = {
+                    x: currentVoxel.x + normal.x,
+                    y: currentVoxel.y + normal.y,
+                    z: currentVoxel.z + normal.z
+                };
+                
                 return {
                     voxelPos: currentVoxel,
-                    adjacentPos: previousVoxel,
+                    adjacentPos: adjacentPos,
                     point: point,
                     normal: new THREE.Vector3(normal.x, normal.y, normal.z),
                     distance: t

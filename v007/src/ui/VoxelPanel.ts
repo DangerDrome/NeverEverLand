@@ -13,7 +13,9 @@ export class VoxelPanel {
     private drawingSystem: DrawingSystem;
     private element: HTMLElement | null = null;
     private voxelButtons: Map<VoxelType, HTMLElement> = new Map();
+    private toolButtons: Map<string, HTMLElement> = new Map();
     private selectedType: VoxelType = VoxelType.GRASS;
+    private selectedTool: string = 'brush';
     
     constructor(drawingSystem: DrawingSystem) {
         this.drawingSystem = drawingSystem;
@@ -82,6 +84,30 @@ export class VoxelPanel {
         `;
         this.element.appendChild(separator);
         
+        // Add title for tools
+        const toolsTitle = document.createElement('div');
+        toolsTitle.textContent = 'Tools:';
+        toolsTitle.style.cssText = `
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            margin-right: 8px;
+            font-weight: 500;
+        `;
+        this.element.appendChild(toolsTitle);
+        
+        // Add tool buttons
+        this.createToolButtons();
+        
+        // Add another separator
+        const separator2 = document.createElement('div');
+        separator2.style.cssText = `
+            width: 1px;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.2);
+            margin: 0 8px;
+        `;
+        this.element.appendChild(separator2);
+        
         // Add brush size indicator
         const brushInfo = document.createElement('div');
         brushInfo.id = 'brush-info';
@@ -93,27 +119,10 @@ export class VoxelPanel {
             gap: 8px;
         `;
         brushInfo.innerHTML = `
-            <span>Brush:</span>
+            <span>Size:</span>
             <span id="brush-size-value" style="font-weight: bold; color: #fff;">1</span>
         `;
         this.element.appendChild(brushInfo);
-        
-        // Add tool mode indicator
-        const toolInfo = document.createElement('div');
-        toolInfo.id = 'tool-info';
-        toolInfo.style.cssText = `
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-left: 8px;
-        `;
-        toolInfo.innerHTML = `
-            <span>Tool:</span>
-            <span id="tool-mode-value" style="font-weight: bold; color: #fff;">brush</span>
-        `;
-        this.element.appendChild(toolInfo);
         
         // Add to page
         document.body.appendChild(this.element);
@@ -231,6 +240,131 @@ export class VoxelPanel {
         return button;
     }
     
+    private createToolButtons(): void {
+        const tools = [
+            { id: 'brush', name: 'Brush', icon: 'brush', key: 'B' },
+            { id: 'box', name: 'Box', icon: 'square', key: 'X' },
+            { id: 'line', name: 'Line', icon: 'minus', key: 'L' },
+            { id: 'fill', name: 'Fill', icon: 'paint-bucket', key: 'P' }
+        ];
+        
+        tools.forEach(tool => {
+            const button = this.createToolButton(tool);
+            this.toolButtons.set(tool.id, button);
+            this.element!.appendChild(button);
+        });
+        
+        // Select initial tool
+        this.selectTool('brush');
+    }
+    
+    private createToolButton(tool: { id: string; name: string; icon: string; key: string }): HTMLElement {
+        const button = document.createElement('button');
+        button.className = 'tool-button';
+        button.title = `${tool.name} (${tool.key})`;
+        
+        button.style.cssText = `
+            width: 40px;
+            height: 40px;
+            border: 2px solid transparent;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        `;
+        
+        // Add Lucide icon
+        const iconSpan = document.createElement('span');
+        iconSpan.style.cssText = `
+            color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+        iconSpan.innerHTML = `<i data-lucide="${tool.icon}" style="width: 20px; height: 20px; stroke-width: 2;"></i>`;
+        button.appendChild(iconSpan);
+        
+        // Add keyboard shortcut indicator
+        const keyIndicator = document.createElement('div');
+        keyIndicator.style.cssText = `
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.5);
+            font-weight: bold;
+        `;
+        keyIndicator.textContent = tool.key;
+        button.appendChild(keyIndicator);
+        
+        // Hover effect
+        button.addEventListener('mouseenter', () => {
+            if (!button.classList.contains('selected')) {
+                button.style.background = 'rgba(255, 255, 255, 0.15)';
+                button.style.transform = 'scale(1.05)';
+            }
+        });
+        
+        button.addEventListener('mouseleave', () => {
+            if (!button.classList.contains('selected')) {
+                button.style.background = 'rgba(255, 255, 255, 0.1)';
+                button.style.transform = 'scale(1)';
+            }
+        });
+        
+        // Click handler
+        button.addEventListener('click', () => {
+            this.selectTool(tool.id);
+        });
+        
+        return button;
+    }
+    
+    private selectTool(toolId: string): void {
+        this.selectedTool = toolId;
+        this.drawingSystem.setToolMode(toolId);
+        
+        // Update button states
+        this.toolButtons.forEach((button, id) => {
+            if (id === toolId) {
+                button.classList.add('selected');
+                button.style.background = 'rgba(100, 100, 255, 0.3)';
+                button.style.borderColor = 'rgba(100, 100, 255, 0.8)';
+                button.style.transform = 'scale(1.1)';
+                button.style.boxShadow = '0 0 10px rgba(100, 100, 255, 0.3)';
+                
+                // Update icon color
+                const icon = button.querySelector('span');
+                if (icon) {
+                    icon.style.color = 'rgba(150, 150, 255, 1)';
+                }
+            } else {
+                button.classList.remove('selected');
+                button.style.background = 'rgba(255, 255, 255, 0.1)';
+                button.style.borderColor = 'transparent';
+                button.style.transform = 'scale(1)';
+                button.style.boxShadow = 'none';
+                
+                // Reset icon color
+                const icon = button.querySelector('span');
+                if (icon) {
+                    icon.style.color = 'rgba(255, 255, 255, 0.8)';
+                }
+            }
+        });
+        
+        // Re-initialize Lucide icons
+        if ((window as any).lucide) {
+            (window as any).lucide.createIcons();
+        }
+    }
+    
     private selectVoxelType(type: VoxelType): void {
         this.selectedType = type;
         this.drawingSystem.setVoxelType(type);
@@ -289,10 +423,8 @@ export class VoxelPanel {
     }
     
     public updateToolMode(mode: string): void {
-        const element = document.getElementById('tool-mode-value');
-        if (element) {
-            element.textContent = mode;
-        }
+        // Update the internal selection
+        this.selectTool(mode);
     }
     
     public dispose(): void {

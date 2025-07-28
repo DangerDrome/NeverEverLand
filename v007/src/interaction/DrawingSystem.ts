@@ -2,7 +2,26 @@ import * as THREE from 'three';
 import { VoxelType } from '../engine/VoxelEngine';
 
 export class DrawingSystem {
-    constructor(voxelEngine) {
+    // Properties
+    voxelEngine: any;
+    isDrawing: boolean;
+    drawMode: string;
+    currentVoxelType: VoxelType;
+    brushSize: number;
+    toolMode: string;
+    boxStart: any;
+    lineStart: any;
+    drawingSurface: any;
+    previewMesh: any;
+    previewGroup: any;
+    previewEdges: any;
+    previewMaterial: any;
+    edgeMaterial: any;
+    toolPreviewMeshes: any[];
+    pendingOperations: any[];
+    operationTimer: any;
+    
+    constructor(voxelEngine: any) {
         this.voxelEngine = voxelEngine;
         
         // Drawing state
@@ -15,6 +34,7 @@ export class DrawingSystem {
         // Tool state
         this.boxStart = null;
         this.lineStart = null;
+        this.drawingSurface = null; // Store the surface we're drawing on
         
         // Preview
         this.previewMesh = null;
@@ -22,7 +42,14 @@ export class DrawingSystem {
             color: 0xffffff,
             opacity: 0.5,
             transparent: true,
-            wireframe: true
+            wireframe: false
+        });
+        
+        // Edge material for cube outlines
+        this.edgeMaterial = new THREE.LineBasicMaterial({
+            color: 0xffffff,
+            opacity: 0.8,
+            transparent: true
         });
         
         // Multiple preview meshes for box/line tools
@@ -41,14 +68,26 @@ export class DrawingSystem {
             this.voxelEngine.voxelSize,
             this.voxelEngine.voxelSize
         );
+        
+        // Create a group to hold both the mesh and edges
+        this.previewGroup = new THREE.Group();
+        
+        // Create the solid mesh
         this.previewMesh = new THREE.Mesh(geometry, this.previewMaterial);
-        this.previewMesh.visible = false;
-        this.voxelEngine.scene.add(this.previewMesh);
+        this.previewGroup.add(this.previewMesh);
+        
+        // Create edge geometry for the outline
+        const edges = new THREE.EdgesGeometry(geometry);
+        this.previewEdges = new THREE.LineSegments(edges, this.edgeMaterial);
+        this.previewGroup.add(this.previewEdges);
+        
+        this.previewGroup.visible = false;
+        this.voxelEngine.scene.add(this.previewGroup);
     }
     
     updatePreview(hit) {
         if (!hit) {
-            this.previewMesh.visible = false;
+            this.previewGroup.visible = false;
             this.clearToolPreviews();
             return;
         }
@@ -60,26 +99,28 @@ export class DrawingSystem {
         
         // For brush and fill tools, show single preview
         if (this.toolMode === 'brush' || this.toolMode === 'fill') {
-            // Update preview mesh position - offset by half voxel size to center in grid cells
-            this.previewMesh.position.set(
+            // Update preview group position - offset by half voxel size to center in grid cells
+            this.previewGroup.position.set(
                 pos.x * this.voxelEngine.voxelSize + this.voxelEngine.voxelSize * 0.5,
                 pos.y * this.voxelEngine.voxelSize + this.voxelEngine.voxelSize * 0.5,
                 pos.z * this.voxelEngine.voxelSize + this.voxelEngine.voxelSize * 0.5
             );
             
             // Scale preview based on brush size
-            this.previewMesh.scale.setScalar(this.brushSize);
+            this.previewGroup.scale.setScalar(this.brushSize);
             
             // Update preview color based on mode
             if (this.drawMode === 'add') {
                 this.previewMaterial.color.setHex(0x00ff00);
+                this.edgeMaterial.color.setHex(0x00ff00);
             } else {
                 this.previewMaterial.color.setHex(0xff0000);
+                this.edgeMaterial.color.setHex(0xff0000);
             }
             
-            this.previewMesh.visible = true;
+            this.previewGroup.visible = true;
         } else {
-            this.previewMesh.visible = false;
+            this.previewGroup.visible = false;
         }
     }
     
@@ -88,6 +129,17 @@ export class DrawingSystem {
         
         this.isDrawing = true;
         this.drawMode = mode;
+        
+        // Store the surface normal to constrain drawing to this plane
+        if (mode === 'add' && hit.normal) {
+            this.drawingSurface = {
+                normal: hit.normal.clone(),
+                basePos: { ...hit.adjacentPos }, // Store the base position for all axes
+                hitPos: { ...hit.voxelPos } // Store the hit voxel position
+            };
+        } else {
+            this.drawingSurface = null;
+        }
         
         const pos = mode === 'add' ? hit.adjacentPos : hit.voxelPos;
         
@@ -121,7 +173,8 @@ export class DrawingSystem {
     
     stopDrawing() {
         this.isDrawing = false;
-        this.previewMesh.visible = true;
+        this.previewGroup.visible = true;
+        this.drawingSurface = null;
         
         // Process any pending operations
         this.processPendingOperations();
@@ -131,8 +184,8 @@ export class DrawingSystem {
     }
     
     applyBrush(centerX, centerY, centerZ) {
-        const operations = [];
         const radius = Math.floor(this.brushSize / 2);
+        let changed = false;
         
         // Apply brush in a cubic pattern
         for (let x = -radius; x <= radius; x++) {
@@ -147,54 +200,30 @@ export class DrawingSystem {
                     const vy = centerY + y;
                     const vz = centerZ + z;
                     
-                    operations.push({ x: vx, y: vy, z: vz });
+                    // Apply voxel change immediately
+                    if (this.drawMode === 'add') {
+                        if (this.voxelEngine.setVoxel(vx, vy, vz, this.currentVoxelType)) {
+                            changed = true;
+                        }
+                    } else {
+                        if (this.voxelEngine.setVoxel(vx, vy, vz, VoxelType.AIR)) {
+                            changed = true;
+                        }
+                    }
                 }
             }
         }
         
-        // Add operations to pending list
-        this.pendingOperations.push(...operations);
-        
-        // Batch update
-        if (this.operationTimer) {
-            clearTimeout(this.operationTimer);
-        }
-        
-        this.operationTimer = setTimeout(() => {
-            this.processPendingOperations();
-        }, 16); // Update once per frame
-    }
-    
-    processPendingOperations() {
-        if (this.pendingOperations.length === 0) return;
-        
-        // Remove duplicates
-        const uniqueOps = new Map();
-        for (const op of this.pendingOperations) {
-            const key = `${op.x},${op.y},${op.z}`;
-            uniqueOps.set(key, op);
-        }
-        
-        // Apply operations
-        let changed = false;
-        for (const op of uniqueOps.values()) {
-            if (this.drawMode === 'add') {
-                if (this.voxelEngine.setVoxel(op.x, op.y, op.z, this.currentVoxelType)) {
-                    changed = true;
-                }
-            } else {
-                if (this.voxelEngine.setVoxel(op.x, op.y, op.z, VoxelType.AIR)) {
-                    changed = true;
-                }
-            }
-        }
-        
-        // Update instances if anything changed
+        // Update instances immediately if anything changed
         if (changed) {
             this.voxelEngine.updateInstances();
         }
-        
-        // Clear pending operations
+    }
+    
+    // Legacy method - no longer used but kept for compatibility
+    processPendingOperations() {
+        // This method is no longer used as we apply operations immediately
+        // Kept for compatibility in case it's called from elsewhere
         this.pendingOperations = [];
         this.operationTimer = null;
     }
@@ -237,9 +266,23 @@ export class DrawingSystem {
     
     // Clear tool preview meshes
     clearToolPreviews() {
-        for (const mesh of this.toolPreviewMeshes) {
-            this.voxelEngine.scene.remove(mesh);
-            mesh.geometry.dispose();
+        for (const item of this.toolPreviewMeshes) {
+            this.voxelEngine.scene.remove(item);
+            
+            // If it's a group, traverse and dispose all children
+            if (item.type === 'Group') {
+                item.traverse((child) => {
+                    if (child.geometry) {
+                        child.geometry.dispose();
+                    }
+                    if (child.material) {
+                        child.material.dispose();
+                    }
+                });
+            } else if (item.geometry) {
+                // If it's a mesh, dispose its geometry
+                item.geometry.dispose();
+            }
         }
         this.toolPreviewMeshes = [];
     }
@@ -253,17 +296,27 @@ export class DrawingSystem {
         const minZ = Math.min(start.z, end.z);
         const maxZ = Math.max(start.z, end.z);
         
-        const operations = [];
+        let changed = false;
         for (let x = minX; x <= maxX; x++) {
             for (let y = minY; y <= maxY; y++) {
                 for (let z = minZ; z <= maxZ; z++) {
-                    operations.push({ x, y, z });
+                    if (this.drawMode === 'add') {
+                        if (this.voxelEngine.setVoxel(x, y, z, this.currentVoxelType)) {
+                            changed = true;
+                        }
+                    } else {
+                        if (this.voxelEngine.setVoxel(x, y, z, VoxelType.AIR)) {
+                            changed = true;
+                        }
+                    }
                 }
             }
         }
         
-        this.pendingOperations = operations;
-        this.processPendingOperations();
+        // Update instances immediately
+        if (changed) {
+            this.voxelEngine.updateInstances();
+        }
     }
     
     // Line tool implementation
@@ -273,18 +326,29 @@ export class DrawingSystem {
         const dz = Math.abs(end.z - start.z);
         
         const steps = Math.max(dx, dy, dz);
-        const operations = [];
+        let changed = false;
         
         for (let i = 0; i <= steps; i++) {
             const t = steps === 0 ? 0 : i / steps;
             const x = Math.round(start.x + (end.x - start.x) * t);
             const y = Math.round(start.y + (end.y - start.y) * t);
             const z = Math.round(start.z + (end.z - start.z) * t);
-            operations.push({ x, y, z });
+            
+            if (this.drawMode === 'add') {
+                if (this.voxelEngine.setVoxel(x, y, z, this.currentVoxelType)) {
+                    changed = true;
+                }
+            } else {
+                if (this.voxelEngine.setVoxel(x, y, z, VoxelType.AIR)) {
+                    changed = true;
+                }
+            }
         }
         
-        this.pendingOperations = operations;
-        this.processPendingOperations();
+        // Update instances immediately
+        if (changed) {
+            this.voxelEngine.updateInstances();
+        }
     }
     
     // Fill tool implementation (flood fill)
@@ -327,8 +391,18 @@ export class DrawingSystem {
             }
         }
         
-        this.pendingOperations = operations;
-        this.processPendingOperations();
+        // Apply fill immediately
+        let changed = false;
+        for (const pos of operations) {
+            if (this.voxelEngine.setVoxel(pos.x, pos.y, pos.z, this.currentVoxelType)) {
+                changed = true;
+            }
+        }
+        
+        // Update instances immediately
+        if (changed) {
+            this.voxelEngine.updateInstances();
+        }
     }
     
     // Update preview for tools
@@ -361,16 +435,27 @@ export class DrawingSystem {
         const depth = (maxZ - minZ + 1) * this.voxelEngine.voxelSize;
         
         const geometry = new THREE.BoxGeometry(width, height, depth);
-        const mesh = new THREE.Mesh(geometry, this.previewMaterial);
         
-        mesh.position.set(
+        // Create a group for mesh and edges
+        const group = new THREE.Group();
+        
+        // Add solid mesh
+        const mesh = new THREE.Mesh(geometry, this.previewMaterial);
+        group.add(mesh);
+        
+        // Add edge outline
+        const edges = new THREE.EdgesGeometry(geometry);
+        const edgeLines = new THREE.LineSegments(edges, this.edgeMaterial);
+        group.add(edgeLines);
+        
+        group.position.set(
             (minX + maxX) * this.voxelEngine.voxelSize / 2 + this.voxelEngine.voxelSize * 0.5,
             (minY + maxY) * this.voxelEngine.voxelSize / 2 + this.voxelEngine.voxelSize * 0.5,
             (minZ + maxZ) * this.voxelEngine.voxelSize / 2 + this.voxelEngine.voxelSize * 0.5
         );
         
-        this.voxelEngine.scene.add(mesh);
-        this.toolPreviewMeshes.push(mesh);
+        this.voxelEngine.scene.add(group);
+        this.toolPreviewMeshes.push(group);
     }
     
     // Preview line tool
@@ -392,16 +477,27 @@ export class DrawingSystem {
                 this.voxelEngine.voxelSize,
                 this.voxelEngine.voxelSize
             );
-            const mesh = new THREE.Mesh(geometry, this.previewMaterial);
             
-            mesh.position.set(
+            // Create a group for mesh and edges
+            const group = new THREE.Group();
+            
+            // Add solid mesh
+            const mesh = new THREE.Mesh(geometry, this.previewMaterial);
+            group.add(mesh);
+            
+            // Add edge outline
+            const edges = new THREE.EdgesGeometry(geometry);
+            const edgeLines = new THREE.LineSegments(edges, this.edgeMaterial);
+            group.add(edgeLines);
+            
+            group.position.set(
                 x * this.voxelEngine.voxelSize + this.voxelEngine.voxelSize * 0.5,
                 y * this.voxelEngine.voxelSize + this.voxelEngine.voxelSize * 0.5,
                 z * this.voxelEngine.voxelSize + this.voxelEngine.voxelSize * 0.5
             );
             
-            this.voxelEngine.scene.add(mesh);
-            this.toolPreviewMeshes.push(mesh);
+            this.voxelEngine.scene.add(group);
+            this.toolPreviewMeshes.push(group);
         }
     }
 }
