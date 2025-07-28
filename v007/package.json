@@ -1,0 +1,28 @@
+{
+  "name": "v007-high-performance-voxel-system",
+  "version": "1.0.0",
+  "description": "High-performance voxel engine with instanced rendering, inspired by nimadez/voxel-builder",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "voxel",
+    "three.js",
+    "instanced-rendering",
+    "webgl",
+    "3d"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "three": "^0.161.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.161.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12"
+  }
+}

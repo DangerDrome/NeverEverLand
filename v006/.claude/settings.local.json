@@ -3,7 +3,12 @@
     "allow": [
       "Bash(python3:*)",
       "Bash(npm run build:*)",
-      "Bash(xdg-open:*)"
+      "Bash(xdg-open:*)",
+      "Bash(grep:*)",
+      "Bash(npm run typecheck:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(mkdir:*)"
     ],
     "deny": []
   }

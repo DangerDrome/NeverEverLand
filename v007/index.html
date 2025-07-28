@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>v007 - High Performance Voxel System</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #000;
+        }
+        
+        #container {
+            width: 100vw;
+            height: calc(100vh - 40px);
+            position: relative;
+            top: 40px;
+        }
+        
+        #canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        
+        #stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            font-family: monospace;
+            user-select: none;
+        }
+        
+        #controls {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 12px;
+            user-select: none;
+        }
+        
+        #controls h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+        }
+        
+        #controls div {
+            margin: 5px 0;
+        }
+        
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 20px;
+        }
+        
+        /* Menu Bar Styling */
+        .menu-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 40px;
+            background: rgba(30, 30, 30, 0.95);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            font-size: 14px;
+            font-weight: normal;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .menu-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.2s ease;
+            border-radius: 4px;
+            margin-right: 4px;
+        }
+        
+        .menu-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .menu-item:active {
+            background: rgba(255, 255, 255, 0.15);
+        }
+        
+        /* Dropdown Menu Styling */
+        .menu-dropdown {
+            position: fixed;
+            background: rgba(40, 40, 40, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 6px;
+            padding: 4px 0;
+            min-width: 200px;
+            z-index: 99999;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+        }
+        
+        .menu-dropdown-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s ease;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 14px;
+        }
+        
+        .menu-dropdown-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .menu-separator {
+            height: 1px;
+            background: rgba(255, 255, 255, 0.1);
+            margin: 4px 0;
+        }
+        
+        .menu-shortcut {
+            font-size: 12px;
+            opacity: 0.6;
+            margin-left: 16px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Menu Bar -->
+    <div id="menu-bar" class="menu-bar">
+        <div class="menu-item" data-menu="file">
+            <span>File</span>
+        </div>
+        <div class="menu-item" data-menu="edit">
+            <span>Edit</span>
+        </div>
+        <div class="menu-item" data-menu="selection">
+            <span>Selection</span>
+        </div>
+        <div class="menu-item" data-menu="view">
+            <span>View</span>
+        </div>
+        <div class="menu-item" data-menu="help">
+            <span>Help</span>
+        </div>
+    </div>
+
+    <div id="container">
+        <div id="loading">Loading...</div>
+        <div id="stats" style="display: none;">
+            <div>FPS: <span id="fps">0</span></div>
+            <div>Voxels: <span id="voxel-count">0</span></div>
+            <div>Draw Calls: <span id="draw-calls">0</span></div>
+            <div>Memory: <span id="memory">0</span> MB</div>
+            <div>Type: <span id="voxel-type">GRASS</span></div>
+            <div>Tool: <span id="tool-mode">brush</span></div>
+            <div>Brush: <span id="brush-size">1</span></div>
+        </div>
+        <div id="controls" style="display: none;">
+            <h3>Controls</h3>
+            <div><strong>Left Click:</strong> Place voxel</div>
+            <div><strong>Right Click:</strong> Remove voxel</div>
+            <div><strong>Alt + Left/Right:</strong> Rotate camera</div>
+            <div><strong>Middle Drag:</strong> Pan camera</div>
+            <div><strong>Scroll:</strong> Zoom</div>
+            <div><strong>1-9:</strong> Select voxel type</div>
+            <div><strong>1-5:</strong> Brush size</div>
+            <div><strong>B:</strong> Brush tool</div>
+            <div><strong>X:</strong> Box tool</div>
+            <div><strong>L:</strong> Line tool</div>
+            <div><strong>P:</strong> Fill tool</div>
+            <div><strong>G:</strong> Toggle grid</div>
+            <div><strong>F:</strong> Toggle stats</div>
+        </div>
+    </div>
+    
+    <!-- Hidden file input for loading/saving -->
+    <input type="file" id="load-voxel-input" accept=".json" style="display: none;">
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <script type="module" src="/src/main.ts"></script>
+    
+    <!-- Menu handling script -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const menuItems = document.querySelectorAll('.menu-item');
+            let activeDropdown = null;
+            
+            // Create dropdown menus
+            const menus = {
+                file: [
+                    { label: 'Save Voxels', action: 'save-voxels' },
+                    { label: 'Load Voxels', action: 'load-voxels' },
+                    { type: 'separator' },
+                    { label: 'Export Scene', action: 'export-scene' },
+                    { label: 'Import Scene', action: 'import-scene' },
+                    { type: 'separator' },
+                    { label: 'Reload', action: 'reload' }
+                ],
+                edit: [
+                    { label: 'Undo', action: 'undo', shortcut: 'Ctrl+Z' },
+                    { label: 'Redo', action: 'redo', shortcut: 'Ctrl+Y' },
+                    { type: 'separator' },
+                    { label: 'Clear All', action: 'clear-all' },
+                    { label: 'Fill Layer', action: 'fill-layer' }
+                ],
+                selection: [
+                    { label: 'Select All', action: 'select-all' },
+                    { label: 'Select None', action: 'select-none' },
+                    { label: 'Invert Selection', action: 'invert-selection' }
+                ],
+                view: [
+                    { label: 'Toggle Grid', action: 'toggle-grid', shortcut: 'G' },
+                    { label: 'Reset Camera', action: 'reset-camera', shortcut: 'F' },
+                    { label: 'Toggle Stats', action: 'toggle-stats', shortcut: 'F3' },
+                    { type: 'separator' },
+                    { label: 'Wireframe Mode', action: 'toggle-wireframe' },
+                    { label: 'Fullscreen', action: 'toggle-fullscreen', shortcut: 'F11' }
+                ],
+                help: [
+                    { label: 'Controls', action: 'show-controls' },
+                    { label: 'About', action: 'about' },
+                    { type: 'separator' },
+                    { label: 'Report Issue', action: 'report-issue' }
+                ]
+            };
+            
+            // Create dropdown elements
+            menuItems.forEach(menuItem => {
+                const menuName = menuItem.getAttribute('data-menu');
+                const menuOptions = menus[menuName];
+                
+                if (menuOptions) {
+                    const dropdown = document.createElement('div');
+                    dropdown.className = 'menu-dropdown';
+                    
+                    menuOptions.forEach(option => {
+                        if (option.type === 'separator') {
+                            const separator = document.createElement('div');
+                            separator.className = 'menu-separator';
+                            dropdown.appendChild(separator);
+                        } else {
+                            const item = document.createElement('div');
+                            item.className = 'menu-dropdown-item';
+                            item.setAttribute('data-action', option.action);
+                            
+                            const label = document.createElement('span');
+                            label.textContent = option.label;
+                            item.appendChild(label);
+                            
+                            if (option.shortcut) {
+                                const shortcut = document.createElement('span');
+                                shortcut.className = 'menu-shortcut';
+                                shortcut.textContent = option.shortcut;
+                                item.appendChild(shortcut);
+                            }
+                            
+                            item.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                handleMenuAction(option.action);
+                                closeDropdowns();
+                            });
+                            
+                            dropdown.appendChild(item);
+                        }
+                    });
+                    
+                    document.body.appendChild(dropdown);
+                    menuItem.dropdown = dropdown;
+                }
+                
+                menuItem.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const dropdown = menuItem.dropdown;
+                    
+                    if (activeDropdown && activeDropdown !== dropdown) {
+                        activeDropdown.style.display = 'none';
+                    }
+                    
+                    if (dropdown) {
+                        const rect = menuItem.getBoundingClientRect();
+                        dropdown.style.left = rect.left + 'px';
+                        dropdown.style.top = rect.bottom + 'px';
+                        
+                        dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+                        activeDropdown = dropdown.style.display === 'block' ? dropdown : null;
+                    }
+                });
+            });
+            
+            // Close dropdowns when clicking outside
+            document.addEventListener('click', closeDropdowns);
+            
+            function closeDropdowns() {
+                const dropdowns = document.querySelectorAll('.menu-dropdown');
+                dropdowns.forEach(dropdown => {
+                    dropdown.style.display = 'none';
+                });
+                activeDropdown = null;
+            }
+            
+            // Handle menu actions
+            function handleMenuAction(action) {
+                if (action === 'reload') {
+                    window.location.reload();
+                    return;
+                }
+                
+                // Access the global app instance
+                const app = window.app;
+                if (!app) return;
+                
+                switch (action) {
+                    case 'save-voxels':
+                        saveVoxelData();
+                        break;
+                    case 'load-voxels':
+                        document.getElementById('load-voxel-input').click();
+                        break;
+                    case 'export-scene':
+                        exportScene();
+                        break;
+                    case 'clear-all':
+                        if (confirm('Are you sure you want to clear all voxels?')) {
+                            clearAllVoxels();
+                        }
+                        break;
+                    case 'toggle-grid':
+                        toggleGrid();
+                        break;
+                    case 'reset-camera':
+                        resetCamera();
+                        break;
+                    case 'toggle-stats':
+                        toggleStats();
+                        break;
+                    case 'toggle-fullscreen':
+                        toggleFullscreen();
+                        break;
+                    case 'show-controls':
+                        showControls();
+                        break;
+                    case 'about':
+                        showAbout();
+                        break;
+                    case 'report-issue':
+                        window.open('https://github.com/anthropics/claude-code/issues', '_blank');
+                        break;
+                }
+            }
+            
+            // Menu action implementations
+            function saveVoxelData() {
+                const app = window.app;
+                if (!app || !app.voxelEngine) return;
+                
+                const voxelData = app.voxelEngine.exportVoxels();
+                const dataStr = JSON.stringify(voxelData, null, 2);
+                const blob = new Blob([dataStr], { type: 'application/json' });
+                
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'voxel-scene-' + new Date().toISOString().slice(0, 19).replace(/:/g, '-') + '.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+            
+            function clearAllVoxels() {
+                const app = window.app;
+                if (app && app.voxelEngine) {
+                    app.voxelEngine.clear();
+                    app.voxelEngine.updateInstances();
+                }
+            }
+            
+            function toggleGrid() {
+                const app = window.app;
+                if (app && app.toggleGrid) {
+                    app.toggleGrid();
+                }
+            }
+            
+            function resetCamera() {
+                const app = window.app;
+                if (app && app.controls) {
+                    app.controls.reset();
+                }
+            }
+            
+            function toggleStats() {
+                const stats = document.getElementById('stats');
+                const controls = document.getElementById('controls');
+                if (stats.style.display === 'none') {
+                    stats.style.display = 'block';
+                    controls.style.display = 'block';
+                } else {
+                    stats.style.display = 'none';
+                    controls.style.display = 'none';
+                }
+            }
+            
+            function toggleFullscreen() {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen();
+                } else {
+                    document.exitFullscreen();
+                }
+            }
+            
+            function showControls() {
+                alert('Voxel Editor Controls:\n\n' +
+                      'Left Click: Place voxel\n' +
+                      'Right Click: Remove voxel\n' +
+                      'Alt + Mouse: Rotate camera\n' +
+                      'Middle Mouse: Pan camera\n' +
+                      'Scroll: Zoom\n' +
+                      '1-9: Select voxel type\n' +
+                      '1-5: Change brush size\n' +
+                      'B: Brush tool\n' +
+                      'X: Box tool\n' +
+                      'L: Line tool\n' +
+                      'P: Fill tool\n' +
+                      'G: Toggle grid\n' +
+                      'F: Toggle performance stats');
+            }
+            
+            function showAbout() {
+                alert('NeverEverLand v007 - High Performance Voxel System\n\n' +
+                      'Built with Three.js and TypeScript\n' +
+                      'Features thin instancing for massive performance\n' +
+                      'Mathematical raycasting for precise interaction\n\n' +
+                      'Supports up to 1M voxel instances');
+            }
+            
+            // Handle file input for loading voxels
+            document.getElementById('load-voxel-input').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    loadVoxelFile(file);
+                }
+                e.target.value = '';
+            });
+            
+            function loadVoxelFile(file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const voxelData = JSON.parse(e.target.result);
+                        const app = window.app;
+                        if (app && app.voxelEngine) {
+                            app.voxelEngine.importVoxels(voxelData);
+                            app.voxelEngine.updateInstances();
+                        }
+                    } catch (error) {
+                        alert('Error loading voxel file: ' + error.message);
+                    }
+                };
+                reader.readAsText(file);
+            }
+        });
+    </script>
+</body>
+</html>

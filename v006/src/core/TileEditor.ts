@@ -74,6 +74,8 @@ interface EditorAction {
  * Coordinates all editor systems and handles user input
  */
 export class TileEditor {
+  private readonly BASE_GRID_SIZE = 0.1; // Base grid size that all voxels align to
+  private readonly VOXEL_SIZE = 0.1; // All voxels are 0.1m cubes
   private container: HTMLElement;
   private renderer!: THREE.WebGLRenderer;
   private scene!: THREE.Scene;
@@ -124,6 +126,7 @@ export class TileEditor {
   private TUMBLE_SMOOTH_FACTOR: number = 0.15; // How quickly to interpolate (0.1 = slow, 0.3 = fast)
   private isErasing: boolean = false;
   private lastDrawnCell: GridCoordinate | null = null;
+  private tilesPlacedDuringDrag: Set<string> = new Set(); // Track tiles placed during current drag
   private lastErasedVoxel: { coord: GridCoordinate; layer: number } | null = null;
   
   // Performance optimization
@@ -152,7 +155,7 @@ export class TileEditor {
   //    - Stack ON + Replace ON = Edit existing structures
   private stackMode: boolean = true;
   private stackDirection: StackDirection = StackDirection.Up;
-  private tileSize: number = 0.1;
+  private brushSize: number = 1; // Brush size in voxels (1x1, 3x3, 5x5, etc.)
   
   // Sky system
   private skyEnabled: boolean = false;
@@ -171,10 +174,11 @@ export class TileEditor {
   private effectsPanel: EffectsPanel | null = null;
   
   // Preview
-  private previewMesh: THREE.Mesh | null = null;
+  private previewGroup: THREE.Group | null = null; // Group showing entire brush area
   private previewMaterial: THREE.Material | null = null;
   private faceHighlightMesh: THREE.Mesh | null = null;
   private faceHighlightMaterial: THREE.Material | null = null;
+  private alignmentCage: THREE.Group | null = null;
   
   // Selection
   private selectionMaterial: THREE.Material | null = null;
@@ -364,32 +368,31 @@ export class TileEditor {
    * Initialize preview mesh
    */
   private initPreview(): void {
-    // Create wireframe material for better visibility
+    // Create semi-transparent material for better visibility
     this.previewMaterial = new THREE.MeshBasicMaterial({
-      color: 0xFF0000, // Bright red for visibility
-      wireframe: true,
-      wireframeLinewidth: 2, // Note: linewidth may not work in all browsers
+      color: 0x00FF00, // Bright green for visibility
       transparent: true,
-      opacity: 0.8,
+      opacity: 0.4,
+      side: THREE.DoubleSide,
+      depthWrite: false, // Prevent depth issues
+      depthTest: true,
     });
     
-    // Create preview mesh (uses current tile size)
-    const geometry = new THREE.BoxGeometry(this.tileSize, 0.1, this.tileSize);
-    this.previewMesh = new THREE.Mesh(geometry, this.previewMaterial);
-    this.previewMesh.visible = false;
+    // Create preview group that shows entire brush area
+    this.previewGroup = new THREE.Group();
+    this.previewGroup.visible = false;
+    this.scene.add(this.previewGroup);
     
-    // Add a second mesh with edges for better visibility
-    const edgesGeometry = new THREE.EdgesGeometry(geometry);
-    const edgesMaterial = new THREE.LineBasicMaterial({ 
-      color: 0xFFFFFF, // White edges
-      linewidth: 2,
-      transparent: true,
-      opacity: 0.6
-    });
-    const edgesMesh = new THREE.LineSegments(edgesGeometry, edgesMaterial);
-    this.previewMesh.add(edgesMesh); // Add edges as child of preview mesh
+    // Keep the preview group from above, no need to recreate
     
-    this.scene.add(this.previewMesh);
+    // Update preview to show brush area
+    this.updatePreviewGeometry();
+    
+    // Create alignment cage to show which base grid cells will be occupied
+    this.alignmentCage = new THREE.Group();
+    this.alignmentCage.visible = false;
+    this.scene.add(this.alignmentCage);
+    this.updateAlignmentCage();
     
     // Create selection material
     this.selectionMaterial = new THREE.MeshBasicMaterial({
@@ -420,7 +423,7 @@ export class TileEditor {
     this.container.appendChild(this.selectionRectangle);
     
     // Create face highlight mesh (a plane that will be positioned on voxel faces)
-    const faceGeometry = new THREE.PlaneGeometry(this.tileSize * 0.98, this.tileSize * 0.98); // Slightly smaller to show edges
+    const faceGeometry = new THREE.PlaneGeometry(this.VOXEL_SIZE * 0.98, this.VOXEL_SIZE * 0.98); // Slightly smaller to show edges
     this.faceHighlightMesh = new THREE.Mesh(faceGeometry, this.faceHighlightMaterial);
     this.faceHighlightMesh.visible = false;
     this.scene.add(this.faceHighlightMesh);
@@ -493,8 +496,8 @@ export class TileEditor {
       return new THREE.LineSegments(geometry, material);
     };
     
-    const s = this.tileSize * 0.5; // half size
-    const h = 0.05; // half height
+    const s = this.VOXEL_SIZE * 0.5; // half size
+    const h = this.VOXEL_SIZE / 2; // half height
     const extend = 50; // How far to extend the lines
     
     // Top face edges (4 lines)
@@ -749,15 +752,10 @@ export class TileEditor {
     
     // Update mouse coordinates using renderer's actual size
     const rect = this.renderer.domElement.getBoundingClientRect();
-    const rendererSize = new THREE.Vector2();
-    this.renderer.getSize(rendererSize);
     
-    // Account for CSS scaling of the canvas
-    const scaleX = rendererSize.x / rect.width;
-    const scaleY = rendererSize.y / rect.height;
-    
-    this.mouse.x = ((event.clientX - rect.left) * scaleX / rendererSize.x) * 2 - 1;
-    this.mouse.y = -((event.clientY - rect.top) * scaleY / rendererSize.y) * 2 + 1;
+    // Simple NDC calculation without scaling
+    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     
     // Only update grid highlight when not panning and not interacting
     if (!this.isPanning && !this.isInteracting) {
@@ -772,6 +770,7 @@ export class TileEditor {
           // Start dragging after 5 pixels of movement
           if (distance > 5) {
             this.isDrawing = true;
+            this.tilesPlacedDuringDrag.clear(); // Clear tiles placed during previous drag
             
             // If drag constraint wasn't set by modifier keys, initialize it now
             if (this.dragConstraint === null) {
@@ -813,9 +812,9 @@ export class TileEditor {
               // Calculate actual drag direction in world space with enhanced precision
               if (this.dragStartWorld && this.state.highlightedCell) {
                 const currentWorld = new THREE.Vector3(
-                  this.state.highlightedCell.x * this.tileSize + this.tileSize * 0.5,
+                  this.state.highlightedCell.x * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5,
                   this.dragStartWorld.y,
-                  this.state.highlightedCell.z * this.tileSize + this.tileSize * 0.5
+                  this.state.highlightedCell.z * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5
                 );
                 this.dragDirection = currentWorld.sub(this.dragStartWorld);
                 
@@ -945,6 +944,7 @@ export class TileEditor {
         this.isErasing = false;
         this.lastDrawnCell = null;
         this.lastErasedVoxel = null;
+        this.tilesPlacedDuringDrag.clear(); // Clear tracking set
         this.dragStartWorld = null;
         this.dragDirection = null;
         this.dragConstraint = null;
@@ -1021,9 +1021,9 @@ export class TileEditor {
         
         // Store world position at drag start
         if (this.state.highlightedCell) {
-          const worldX = this.state.highlightedCell.x * this.tileSize + this.tileSize * 0.5;
-          const worldZ = this.state.highlightedCell.z * this.tileSize + this.tileSize * 0.5;
-          const worldY = 0.05 + this.dragStartLayer * 0.1;
+          const worldX = this.state.highlightedCell.x * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5;
+          const worldZ = this.state.highlightedCell.z * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5;
+          const worldY = this.VOXEL_SIZE / 2 + this.dragStartLayer * this.VOXEL_SIZE;
           this.dragStartWorld = new THREE.Vector3(worldX, worldY, worldZ);
         }
         
@@ -1086,6 +1086,7 @@ export class TileEditor {
     this.isErasing = false;
     this.lastDrawnCell = null;
     this.lastErasedVoxel = null;
+    this.tilesPlacedDuringDrag.clear(); // Clear tracking set
     this.dragStartLayer = null;
     this.dragStartWorld = null;
     this.dragDirection = null;
@@ -1125,19 +1126,14 @@ export class TileEditor {
     
     // Update mouse coordinates using renderer's actual size
     const rect = this.renderer.domElement.getBoundingClientRect();
-    const rendererSize = new THREE.Vector2();
-    this.renderer.getSize(rendererSize);
     
-    // Account for CSS scaling of the canvas
-    const scaleX = rendererSize.x / rect.width;
-    const scaleY = rendererSize.y / rect.height;
-    
-    this.mouse.x = ((event.clientX - rect.left) * scaleX / rendererSize.x) * 2 - 1;
-    this.mouse.y = -((event.clientY - rect.top) * scaleY / rendererSize.y) * 2 + 1;
+    // Simple NDC calculation without scaling
+    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     
     // Get world position under mouse for zoom-to-mouse
     // Use the current placement height if available
-    const zoomPlaneHeight = this.targetLayer !== null ? this.targetLayer * 0.1 : 0;
+    const zoomPlaneHeight = this.targetLayer !== null ? this.targetLayer * this.VOXEL_SIZE : 0;
     const worldPos = this.getMouseWorldPosition(zoomPlaneHeight);
     
     // Normalize deltaY for consistent zoom speed across different devices
@@ -1428,11 +1424,11 @@ export class TileEditor {
       
       if (this.dragConstraint === 'vertical') {
         // For vertical dragging, raycast at the current drag layer height
-        const planeHeight = this.currentDragLayer * 0.1;
+        const planeHeight = this.currentDragLayer * this.VOXEL_SIZE;
         worldPos = this.getMouseWorldPosition(planeHeight);
       } else if (this.dragConstraint === 'horizontal') {
         // For horizontal dragging, raycast at the drag start height
-        const planeHeight = this.dragStartLayer * 0.1;
+        const planeHeight = this.dragStartLayer * this.VOXEL_SIZE;
         worldPos = this.getMouseWorldPosition(planeHeight);
         
         if (worldPos && this.dragStartWorld) {
@@ -1460,9 +1456,9 @@ export class TileEditor {
             
             // Snap to grid for cleaner placement
             const gridSnappedPos = {
-              x: Math.round(projectedPos.x / this.tileSize) * this.tileSize + this.tileSize * 0.5,
+              x: Math.round(projectedPos.x / this.BASE_GRID_SIZE) * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5,
               y: projectedPos.y,
-              z: Math.round(projectedPos.z / this.tileSize) * this.tileSize + this.tileSize * 0.5
+              z: Math.round(projectedPos.z / this.BASE_GRID_SIZE) * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5
             };
             
             worldPos = gridSnappedPos;
@@ -1474,22 +1470,22 @@ export class TileEditor {
       }
       
       if (worldPos) {
-        const gridCoord = CoordinateUtils.worldToGrid(worldPos, this.tileSize);
+        const gridCoord = CoordinateUtils.worldToGrid(worldPos, this.BASE_GRID_SIZE);
         
         // Update highlighted cell for horizontal dragging
         if (this.dragConstraint !== 'vertical') {
           this.state.highlightedCell = gridCoord;
-          this.grid.highlightCell(gridCoord, this.tileSize);
+          this.grid.highlightCell(gridCoord, this.BASE_GRID_SIZE);
         } else {
           // For vertical dragging, keep highlight at drag start position
           if (this.dragStartCell) {
             this.state.highlightedCell = this.dragStartCell;
-            this.grid.highlightCell(this.dragStartCell, this.tileSize);
+            this.grid.highlightCell(this.dragStartCell, this.BASE_GRID_SIZE);
           }
         }
         
         // Show preview during drag
-        if (this.previewMesh) {
+        if (this.previewGroup) {
           this.updateDragPreview(gridCoord);
         }
       }
@@ -1499,7 +1495,7 @@ export class TileEditor {
     // Normal (non-dragging) voxel intersection check
     const voxelIntersection = this.getVoxelIntersection();
     
-    if (voxelIntersection && this.previewMesh) {
+    if (voxelIntersection && this.previewGroup) {
       const { position, normal, gridCoord, layer, voxelType, localPoint } = voxelIntersection;
       
       if (this.state.mode === EditorMode.Place) {
@@ -1510,7 +1506,7 @@ export class TileEditor {
         const targetCoord = this.getTargetCoordFromFace(gridCoord, normal);
         if (targetCoord && (!this.state.highlightedCell || !CoordinateUtils.coordsEqual(this.state.highlightedCell, targetCoord))) {
           this.state.highlightedCell = targetCoord;
-          this.grid.highlightCell(targetCoord, this.tileSize);
+          this.grid.highlightCell(targetCoord, this.BASE_GRID_SIZE);
           this.updateHeightDisplay(targetCoord);
         }
       } else if (this.state.mode === EditorMode.Erase || this.state.mode === EditorMode.Select) {
@@ -1520,7 +1516,7 @@ export class TileEditor {
         // Update highlighted cell
         if (!this.state.highlightedCell || !CoordinateUtils.coordsEqual(this.state.highlightedCell, gridCoord)) {
           this.state.highlightedCell = gridCoord;
-          this.grid.highlightCell(gridCoord, this.tileSize);
+          this.grid.highlightCell(gridCoord, this.BASE_GRID_SIZE);
           this.updateHeightDisplay(gridCoord);
         }
       }
@@ -1532,7 +1528,7 @@ export class TileEditor {
     let fallbackPlaneHeight = 0;
     if (this.state.mode === EditorMode.Place && this.targetLayer !== null) {
       // If we have a target layer from previous placement, use that height
-      fallbackPlaneHeight = this.targetLayer * 0.1;
+      fallbackPlaneHeight = this.targetLayer * this.VOXEL_SIZE;
     }
     
     const worldPos = this.getMouseWorldPosition(fallbackPlaneHeight);
@@ -1543,39 +1539,57 @@ export class TileEditor {
         this.faceHighlightMesh.visible = false;
       }
       
-      // Use tile size as grid cell size for snapping
-      const gridCoord = CoordinateUtils.worldToGrid(worldPos, this.tileSize);
+      // Convert world position to base grid coordinates
+      const gridCoord = CoordinateUtils.worldToGrid(worldPos, this.BASE_GRID_SIZE);
       
       // Check if hovering over empty space (for initial placement)
-      const existingTile = this.tileSystem.getTile(gridCoord);
-      const hasExistingVoxel = existingTile !== VoxelType.Air;
+      // For brush painting, we need to check if any of the cells in the brush area are filled
+      const snappedX = Math.floor(gridCoord.x / this.brushSize) * this.brushSize;
+      const snappedZ = Math.floor(gridCoord.z / this.brushSize) * this.brushSize;
+      
+      // Check all cells that the brush would paint
+      let hasExistingVoxel = false;
+      for (let dx = 0; dx < this.brushSize; dx++) {
+        for (let dz = 0; dz < this.brushSize; dz++) {
+          const checkCoord = { x: snappedX + dx, z: snappedZ + dz };
+          if (this.tileSystem.getTile(checkCoord) !== VoxelType.Air) {
+            hasExistingVoxel = true;
+            break;
+          }
+        }
+        if (hasExistingVoxel) break;
+      }
       
       // Show preview for placement - during dragging or on empty cells
-      const showPreview = this.previewMesh && this.state.mode === EditorMode.Place && 
+      const showPreview = this.previewGroup && this.state.mode === EditorMode.Place && 
                          (!hasExistingVoxel || (this.isDrawing && this.dragStartLayer !== null));
       
       if (showPreview) {
-        // Calculate preview position - tiles should be centered in their grid cells
-        // Grid lines are at 0, 0.1, 0.2, etc. so cell (0,0) goes from 0 to 0.1
-        let previewX = gridCoord.x * this.tileSize + this.tileSize * 0.5;
-        let previewZ = gridCoord.z * this.tileSize + this.tileSize * 0.5;
+        // Calculate preview position for the brush area
+        // Snap brush position to align with grid
+        const snappedBrushX = Math.floor(gridCoord.x / this.brushSize) * this.brushSize;
+        const snappedBrushZ = Math.floor(gridCoord.z / this.brushSize) * this.brushSize;
+        let previewX = snappedBrushX * this.BASE_GRID_SIZE + this.brushSize * this.VOXEL_SIZE * 0.5;
+        let previewZ = snappedBrushZ * this.BASE_GRID_SIZE + this.brushSize * this.VOXEL_SIZE * 0.5;
         // Calculate preview Y position based on drag constraint
-        let previewY = 0.05; // Default ground level
+        let previewY = this.VOXEL_SIZE / 2; // Default ground level
         let previewLayer = 0; // Default layer
         
         if (this.isDrawing && this.dragStartLayer !== null) {
           if (this.dragConstraint === 'vertical' && this.dragStartPos && this.stackMode) {
             // For vertical dragging, use the currentDragLayer we're tracking
-            previewY = 0.05 + this.currentDragLayer * 0.1;
+            previewY = this.VOXEL_SIZE / 2 + this.currentDragLayer * this.VOXEL_SIZE;
             previewLayer = this.currentDragLayer;
             // Also update the preview position to stay at the drag start cell
             if (this.dragStartCell) {
-              previewX = this.dragStartCell.x * this.tileSize + this.tileSize * 0.5;
-              previewZ = this.dragStartCell.z * this.tileSize + this.tileSize * 0.5;
+              const dragSnappedX = Math.floor(this.dragStartCell.x / this.brushSize) * this.brushSize;
+              const dragSnappedZ = Math.floor(this.dragStartCell.z / this.brushSize) * this.brushSize;
+              previewX = dragSnappedX * this.BASE_GRID_SIZE + this.brushSize * this.VOXEL_SIZE * 0.5;
+              previewZ = dragSnappedZ * this.BASE_GRID_SIZE + this.brushSize * this.VOXEL_SIZE * 0.5;
             }
           } else {
             // Horizontal dragging - maintain start layer
-            previewY = 0.05 + this.dragStartLayer * 0.1;
+            previewY = this.VOXEL_SIZE / 2 + this.dragStartLayer * this.VOXEL_SIZE;
             previewLayer = this.dragStartLayer;
           }
         }
@@ -1590,46 +1604,63 @@ export class TileEditor {
         // Only show preview if position is not occupied
         if (!isOccupied) {
           // Debug: log positions to verify alignment
-          // console.log(`Grid coord: (${gridCoord.x}, ${gridCoord.z}), Preview pos: (${previewX.toFixed(3)}, ${previewZ.toFixed(3)})`);
+          // console.log(`Grid coord: (${gridCoord.x}, ${gridCoord.z}), Preview pos: (${previewX.toFixed(3)}, ${previewZ.toFixed(3)}), Tile size: ${this.tileSize}`);
           
-          this.previewMesh.position.set(previewX, previewY, previewZ);
-          this.previewMesh.visible = true;
+          this.previewGroup.position.set(previewX, previewY, previewZ);
+          this.previewGroup.visible = true;
+          
+          // Update alignment cage position
+          if (this.alignmentCage) {
+            this.alignmentCage.position.set(previewX, previewY, previewZ);
+            this.alignmentCage.visible = true;
+          }
         } else {
-          this.previewMesh.visible = false;
+          this.previewGroup.visible = false;
+          if (this.alignmentCage) {
+            this.alignmentCage.visible = false;
+          }
         }
         
         if (this.previewMaterial) {
-          (this.previewMaterial as THREE.MeshBasicMaterial).color.setHex(0xFF0000);
-          (this.previewMaterial as THREE.MeshBasicMaterial).opacity = 0.8;
+          (this.previewMaterial as THREE.MeshBasicMaterial).color.setHex(0x00FF00);
+          (this.previewMaterial as THREE.MeshBasicMaterial).opacity = 0.4;
         }
         
         // Don't show alignment lines for ground placement
         if (this.alignmentLinesGroup) {
           this.alignmentLinesGroup.visible = false;
         }
-      } else if (this.previewMesh) {
-        this.previewMesh.visible = false;
+      } else if (this.previewGroup) {
+        this.previewGroup.visible = false;
+        if (this.alignmentCage) {
+          this.alignmentCage.visible = false;
+        }
         // Hide alignment lines when not placing
         if (this.alignmentLinesGroup) {
           this.alignmentLinesGroup.visible = false;
         }
       }
       
-      // Update highlighted cell
-      if (!this.state.highlightedCell || !CoordinateUtils.coordsEqual(this.state.highlightedCell, gridCoord)) {
-        this.state.highlightedCell = gridCoord;
-        this.grid.highlightCell(gridCoord, this.tileSize);
+      // Update highlighted cell - use the snapped coordinate for larger voxels
+      const highlightCoord = { x: snappedX, z: snappedZ };
+      if (!this.state.highlightedCell || !CoordinateUtils.coordsEqual(this.state.highlightedCell, highlightCoord)) {
+        this.state.highlightedCell = highlightCoord;
+        // Highlight with the actual voxel size
+        this.grid.highlightCell(highlightCoord, this.brushSize * this.VOXEL_SIZE);
         
         // Update height display for preview
-        this.updateHeightDisplay(gridCoord);
+        this.updateHeightDisplay(highlightCoord);
       }
     } else {
       this.grid.clearHighlight();
       this.state.highlightedCell = null;
       
       // Hide preview, face highlight and alignment lines
-      if (this.previewMesh) {
-        this.previewMesh.visible = false;
+      if (this.previewGroup) {
+        this.previewGroup.visible = false;
+      }
+      if (this.alignmentCage) {
+        this.alignmentCage.visible = false;
       }
       if (this.faceHighlightMesh) {
         this.faceHighlightMesh.visible = false;
@@ -1643,8 +1674,8 @@ export class TileEditor {
     if (this.coordinateDisplay && this.config.showCoordinates && this.state.highlightedCell) {
       const mode = this.state.mode === EditorMode.Place ? `Place ${VoxelType[this.selectedVoxelType]}` :
                   this.state.mode === EditorMode.Erase ? 'Erase' : 'Select';
-      const baseHeight = this.tileSystem.getBaseWorldHeight(this.state.highlightedCell, this.tileSize);
-      const subGridPos = `(${(this.state.highlightedCell.x * this.tileSize).toFixed(2)}, ${(this.state.highlightedCell.z * this.tileSize).toFixed(2)})`;
+      const baseHeight = this.tileSystem.getBaseWorldHeight(this.state.highlightedCell, this.VOXEL_SIZE);
+      const subGridPos = `(${(this.state.highlightedCell.x * this.BASE_GRID_SIZE).toFixed(2)}, ${(this.state.highlightedCell.z * this.BASE_GRID_SIZE).toFixed(2)})`;
       
       // Add drag constraint indicator with direction info
       let constraintInfo = '';
@@ -1694,29 +1725,35 @@ export class TileEditor {
    * Update preview during drag operations
    */
   private updateDragPreview(gridCoord: GridCoordinate): void {
-    if (!this.previewMesh) return;
+    if (!this.previewGroup) return;
     
-    let previewX = gridCoord.x * this.tileSize + this.tileSize * 0.5;
-    let previewZ = gridCoord.z * this.tileSize + this.tileSize * 0.5;
-    let previewY = 0.05; // Default ground level
+    // Calculate snapped position for brush area
+    const snappedX = Math.floor(gridCoord.x / this.brushSize) * this.brushSize;
+    const snappedZ = Math.floor(gridCoord.z / this.brushSize) * this.brushSize;
+    let previewX = snappedX * this.BASE_GRID_SIZE + this.brushSize * this.VOXEL_SIZE * 0.5;
+    let previewZ = snappedZ * this.BASE_GRID_SIZE + this.brushSize * this.VOXEL_SIZE * 0.5;
+    let previewY = this.VOXEL_SIZE / 2; // Default ground level
     let previewLayer = 0;
     
     if (this.dragConstraint === 'vertical' && this.stackMode) {
       // For vertical dragging, lock X,Z to start position and adjust Y
       if (this.dragStartCell) {
-        previewX = this.dragStartCell.x * this.tileSize + this.tileSize * 0.5;
-        previewZ = this.dragStartCell.z * this.tileSize + this.tileSize * 0.5;
+        const dragSnappedX = Math.floor(this.dragStartCell.x / this.brushSize) * this.brushSize;
+        const dragSnappedZ = Math.floor(this.dragStartCell.z / this.brushSize) * this.brushSize;
+        previewX = dragSnappedX * this.BASE_GRID_SIZE + this.brushSize * this.VOXEL_SIZE * 0.5;
+        previewZ = dragSnappedZ * this.BASE_GRID_SIZE + this.brushSize * this.VOXEL_SIZE * 0.5;
       }
-      previewY = 0.05 + this.currentDragLayer * 0.1;
+      previewY = this.VOXEL_SIZE / 2 + this.currentDragLayer * this.VOXEL_SIZE;
       previewLayer = this.currentDragLayer;
     } else if (this.dragConstraint === 'horizontal' && this.stackMode) {
       // For horizontal dragging in stack mode, find the top layer at current position
-      const topLayer = this.tileSystem.getTopLayer(gridCoord);
+      // Exclude tiles placed during this drag operation
+      const topLayer = this.isDrawing ? this.getTopLayerExcludingCurrentDrag(gridCoord) : this.tileSystem.getTopLayer(gridCoord);
       previewLayer = topLayer + 1;
-      previewY = 0.05 + previewLayer * 0.1;
+      previewY = this.VOXEL_SIZE / 2 + previewLayer * this.VOXEL_SIZE;
     } else {
       // For non-stack mode, maintain the drag start layer
-      previewY = 0.05 + (this.dragStartLayer || 0) * 0.1;
+      previewY = this.VOXEL_SIZE / 2 + (this.dragStartLayer || 0) * this.VOXEL_SIZE;
       previewLayer = this.dragStartLayer || 0;
     }
     
@@ -1729,10 +1766,19 @@ export class TileEditor {
     
     // Show preview only if position is not occupied
     if (!isOccupied) {
-      this.previewMesh.position.set(previewX, previewY, previewZ);
-      this.previewMesh.visible = true;
+      this.previewGroup.position.set(previewX, previewY, previewZ);
+      this.previewGroup.visible = true;
+      
+      // Update alignment cage position
+      if (this.alignmentCage) {
+        this.alignmentCage.position.set(previewX, previewY, previewZ);
+        this.alignmentCage.visible = true;
+      }
     } else {
-      this.previewMesh.visible = false;
+      this.previewGroup.visible = false;
+      if (this.alignmentCage) {
+        this.alignmentCage.visible = false;
+      }
     }
     
     // Update material
@@ -1775,7 +1821,7 @@ export class TileEditor {
     const intersection = new THREE.Vector3();
     if (this.raycaster.ray.intersectPlane(plane, intersection)) {
       // console.log(`World intersection: (${intersection.x.toFixed(3)}, ${intersection.y.toFixed(3)}, ${intersection.z.toFixed(3)})`);
-      // console.log(`Grid coord: (${Math.floor(intersection.x / this.tileSize)}, ${Math.floor(intersection.z / this.tileSize)})`);
+      // console.log(`Grid coord: (${Math.floor(intersection.x / 0.1)}, ${Math.floor(intersection.z / 0.1)})`);
       
       return {
         x: intersection.x,
@@ -1857,8 +1903,8 @@ export class TileEditor {
    * Check if a point is near a voxel edge
    */
   private isNearEdge(localPoint: THREE.Vector3, normal: THREE.Vector3): boolean {
-    const edgeThreshold = 0.02; // Within 2cm of edge (relative to tile size)
-    const halfSize = 0.05; // Half of the voxel height (0.1)
+    const edgeThreshold = 0.02; // Within 2cm of edge (relative to voxel size)
+    const halfSize = this.VOXEL_SIZE / 2; // Half of the voxel height
     
     // Check which face we're on and test the appropriate edges
     if (Math.abs(normal.y) > 0.5) {
@@ -1903,19 +1949,30 @@ export class TileEditor {
    * Show voxel highlight for erase/select modes
    */
   private showVoxelHighlight(coord: GridCoordinate, layer: number): void {
-    if (!this.previewMesh) return;
+    if (!this.previewGroup) return;
     
     // Position preview over the existing voxel
-    const layerHeight = 0.1;
+    const layerHeight = this.VOXEL_SIZE;
     const y = layerHeight / 2 + (layer * layerHeight);
     
-    this.previewMesh.position.set(
-      coord.x * this.tileSize + this.tileSize * 0.5,
+    // For existing voxels, we use the coordinate as stored (already in base grid units)
+    this.previewGroup.position.set(
+      coord.x * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5,
       y,
-      coord.z * this.tileSize + this.tileSize * 0.5
+      coord.z * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5
     );
     
-    this.previewMesh.visible = true;
+    this.previewGroup.visible = true;
+    
+    // Update alignment cage position and visibility
+    if (this.alignmentCage) {
+      this.alignmentCage.position.set(
+        coord.x * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5,
+        y,
+        coord.z * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5
+      );
+      this.alignmentCage.visible = true;
+    }
     
     // Update preview appearance based on mode
     if (this.previewMaterial) {
@@ -1942,7 +1999,7 @@ export class TileEditor {
    * Show preview on a specific face of a voxel
    */
   private showPreviewOnFace(position: THREE.Vector3, normal: THREE.Vector3, sourceCoord: GridCoordinate, sourceLayer: number, voxelType: VoxelType, localPoint: THREE.Vector3): void {
-    if (!this.previewMesh) return;
+    if (!this.previewGroup) return;
     
     // Debug: Log face detection
     // console.log(`Face detected - Normal: (${normal.x.toFixed(2)}, ${normal.y.toFixed(2)}, ${normal.z.toFixed(2)}), Layer: ${sourceLayer}`);
@@ -1955,7 +2012,7 @@ export class TileEditor {
     if (!targetCoord) return;
     
     // Get the Y position of the source voxel using the actual layer clicked
-    const layerHeight = 0.1;
+    const layerHeight = this.VOXEL_SIZE;
     const sourceY = layerHeight / 2 + (sourceLayer * layerHeight);
     
     // Position preview at the target location
@@ -1993,7 +2050,10 @@ export class TileEditor {
     
     // If position is occupied, don't show preview or store target layer
     if (isOccupied) {
-      this.previewMesh.visible = false;
+      this.previewGroup.visible = false;
+      if (this.alignmentCage) {
+        this.alignmentCage.visible = false;
+      }
       this.targetLayer = null;
       return;
     }
@@ -2004,13 +2064,23 @@ export class TileEditor {
     // Debug: Log target layer calculation
     // console.log(`Target layer set to: ${targetLayerNum} (from source layer: ${sourceLayer}, normal.y: ${normal.y})`);
     
-    this.previewMesh.position.set(
-      targetCoord.x * this.tileSize + this.tileSize * 0.5,
+    this.previewGroup.position.set(
+      targetCoord.x * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5,
       targetY,
-      targetCoord.z * this.tileSize + this.tileSize * 0.5
+      targetCoord.z * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5
     );
     
-    this.previewMesh.visible = true;
+    this.previewGroup.visible = true;
+    
+    // Update alignment cage position and visibility
+    if (this.alignmentCage) {
+      this.alignmentCage.position.set(
+        targetCoord.x * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5,
+        targetY,
+        targetCoord.z * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5
+      );
+      this.alignmentCage.visible = true;
+    }
     
     // Update preview appearance
     if (this.previewMaterial) {
@@ -2020,9 +2090,9 @@ export class TileEditor {
     
     // Show alignment lines for the hovered voxel face
     this.updateAlignmentLines(
-      sourceCoord.x * this.tileSize + this.tileSize * 0.5,
+      sourceCoord.x * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5,
       sourceY,
-      sourceCoord.z * this.tileSize + this.tileSize * 0.5,
+      sourceCoord.z * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5,
       voxelType,
       normal
     );
@@ -2035,12 +2105,12 @@ export class TileEditor {
     if (!this.faceHighlightMesh) return;
     
     // Get the voxel position using the actual layer
-    const layerHeight = 0.1;
+    const layerHeight = this.VOXEL_SIZE;
     const voxelY = layerHeight / 2 + (layer * layerHeight);
     
     // Calculate face center position
-    const centerX = coord.x * this.tileSize + this.tileSize * 0.5;
-    const centerZ = coord.z * this.tileSize + this.tileSize * 0.5;
+    const centerX = coord.x * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5;
+    const centerZ = coord.z * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5;
     
     // Offset the highlight slightly from the face to prevent z-fighting
     const offset = 0.001;
@@ -2058,7 +2128,7 @@ export class TileEditor {
     } else if (Math.abs(normal.x) > 0.5) {
       // East or west face
       this.faceHighlightMesh.position.set(
-        centerX + (normal.x > 0 ? this.tileSize/2 + offset : -this.tileSize/2 - offset),
+        centerX + (normal.x > 0 ? this.VOXEL_SIZE/2 + offset : -this.VOXEL_SIZE/2 - offset),
         voxelY,
         centerZ
       );
@@ -2069,7 +2139,7 @@ export class TileEditor {
       this.faceHighlightMesh.position.set(
         centerX,
         voxelY,
-        centerZ + (normal.z > 0 ? this.tileSize/2 + offset : -this.tileSize/2 - offset)
+        centerZ + (normal.z > 0 ? this.VOXEL_SIZE/2 + offset : -this.VOXEL_SIZE/2 - offset)
       );
       // No rotation needed for north/south faces
       this.faceHighlightMesh.rotation.set(0, 0, 0);
@@ -2196,10 +2266,13 @@ export class TileEditor {
     // Use a threshold to determine the primary axis
     const threshold = 0.5;
     
+    // For face-based placement, offset by the brush size
     if (Math.abs(normal.x) > threshold) {
-      offsetX = normal.x > 0 ? 1 : -1;
+      // Offset by the brush size in grid units
+      offsetX = normal.x > 0 ? this.brushSize : -this.brushSize;
     } else if (Math.abs(normal.z) > threshold) {
-      offsetZ = normal.z > 0 ? 1 : -1;
+      // Offset by the brush size in grid units
+      offsetZ = normal.z > 0 ? this.brushSize : -this.brushSize;
     }
     
     // For vertical faces, we still use the same coordinate but stack vertically
@@ -2240,16 +2313,16 @@ export class TileEditor {
     this.removeSelectionHighlight(key);
     
     // Create selection highlight mesh
-    const geometry = new THREE.BoxGeometry(this.tileSize, 0.1, this.tileSize);
+    const geometry = new THREE.BoxGeometry(this.VOXEL_SIZE, this.VOXEL_SIZE, this.VOXEL_SIZE);
     const mesh = new THREE.Mesh(geometry, this.selectionMaterial!);
     
     // Position the highlight
-    const layerHeight = 0.1;
+    const layerHeight = this.VOXEL_SIZE;
     const y = layerHeight / 2 + (layer * layerHeight);
     mesh.position.set(
-      coord.x * this.tileSize + this.tileSize * 0.5,
+      coord.x * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5,
       y,
-      coord.z * this.tileSize + this.tileSize * 0.5
+      coord.z * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5
     );
     
     // Make it slightly larger to encompass the voxel
@@ -2436,6 +2509,12 @@ export class TileEditor {
     // Use the highlighted cell which has already been calculated based on face detection
     const targetCoord = this.state.highlightedCell || gridCoord;
     
+    // Debug: log placement position
+    // const baseGridSize = 0.1;
+    // const worldX = targetCoord.x * baseGridSize + baseGridSize * 0.5;
+    // const worldZ = targetCoord.z * baseGridSize + baseGridSize * 0.5;
+    // console.log(`Placing voxel at grid (${targetCoord.x}, ${targetCoord.z}), world (${worldX.toFixed(3)}, ${worldZ.toFixed(3)}), tile size: ${this.tileSize}`);
+    
     // Capture state before placing
     const beforeState = this.captureTileState(targetCoord);
     
@@ -2449,7 +2528,8 @@ export class TileEditor {
         layerToUse = this.currentDragLayer;
       } else if (this.dragConstraint === 'horizontal' && this.stackMode) {
         // For horizontal dragging in stack mode, stack on top of existing voxels
-        const topLayer = this.tileSystem.getTopLayer(targetCoord);
+        // But exclude voxels placed during this drag operation
+        const topLayer = this.getTopLayerExcludingCurrentDrag(targetCoord);
         layerToUse = topLayer + 1;
       } else {
         // Non-stack mode or no constraint - use drag start layer
@@ -2478,6 +2558,12 @@ export class TileEditor {
     
     // Capture state after placing
     const afterState = this.captureTileState(targetCoord);
+    
+    // Track tiles placed during this drag operation
+    if (this.isDrawing && layerToUse !== null) {
+      const key = `${targetCoord.x},${targetCoord.z},${layerToUse}`;
+      this.tilesPlacedDuringDrag.add(key);
+    }
     
     // Record action for undo/redo
     const action: EditorAction = {
@@ -2671,7 +2757,7 @@ export class TileEditor {
     this.selectedVoxelType = type;
     
     // Update preview color to use contrasting color for visibility
-    if (this.previewMesh && this.previewMaterial) {
+    if (this.previewGroup && this.previewMaterial) {
       (this.previewMaterial as THREE.MeshPhongMaterial).color.setHex(0xFF0000); // Bright cyan for visibility
     }
   }
@@ -2719,63 +2805,162 @@ export class TileEditor {
   }
   
   /**
-   * Set tile size (called by TilePalette)
+   * Set brush size (called by TilePalette)
    */
-  public setTileSize(size: number): void {
-    this.tileSize = size;
-    this.tileSystem.setTileSize(size);
-    this.updatePreviewGeometry();
-    console.log('Tile size:', size.toFixed(1) + 'x' + size.toFixed(1));
-  }
-  
-  /**
-   * Update preview mesh geometry to match current tile size
-   */
-  private updatePreviewGeometry(): void {
-    if (this.previewMesh) {
-      // Dispose old geometry
-      this.previewMesh.geometry.dispose();
-      
-      // Remove old edge mesh
-      const oldEdgeMesh = this.previewMesh.children[0];
-      if (oldEdgeMesh) {
-        this.previewMesh.remove(oldEdgeMesh);
-        if (oldEdgeMesh instanceof THREE.LineSegments) {
-          oldEdgeMesh.geometry.dispose();
-          (oldEdgeMesh.material as THREE.Material).dispose();
-        }
-      }
-      
-      // Create new geometry with current tile size
-      const newGeometry = new THREE.BoxGeometry(this.tileSize, 0.1, this.tileSize);
-      this.previewMesh.geometry = newGeometry;
-      
-      // Add new edge mesh
-      const edgesGeometry = new THREE.EdgesGeometry(newGeometry);
-      const edgesMaterial = new THREE.LineBasicMaterial({ 
-        color: 0xFFFFFF,
-        linewidth: 2,
-        transparent: true,
-        opacity: 0.6
-      });
-      const edgesMesh = new THREE.LineSegments(edgesGeometry, edgesMaterial);
-      this.previewMesh.add(edgesMesh);
+  public setBrushSize(size: number): void {
+    // Convert tile size values to brush sizes (1, 2, 3, 5, 10)
+    let brushSizeInVoxels = 1;
+    if (size <= 0.1) {
+      brushSizeInVoxels = 1;
+    } else if (size <= 0.2) {
+      brushSizeInVoxels = 2;
+    } else if (size <= 0.3) {
+      brushSizeInVoxels = 3;
+    } else if (size <= 0.5) {
+      brushSizeInVoxels = 5;
+    } else {
+      brushSizeInVoxels = 10;
     }
     
+    this.brushSize = brushSizeInVoxels;
+    this.tileSystem.setBrushSize(brushSizeInVoxels);
+    this.updatePreviewGeometry();
+    this.updateAlignmentCage();
+    console.log('Brush size:', brushSizeInVoxels + 'x' + brushSizeInVoxels + ' voxels');
+  }
+  
+  /**
+   * Update alignment cage to show which base grid cells will be occupied
+   */
+  private updateAlignmentCage(): void {
+    if (!this.alignmentCage) return;
+    
+    // Clear existing cage
+    while (this.alignmentCage.children.length > 0) {
+      const child = this.alignmentCage.children[0];
+      this.alignmentCage.remove(child);
+      if (child instanceof THREE.LineSegments) {
+        child.geometry.dispose();
+        (child.material as THREE.Material).dispose();
+      }
+    }
+    
+    // Calculate how many base grid cells this brush occupies
+    const cellsPerSide = this.brushSize;
+    
+    // Create grid lines for the cage
+    const lineMaterial = new THREE.LineBasicMaterial({
+      color: 0x00FFFF, // Cyan for visibility
+      transparent: true,
+      opacity: 0.8,
+      linewidth: 2
+    });
+    
+    // Create horizontal lines
+    const points: THREE.Vector3[] = [];
+    const halfSize = (this.brushSize * this.VOXEL_SIZE) / 2;
+    
+    for (let i = 0; i <= cellsPerSide; i++) {
+      const offset = -halfSize + i * this.BASE_GRID_SIZE;
+      // X-direction lines
+      points.push(new THREE.Vector3(-halfSize, 0.01, offset));
+      points.push(new THREE.Vector3(halfSize, 0.01, offset));
+      // Z-direction lines
+      points.push(new THREE.Vector3(offset, 0.01, -halfSize));
+      points.push(new THREE.Vector3(offset, 0.01, halfSize));
+    }
+    
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const lines = new THREE.LineSegments(geometry, lineMaterial);
+    this.alignmentCage.add(lines);
+  }
+
+  /**
+   * Update preview mesh geometry to match current brush size
+   */
+  private updatePreviewGeometry(): void {
+    if (!this.previewGroup || !this.previewMaterial) return;
+    
+    // Clear existing preview voxels
+    while (this.previewGroup.children.length > 0) {
+      const child = this.previewGroup.children[0];
+      this.previewGroup.remove(child);
+      if (child instanceof THREE.Mesh) {
+        child.geometry.dispose();
+        // Remove edge children
+        while (child.children.length > 0) {
+          const edgeChild = child.children[0];
+          child.remove(edgeChild);
+          if (edgeChild instanceof THREE.LineSegments) {
+            edgeChild.geometry.dispose();
+            (edgeChild.material as THREE.Material).dispose();
+          }
+        }
+      }
+    }
+    
+    // Create voxels for the brush area
+    const voxelGeometry = new THREE.BoxGeometry(this.VOXEL_SIZE, this.VOXEL_SIZE, this.VOXEL_SIZE);
+    const edgesMaterial = new THREE.LineBasicMaterial({ 
+      color: 0xFFFFFF,
+      linewidth: 2,
+      transparent: true,
+      opacity: 0.6
+    });
+    
+    for (let dx = 0; dx < this.brushSize; dx++) {
+      for (let dz = 0; dz < this.brushSize; dz++) {
+        // Create voxel mesh
+        const voxelMesh = new THREE.Mesh(voxelGeometry, this.previewMaterial);
+        voxelMesh.renderOrder = 1;
+        
+        // Position relative to brush origin (bottom-left corner)
+        voxelMesh.position.set(
+          dx * this.VOXEL_SIZE,
+          0,
+          dz * this.VOXEL_SIZE
+        );
+        
+        // Add edges
+        const edgesGeometry = new THREE.EdgesGeometry(voxelGeometry);
+        const edgesMesh = new THREE.LineSegments(edgesGeometry, edgesMaterial.clone());
+        voxelMesh.add(edgesMesh);
+        
+        this.previewGroup.add(voxelMesh);
+      }
+    }
+    
+    // Add center marker at brush center
+    const centerOffset = (this.brushSize * this.VOXEL_SIZE) / 2;
+    const sphereGeometry = new THREE.SphereGeometry(0.02, 8, 8);
+    const sphereMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0xFF0000,
+      depthWrite: false,
+      depthTest: false 
+    });
+    const centerMarker = new THREE.Mesh(sphereGeometry, sphereMaterial);
+    centerMarker.position.set(centerOffset, this.VOXEL_SIZE / 2, centerOffset);
+    this.previewGroup.add(centerMarker);
+    
+    // Update face highlight if it exists
     if (this.faceHighlightMesh) {
-      // Dispose old geometry
       this.faceHighlightMesh.geometry.dispose();
-      
-      // Create new geometry with current tile size
-      this.faceHighlightMesh.geometry = new THREE.PlaneGeometry(this.tileSize * 0.98, this.tileSize * 0.98);
+      this.faceHighlightMesh.geometry = new THREE.PlaneGeometry(this.VOXEL_SIZE * 0.98, this.VOXEL_SIZE * 0.98);
     }
   }
   
   /**
-   * Get current tile size
+   * Get current voxel size
    */
-  public getTileSize(): number {
-    return this.tileSize;
+  public getVoxelSize(): number {
+    return this.VOXEL_SIZE;
+  }
+  
+  /**
+   * Get current brush size
+   */
+  public getBrushSize(): number {
+    return this.brushSize;
   }
   
   /**
@@ -2818,6 +3003,27 @@ export class TileEditor {
     this.redoStack = [];
   }
   
+  /**
+   * Get the top layer at a coordinate, excluding tiles placed during the current drag
+   */
+  private getTopLayerExcludingCurrentDrag(coord: GridCoordinate): number {
+    let topLayer = -1;
+    // Check each layer from bottom to top
+    for (let layer = 0; layer < 50; layer++) { // maxLayers from SimpleTileSystem
+      const key = `${coord.x},${coord.z},${layer}`;
+      // Skip if this tile was placed during the current drag
+      if (this.tilesPlacedDuringDrag.has(key)) {
+        continue;
+      }
+      // Check if there's a tile at this layer
+      const mesh = (this.tileSystem as any).tiles.get(key);
+      if (mesh) {
+        topLayer = layer;
+      }
+    }
+    return topLayer;
+  }
+
   /**
    * Capture the current tile state at a coordinate
    */
@@ -3610,8 +3816,24 @@ export class TileEditor {
     this.renderer.dispose();
     
     // Dispose preview mesh
-    if (this.previewMesh) {
-      this.previewMesh.geometry.dispose();
+    if (this.previewGroup) {
+      // Dispose all children in the preview group
+      while (this.previewGroup.children.length > 0) {
+        const child = this.previewGroup.children[0];
+        this.previewGroup.remove(child);
+        if (child instanceof THREE.Mesh) {
+          child.geometry.dispose();
+          // Remove edge children
+          while (child.children.length > 0) {
+            const edgeChild = child.children[0];
+            child.remove(edgeChild);
+            if (edgeChild instanceof THREE.LineSegments) {
+              edgeChild.geometry.dispose();
+              (edgeChild.material as THREE.Material).dispose();
+            }
+          }
+        }
+      }
       if (this.previewMaterial) {
         this.previewMaterial.dispose();
       }

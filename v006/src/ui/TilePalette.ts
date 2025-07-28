@@ -307,8 +307,8 @@ export class TilePalette {
       
       this.container.appendChild(this.element);
       
-      // Set initial tile size on editor
-      this.editor.setTileSize(this.currentTileSize);
+      // Set initial brush size on editor
+      this.editor.setBrushSize(this.currentTileSize);
       
       // Initialize lucide icons
       if (window.lucide) {
@@ -724,7 +724,7 @@ export class TilePalette {
     }
     
     // Notify editor of size change
-    this.editor.setTileSize(this.currentTileSize);
+    this.editor.setBrushSize(this.currentTileSize);
     
     console.log(`Tile size: ${this.currentTileSize.toFixed(1)}x${this.currentTileSize.toFixed(1)}`);
   }

@@ -6,20 +6,22 @@ import { VoxelType, VOXEL_PROPERTIES } from './VoxelTypes';
  * Simple tile system that creates 1x1m blocks instead of voxels
  */
 export class SimpleTileSystem {
+  private readonly BASE_GRID_SIZE = 0.1; // Base grid size that all voxels align to
+  private readonly VOXEL_SIZE = 0.1; // All voxels are 0.1m cubes
   private scene: THREE.Scene;
   private tiles: Map<string, THREE.Mesh> = new Map();
   private tileGeometry: THREE.BoxGeometry;
   private materials: Map<VoxelType, THREE.Material> = new Map();
   // Material cache: key is "voxelType,tintLevel" where tintLevel is 0-10
   private materialCache: Map<string, THREE.Material> = new Map();
-  private layerHeight: number = 0.1; // Height of each layer
+  private get layerHeight(): number { return this.VOXEL_SIZE; } // Always 0.1m
   private maxLayers: number = 50; // Maximum height in layers
-  private tileSize: number = 0.1; // Current tile scale factor
+  private brushSize: number = 1; // Brush size in voxels (1 = 1x1, 3 = 3x3, etc.)
   
   constructor(scene: THREE.Scene) {
     this.scene = scene;
-    // Make tiles thin (10cm tall) so they sit on the grid like floor tiles
-    this.tileGeometry = new THREE.BoxGeometry(this.tileSize, 0.1, this.tileSize);
+    // All voxels are 0.1m cubes
+    this.tileGeometry = new THREE.BoxGeometry(this.VOXEL_SIZE, this.VOXEL_SIZE, this.VOXEL_SIZE);
     this.initMaterials();
   }
   
@@ -45,10 +47,31 @@ export class SimpleTileSystem {
    */
   public getTopLayer(coord: GridCoordinate): number {
     let topLayer = -1;
+    
+    // Check for voxels at this specific coordinate
     for (let layer = 0; layer < this.maxLayers; layer++) {
       const key = `${coord.x},${coord.z},${layer}`;
       if (this.tiles.has(key)) {
         topLayer = layer;
+      }
+    }
+    return topLayer;
+  }
+  
+  /**
+   * Get the top layer within a brush area
+   */
+  public getTopLayerInBrushArea(coord: GridCoordinate): number {
+    let topLayer = -1;
+    
+    // Check all cells in the brush area
+    for (let dx = 0; dx < this.brushSize; dx++) {
+      for (let dz = 0; dz < this.brushSize; dz++) {
+        const checkCoord = { x: coord.x + dx, z: coord.z + dz };
+        const cellTopLayer = this.getTopLayer(checkCoord);
+        if (cellTopLayer > topLayer) {
+          topLayer = cellTopLayer;
+        }
       }
     }
     return topLayer;
@@ -89,63 +112,69 @@ export class SimpleTileSystem {
   }
 
   /**
-   * Place a tile at grid coordinate
+   * Place voxels at grid coordinate using current brush size
    */
   public placeTile(coord: GridCoordinate, type: VoxelType, stackOnTop: boolean = true, replaceExisting: boolean = false, stackDirection: StackDirection = StackDirection.Up): void {
     // Don't place air
     if (type === VoxelType.Air) return;
     
-    let startLayer = 0;
-    let actualCoord = coord;
-    
     if (replaceExisting) {
-      // Replace mode: remove all existing tiles at this position
+      // Replace mode: remove all existing voxels in the brush area
       this.removeTile(coord);
     } else if (stackOnTop) {
       // Stack mode: place based on direction
       if (stackDirection === StackDirection.Up) {
-        // Original behavior: stack on top
-        const topLayer = this.getTopLayer(coord);
-        startLayer = topLayer + 1;
-        
-        // Check if we've reached max height
-        if (startLayer >= this.maxLayers) {
-          console.warn('Maximum height reached at', coord);
-          return;
+        // For vertical stacking, place voxels in the brush area
+        for (let dx = 0; dx < this.brushSize; dx++) {
+          for (let dz = 0; dz < this.brushSize; dz++) {
+            const voxelCoord = { x: coord.x + dx, z: coord.z + dz };
+            const topLayer = this.getTopLayer(voxelCoord);
+            const targetLayer = topLayer + 1;
+            
+            // Check if we've reached max height
+            if (targetLayer >= this.maxLayers) {
+              continue; // Skip this voxel
+            }
+            
+            // Place single voxel
+            this.placeSingleTile(voxelCoord, type, targetLayer);
+          }
         }
       } else if (stackDirection === StackDirection.Down) {
-        // Stack downward (not common, but included for completeness)
-        startLayer = 0;
-        // Would need to shift existing tiles up, but that's complex
-        // For now, just place at layer 0
+        // Stack downward - place at layer 0
+        for (let dx = 0; dx < this.brushSize; dx++) {
+          for (let dz = 0; dz < this.brushSize; dz++) {
+            const voxelCoord = { x: coord.x + dx, z: coord.z + dz };
+            this.placeSingleTile(voxelCoord, type, 0);
+          }
+        }
       } else {
         // Horizontal stacking: find next position in the given direction
         const nextPos = this.getNextPositionInDirection(coord, stackDirection);
         if (nextPos) {
-          actualCoord = nextPos;
-          startLayer = 0;
+          this.placeTile(nextPos, type, false, false, stackDirection);
         } else {
           console.warn('Could not find valid position in direction', stackDirection);
-          return;
         }
       }
     } else {
-      // No stack, no replace: place at ground level (layer 0) without removing existing
-      startLayer = 0;
-      // Check if layer 0 is already occupied
-      const key = `${actualCoord.x},${actualCoord.z},${startLayer}`;
-      if (this.tiles.has(key)) {
-        // Layer 0 is occupied, don't place anything
-        return;
+      // No stack, no replace: place at ground level (layer 0)
+      for (let dx = 0; dx < this.brushSize; dx++) {
+        for (let dz = 0; dz < this.brushSize; dz++) {
+          const voxelCoord = { x: coord.x + dx, z: coord.z + dz };
+          const key = `${voxelCoord.x},${voxelCoord.z},0`;
+          
+          // Only place if position is free
+          if (!this.tiles.has(key)) {
+            this.placeSingleTile(voxelCoord, type, 0);
+          }
+        }
       }
     }
-    
-    // Place single tile (removed multi-layer logic for grass and dirt)
-    this.placeSingleTile(actualCoord, type, startLayer);
   }
   
   /**
-   * Place a tile at a specific layer (used for face-based placement)
+   * Place voxels at a specific layer using current brush size
    */
   public placeTileAtLayer(coord: GridCoordinate, type: VoxelType, layer: number): void {
     // Don't place air
@@ -157,15 +186,18 @@ export class SimpleTileSystem {
       return;
     }
     
-    // Check if position is already occupied
-    const key = `${coord.x},${coord.z},${layer}`;
-    if (this.tiles.has(key)) {
-      // Position occupied - silently ignore
-      // console.warn(`Cannot place tile at (${coord.x}, ${coord.z}, layer ${layer}) - position already occupied`);
-      return;
+    // Place voxels in the brush area at the specified layer
+    for (let dx = 0; dx < this.brushSize; dx++) {
+      for (let dz = 0; dz < this.brushSize; dz++) {
+        const voxelCoord = { x: coord.x + dx, z: coord.z + dz };
+        const key = `${voxelCoord.x},${voxelCoord.z},${layer}`;
+        
+        // Only place if position is free
+        if (!this.tiles.has(key)) {
+          this.placeSingleTile(voxelCoord, type, layer);
+        }
+      }
     }
-    
-    this.placeSingleTile(coord, type, layer);
   }
   
   /**
@@ -179,14 +211,14 @@ export class SimpleTileSystem {
     if (!material) return;
     
     const mesh = new THREE.Mesh(this.tileGeometry, material);
-    // Position tile based on sub-grid coordinates and tile size
+    // Position tile based on base grid coordinates
     const yPos = this.layerHeight / 2 + (layer * this.layerHeight);
-    const worldX = coord.x * this.tileSize + this.tileSize * 0.5;
-    const worldZ = coord.z * this.tileSize + this.tileSize * 0.5;
+    const worldX = coord.x * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5;
+    const worldZ = coord.z * this.BASE_GRID_SIZE + this.BASE_GRID_SIZE * 0.5;
     mesh.position.set(worldX, yPos, worldZ); 
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    mesh.userData = { type, coord, layer, tileSize: this.tileSize };
+    mesh.userData = { type, coord, layer };
     
     this.tiles.set(key, mesh);
     this.scene.add(mesh);
@@ -227,7 +259,7 @@ export class SimpleTileSystem {
   }
   
   /**
-   * Remove a tile at a specific layer
+   * Remove a single voxel at a specific layer
    */
   public removeTileAtLayer(coord: GridCoordinate, layer: number): void {
     const key = `${coord.x},${coord.z},${layer}`;
@@ -241,32 +273,28 @@ export class SimpleTileSystem {
   }
   
   /**
-   * Remove a tile at grid coordinate
+   * Remove voxels at grid coordinate using current brush size
    */
   public removeTile(coord: GridCoordinate, removeAll: boolean = false): void {
     if (removeAll) {
-      // Remove all layers at this position
+      // Remove all layers in the brush area
       for (let layer = 0; layer < this.maxLayers; layer++) {
-        const key = `${coord.x},${coord.z},${layer}`;
-        const mesh = this.tiles.get(key);
-        
-        if (mesh) {
-          this.scene.remove(mesh);
-          mesh.geometry.dispose();
-          this.tiles.delete(key);
+        for (let dx = 0; dx < this.brushSize; dx++) {
+          for (let dz = 0; dz < this.brushSize; dz++) {
+            const voxelCoord = { x: coord.x + dx, z: coord.z + dz };
+            this.removeTileAtLayer(voxelCoord, layer);
+          }
         }
       }
     } else {
-      // Remove only the top layer
-      const topLayer = this.getTopLayer(coord);
-      if (topLayer >= 0) {
-        const key = `${coord.x},${coord.z},${topLayer}`;
-        const mesh = this.tiles.get(key);
-        
-        if (mesh) {
-          this.scene.remove(mesh);
-          mesh.geometry.dispose();
-          this.tiles.delete(key);
+      // Remove only the top layer of each voxel in the brush area
+      for (let dx = 0; dx < this.brushSize; dx++) {
+        for (let dz = 0; dz < this.brushSize; dz++) {
+          const voxelCoord = { x: coord.x + dx, z: coord.z + dz };
+          const topLayer = this.getTopLayer(voxelCoord);
+          if (topLayer >= 0) {
+            this.removeTileAtLayer(voxelCoord, topLayer);
+          }
         }
       }
     }
@@ -351,25 +379,31 @@ export class SimpleTileSystem {
   }
   
   /**
-   * Set tile size for new tiles only (doesn't affect existing tiles)
+   * Set brush size (how many voxels to place at once)
    */
-  public setTileSize(size: number): void {
-    this.tileSize = size;
+  public setBrushSize(size: number): void {
+    // Only allow specific brush sizes that make sense
+    const validSizes = [1, 2, 3, 5, 10];
+    const closestSize = validSizes.reduce((prev, curr) => {
+      return Math.abs(curr - size) < Math.abs(prev - size) ? curr : prev;
+    });
     
-    // Dispose old geometry
-    this.tileGeometry.dispose();
-    
-    // Create new geometry with updated size for future tiles
-    this.tileGeometry = new THREE.BoxGeometry(this.tileSize, 0.1, this.tileSize);
-    
-    console.log(`Tile size set to ${size.toFixed(1)}x${size.toFixed(1)} for new tiles`);
+    this.brushSize = closestSize;
+    console.log(`Brush size set to ${closestSize}x${closestSize} voxels`);
   }
   
   /**
-   * Get current tile size
+   * Get current brush size
    */
-  public getTileSize(): number {
-    return this.tileSize;
+  public getBrushSize(): number {
+    return this.brushSize;
+  }
+  
+  /**
+   * Get actual voxel size (always 0.1m)
+   */
+  public getVoxelSize(): number {
+    return this.VOXEL_SIZE;
   }
   
   /**
