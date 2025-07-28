@@ -165,7 +165,7 @@ export class VoxelRenderer {
         this.updateMesh(totalInstances);
     }
     
-    updateMesh(totalInstances) {
+    updateMesh(totalInstances: number): void {
         // Remove old meshes
         if (this.mesh) {
             this.scene.remove(this.mesh);
@@ -217,7 +217,7 @@ export class VoxelRenderer {
     }
     
     // Get instance count for a specific type
-    getInstanceCount(type) {
+    getInstanceCount(type: VoxelType): number {
         const data = this.instanceData.get(type);
         return data ? data.count : 0;
     }

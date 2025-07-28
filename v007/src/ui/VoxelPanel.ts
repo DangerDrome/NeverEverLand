@@ -9,7 +9,6 @@ interface VoxelButtonInfo {
 }
 
 export class VoxelPanel {
-    private container: HTMLElement;
     private drawingSystem: DrawingSystem;
     private element: HTMLElement | null = null;
     private voxelButtons: Map<VoxelType, HTMLElement> = new Map();

@@ -40,9 +40,12 @@ class VoxelApp {
     
     init() {
         // Hide loading, show UI
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('stats').style.display = 'block';
-        document.getElementById('controls').style.display = 'block';
+        const loadingEl = document.getElementById('loading');
+        if (loadingEl) loadingEl.style.display = 'none';
+        const statsEl = document.getElementById('stats');
+        if (statsEl) statsEl.style.display = 'block';
+        const controlsEl = document.getElementById('controls');
+        if (controlsEl) controlsEl.style.display = 'block';
         
         // Setup renderer
         this.renderer = new THREE.WebGLRenderer({ 
@@ -53,7 +56,8 @@ class VoxelApp {
         this.renderer.setPixelRatio(window.devicePixelRatio);
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        document.getElementById('container').appendChild(this.renderer.domElement);
+        const containerEl = document.getElementById('container');
+        if (containerEl) containerEl.appendChild(this.renderer.domElement);
         
         // Setup camera
         const aspect = window.innerWidth / window.innerHeight;
@@ -178,10 +182,12 @@ class VoxelApp {
         window.addEventListener('resize', () => this.onWindowResize());
         
         // Mouse events
-        this.renderer.domElement.addEventListener('mousemove', (e) => this.onMouseMove(e));
-        this.renderer.domElement.addEventListener('mousedown', (e) => this.onMouseDown(e));
-        this.renderer.domElement.addEventListener('mouseup', (e) => this.onMouseUp(e));
-        this.renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+        if (this.renderer) {
+            this.renderer.domElement.addEventListener('mousemove', (e) => this.onMouseMove(e));
+            this.renderer.domElement.addEventListener('mousedown', (e) => this.onMouseDown(e));
+            this.renderer.domElement.addEventListener('mouseup', (e) => this.onMouseUp(e));
+            this.renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+        }
         
         // Keyboard events
         window.addEventListener('keydown', (e) => this.onKeyDown(e));
@@ -191,13 +197,17 @@ class VoxelApp {
         const aspect = window.innerWidth / window.innerHeight;
         const frustumSize = 20;
         
-        this.camera.left = -frustumSize * aspect / 2;
-        this.camera.right = frustumSize * aspect / 2;
-        this.camera.top = frustumSize / 2;
-        this.camera.bottom = -frustumSize / 2;
+        if (this.camera) {
+            this.camera.left = -frustumSize * aspect / 2;
+            this.camera.right = frustumSize * aspect / 2;
+            this.camera.top = frustumSize / 2;
+            this.camera.bottom = -frustumSize / 2;
+            this.camera.updateProjectionMatrix();
+        }
         
-        this.camera.updateProjectionMatrix();
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        if (this.renderer) {
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+        }
     }
     
     onMouseMove(event: MouseEvent) {
@@ -294,7 +304,7 @@ class VoxelApp {
         }
     }
     
-    onMouseUp(event: MouseEvent) {
+    onMouseUp(_event: MouseEvent) {
         if (this.drawingSystem) {
             this.drawingSystem.stopDrawing();
         }

@@ -9,7 +9,10 @@
       "Bash(npm run dev:*)",
       "Bash(rm:*)",
       "Bash(mv:*)",
-      "WebFetch(domain:localhost)"
+      "WebFetch(domain:localhost)",
+      "mcp__ide__getDiagnostics",
+      "Bash(npx tsc:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": []
   }

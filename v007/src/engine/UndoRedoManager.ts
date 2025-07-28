@@ -21,7 +21,7 @@ export class UndoRedoManager {
     private readonly maxHistorySize: number;
     private readonly groupingTimeMs: number = 100; // Group operations within 100ms
     private voxelEngine: VoxelEngine;
-    private groupTimer: NodeJS.Timeout | null = null;
+    private groupTimer: number | null = null;
     
     constructor(voxelEngine: VoxelEngine, maxHistorySize: number = 100) {
         this.voxelEngine = voxelEngine;
@@ -48,11 +48,11 @@ export class UndoRedoManager {
         
         // Clear any existing timer
         if (this.groupTimer) {
-            clearTimeout(this.groupTimer);
+            window.clearTimeout(this.groupTimer);
         }
         
         // Set timer to finalize group
-        this.groupTimer = setTimeout(() => {
+        this.groupTimer = window.setTimeout(() => {
             this.finalizeGroup();
         }, this.groupingTimeMs);
         
@@ -90,7 +90,7 @@ export class UndoRedoManager {
      */
     finalizePendingOperations(): void {
         if (this.groupTimer) {
-            clearTimeout(this.groupTimer);
+            window.clearTimeout(this.groupTimer);
             this.groupTimer = null;
         }
         this.finalizeGroup();
@@ -165,7 +165,7 @@ export class UndoRedoManager {
         this.redoStack = [];
         this.currentGroup = [];
         if (this.groupTimer) {
-            clearTimeout(this.groupTimer);
+            window.clearTimeout(this.groupTimer);
             this.groupTimer = null;
         }
     }

@@ -9,17 +9,21 @@ export class DrawingSystem {
     currentVoxelType: VoxelType;
     brushSize: number;
     toolMode: string;
-    boxStart: any;
-    lineStart: any;
-    drawingSurface: any;
-    previewMesh: any;
-    previewGroup: any;
-    previewEdges: any;
-    previewMaterial: any;
-    edgeMaterial: any;
-    toolPreviewMeshes: any[];
+    boxStart: { x: number; y: number; z: number } | null;
+    lineStart: { x: number; y: number; z: number } | null;
+    drawingSurface: {
+        normal: THREE.Vector3;
+        basePos: { x: number; y: number; z: number };
+        hitPos: { x: number; y: number; z: number };
+    } | null;
+    previewMesh: THREE.Mesh | null;
+    previewGroup: THREE.Group = new THREE.Group();
+    previewEdges: THREE.LineSegments | null = null;
+    previewMaterial: THREE.MeshBasicMaterial;
+    edgeMaterial: THREE.LineBasicMaterial;
+    toolPreviewMeshes: (THREE.Group | THREE.Mesh)[];
     pendingOperations: any[];
-    operationTimer: any;
+    operationTimer: number | null;
     
     constructor(voxelEngine: any) {
         this.voxelEngine = voxelEngine;
@@ -62,7 +66,7 @@ export class DrawingSystem {
         this.createPreviewMesh();
     }
     
-    createPreviewMesh() {
+    createPreviewMesh(): void {
         const geometry = new THREE.BoxGeometry(
             this.voxelEngine.voxelSize,
             this.voxelEngine.voxelSize,
@@ -85,7 +89,7 @@ export class DrawingSystem {
         this.voxelEngine.scene.add(this.previewGroup);
     }
     
-    updatePreview(hit) {
+    updatePreview(hit: any): void {
         if (!hit) {
             this.previewGroup.visible = false;
             this.clearToolPreviews();
@@ -124,7 +128,7 @@ export class DrawingSystem {
         }
     }
     
-    startDrawing(hit, mode) {
+    startDrawing(hit: any, mode: string): void {
         if (!hit) return;
         
         this.isDrawing = true;
@@ -171,7 +175,7 @@ export class DrawingSystem {
         }
     }
     
-    stopDrawing() {
+    stopDrawing(): void {
         this.isDrawing = false;
         this.previewGroup.visible = true;
         this.drawingSurface = null;
@@ -183,7 +187,7 @@ export class DrawingSystem {
         this.voxelEngine.finalizePendingOperations();
     }
     
-    applyBrush(centerX, centerY, centerZ) {
+    applyBrush(centerX: number, centerY: number, centerZ: number): void {
         const radius = Math.floor(this.brushSize / 2);
         let changed = false;
         
@@ -221,43 +225,43 @@ export class DrawingSystem {
     }
     
     // Legacy method - no longer used but kept for compatibility
-    processPendingOperations() {
+    processPendingOperations(): void {
         // This method is no longer used as we apply operations immediately
         // Kept for compatibility in case it's called from elsewhere
         this.pendingOperations = [];
         this.operationTimer = null;
     }
     
-    setBrushSize(size) {
+    setBrushSize(size: number): void {
         this.brushSize = Math.max(1, Math.min(10, size));
     }
     
-    setVoxelType(type) {
+    setVoxelType(type: VoxelType): void {
         if (type in VoxelType && type !== VoxelType.AIR) {
             this.currentVoxelType = type;
         }
     }
     
-    nextVoxelType() {
-        const types = Object.values(VoxelType).filter(t => t !== VoxelType.AIR);
+    nextVoxelType(): void {
+        const types = Object.values(VoxelType).filter(t => typeof t === 'number' && t !== VoxelType.AIR) as VoxelType[];
         const currentIndex = types.indexOf(this.currentVoxelType);
         this.currentVoxelType = types[(currentIndex + 1) % types.length];
     }
     
-    previousVoxelType() {
-        const types = Object.values(VoxelType).filter(t => t !== VoxelType.AIR);
+    previousVoxelType(): void {
+        const types = Object.values(VoxelType).filter(t => typeof t === 'number' && t !== VoxelType.AIR) as VoxelType[];
         const currentIndex = types.indexOf(this.currentVoxelType);
         this.currentVoxelType = types[(currentIndex - 1 + types.length) % types.length];
     }
     
-    getCurrentVoxelTypeName() {
+    getCurrentVoxelTypeName(): string {
         const typeNames = Object.entries(VoxelType);
-        const entry = typeNames.find(([name, value]) => value === this.currentVoxelType);
+        const entry = typeNames.find(([_name, value]) => value === this.currentVoxelType);
         return entry ? entry[0] : 'Unknown';
     }
     
     // Tool mode setters
-    setToolMode(mode) {
+    setToolMode(mode: string): void {
         this.toolMode = mode;
         this.clearToolPreviews();
         this.boxStart = null;
@@ -265,13 +269,13 @@ export class DrawingSystem {
     }
     
     // Clear tool preview meshes
-    clearToolPreviews() {
+    clearToolPreviews(): void {
         for (const item of this.toolPreviewMeshes) {
             this.voxelEngine.scene.remove(item);
             
             // If it's a group, traverse and dispose all children
             if (item.type === 'Group') {
-                item.traverse((child) => {
+                item.traverse((child: any) => {
                     if (child.geometry) {
                         child.geometry.dispose();
                     }
@@ -279,7 +283,7 @@ export class DrawingSystem {
                         child.material.dispose();
                     }
                 });
-            } else if (item.geometry) {
+            } else if ('geometry' in item && item.geometry) {
                 // If it's a mesh, dispose its geometry
                 item.geometry.dispose();
             }
@@ -288,7 +292,7 @@ export class DrawingSystem {
     }
     
     // Box tool implementation
-    applyBoxTool(start, end) {
+    applyBoxTool(start: { x: number; y: number; z: number }, end: { x: number; y: number; z: number }): void {
         const minX = Math.min(start.x, end.x);
         const maxX = Math.max(start.x, end.x);
         const minY = Math.min(start.y, end.y);
@@ -320,7 +324,7 @@ export class DrawingSystem {
     }
     
     // Line tool implementation
-    applyLineTool(start, end) {
+    applyLineTool(start: { x: number; y: number; z: number }, end: { x: number; y: number; z: number }): void {
         const dx = Math.abs(end.x - start.x);
         const dy = Math.abs(end.y - start.y);
         const dz = Math.abs(end.z - start.z);
@@ -352,7 +356,7 @@ export class DrawingSystem {
     }
     
     // Fill tool implementation (flood fill)
-    applyFillTool(startPos) {
+    applyFillTool(startPos: { x: number; y: number; z: number }): void {
         const targetType = this.voxelEngine.getVoxel(startPos.x, startPos.y, startPos.z);
         if (targetType === this.currentVoxelType) return;
         
@@ -363,6 +367,8 @@ export class DrawingSystem {
         
         while (queue.length > 0 && operations.length < maxFill) {
             const pos = queue.shift();
+            if (!pos) continue;
+            
             const key = `${pos.x},${pos.y},${pos.z}`;
             
             if (visited.has(key)) continue;
@@ -394,7 +400,7 @@ export class DrawingSystem {
         // Apply fill immediately
         let changed = false;
         for (const pos of operations) {
-            if (this.voxelEngine.setVoxel(pos.x, pos.y, pos.z, this.currentVoxelType)) {
+            if (pos && this.voxelEngine.setVoxel(pos.x, pos.y, pos.z, this.currentVoxelType)) {
                 changed = true;
             }
         }
@@ -406,7 +412,7 @@ export class DrawingSystem {
     }
     
     // Update preview for tools
-    updateToolPreview(hit) {
+    updateToolPreview(hit: any): void {
         this.clearToolPreviews();
         
         if (!hit) return;
@@ -421,7 +427,7 @@ export class DrawingSystem {
     }
     
     // Preview box tool
-    previewBoxTool(start, end) {
+    previewBoxTool(start: { x: number; y: number; z: number }, end: { x: number; y: number; z: number }): void {
         const minX = Math.min(start.x, end.x);
         const maxX = Math.max(start.x, end.x);
         const minY = Math.min(start.y, end.y);
@@ -459,7 +465,7 @@ export class DrawingSystem {
     }
     
     // Preview line tool
-    previewLineTool(start, end) {
+    previewLineTool(start: { x: number; y: number; z: number }, end: { x: number; y: number; z: number }): void {
         const dx = Math.abs(end.x - start.x);
         const dy = Math.abs(end.y - start.y);
         const dz = Math.abs(end.z - start.z);
