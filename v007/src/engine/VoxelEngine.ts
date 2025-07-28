@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { VoxelRenderer } from './VoxelRenderer';
 import { VoxelType, VoxelPosition, RaycastHit } from '../types';
+import { UndoRedoManager } from './UndoRedoManager';
 
 export { VoxelType };
 
@@ -10,6 +11,7 @@ export class VoxelEngine {
     private voxels: Map<string, VoxelType>;
     private voxelsByType: Map<VoxelType, Set<string>>;
     private renderer: VoxelRenderer;
+    private undoRedoManager: UndoRedoManager;
     
     constructor(scene: THREE.Scene) {
         this.scene = scene;
@@ -21,6 +23,9 @@ export class VoxelEngine {
         
         // Voxel renderer handles all rendering
         this.renderer = new VoxelRenderer(scene, this.voxelSize);
+        
+        // Initialize undo/redo manager
+        this.undoRedoManager = new UndoRedoManager(this);
     }
     
     
@@ -36,13 +41,25 @@ export class VoxelEngine {
     }
     
     // Set a voxel at the given position
-    setVoxel(x: number, y: number, z: number, type: VoxelType): boolean {
+    setVoxel(x: number, y: number, z: number, type: VoxelType, recordUndo: boolean = true): boolean {
         x = Math.floor(x);
         y = Math.floor(y);
         z = Math.floor(z);
         
         const key = this.positionKey(x, y, z);
         const oldType = this.voxels.get(key) || VoxelType.AIR;
+        
+        // No change needed
+        if (oldType === type) return false;
+        
+        // Record operation for undo/redo if enabled
+        if (recordUndo) {
+            this.undoRedoManager.recordOperation(
+                { x, y, z },
+                type,
+                oldType
+            );
+        }
         
         // Update voxels map
         if (type === VoxelType.AIR) {
@@ -66,7 +83,7 @@ export class VoxelEngine {
             this.voxelsByType.get(type).add(key);
         }
         
-        return oldType !== type;
+        return true;
     }
     
     // Get voxel at position
@@ -261,7 +278,8 @@ export class VoxelEngine {
             if (type in VoxelType && Array.isArray(positions)) {
                 for (const posKey of positions as string[]) {
                     const [x, y, z] = posKey.split(',').map(Number);
-                    this.setVoxel(x, y, z, type);
+                    // Don't record undo operations when importing
+                    this.setVoxel(x, y, z, type, false);
                 }
             }
         }
@@ -282,6 +300,9 @@ export class VoxelEngine {
         }
         
         this.renderer.clear();
+        
+        // Clear undo history when clearing all voxels
+        this.undoRedoManager.clear();
     }
     
     // Get bounds of all voxels
@@ -300,5 +321,30 @@ export class VoxelEngine {
         }
         
         return { min, max };
+    }
+    
+    // Undo/Redo methods
+    undo(): boolean {
+        return this.undoRedoManager.undo();
+    }
+    
+    redo(): boolean {
+        return this.undoRedoManager.redo();
+    }
+    
+    finalizePendingOperations(): void {
+        this.undoRedoManager.finalizePendingOperations();
+    }
+    
+    getUndoCount(): number {
+        return this.undoRedoManager.getUndoCount();
+    }
+    
+    getRedoCount(): number {
+        return this.undoRedoManager.getRedoCount();
+    }
+    
+    clearUndoHistory(): void {
+        this.undoRedoManager.clear();
     }
 }

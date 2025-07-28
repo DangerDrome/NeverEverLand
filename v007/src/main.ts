@@ -224,45 +224,73 @@ class VoxelApp {
         }
     }
     
-    onMouseDown(event) {
+    onMouseDown(event: MouseEvent) {
         // Left click - add voxels (unless Alt is held for rotation)
         if (event.button === 0 && !event.altKey) {
-            const hit = this.voxelEngine.raycast(this.raycaster);
-            if (hit) {
-                this.drawingSystem.startDrawing(hit, 'add');
-                // Disable orbit controls to prevent rotation while drawing
-                this.controls.enabled = false;
+            if (this.voxelEngine && this.drawingSystem) {
+                const hit = this.voxelEngine.raycast(this.raycaster);
+                if (hit) {
+                    this.drawingSystem.startDrawing(hit, 'add');
+                    // Disable orbit controls to prevent rotation while drawing
+                    if (this.controls) this.controls.enabled = false;
+                }
             }
         } 
         // Right click - remove voxels (unless Alt is held)
         else if (event.button === 2 && !event.altKey) {
-            const hit = this.voxelEngine.raycast(this.raycaster);
-            if (hit) {
-                this.drawingSystem.startDrawing(hit, 'remove');
-                // Disable orbit controls to prevent rotation while drawing
-                this.controls.enabled = false;
+            if (this.voxelEngine && this.drawingSystem) {
+                const hit = this.voxelEngine.raycast(this.raycaster);
+                if (hit) {
+                    this.drawingSystem.startDrawing(hit, 'remove');
+                    // Disable orbit controls to prevent rotation while drawing
+                    if (this.controls) this.controls.enabled = false;
+                }
             }
         }
         // Alt + Left click or just Right click enables rotation
         else if ((event.button === 0 && event.altKey) || (event.button === 2 && event.altKey)) {
-            this.controls.enabled = true;
+            if (this.controls) this.controls.enabled = true;
         }
     }
     
-    onMouseUp(event) {
-        this.drawingSystem.stopDrawing();
+    onMouseUp(event: MouseEvent) {
+        if (this.drawingSystem) {
+            this.drawingSystem.stopDrawing();
+        }
         // Re-enable controls after drawing
-        this.controls.enabled = true;
+        if (this.controls) this.controls.enabled = true;
     }
     
-    onKeyDown(event) {
+    onKeyDown(event: KeyboardEvent) {
+        // Check for Ctrl+Z (undo) and Ctrl+Y (redo)
+        if (event.ctrlKey || event.metaKey) {
+            if (event.key === 'z' || event.key === 'Z') {
+                event.preventDefault();
+                if (this.voxelEngine) {
+                    // Finalize any pending operations first
+                    this.voxelEngine.finalizePendingOperations();
+                    if (this.voxelEngine.undo()) {
+                        console.log('Undo performed');
+                    }
+                }
+            } else if (event.key === 'y' || event.key === 'Y') {
+                event.preventDefault();
+                if (this.voxelEngine && this.voxelEngine.redo()) {
+                    console.log('Redo performed');
+                }
+            }
+            return;
+        }
+        
         switch(event.key) {
             case '1':
             case '2':
             case '3':
             case '4':
             case '5':
-                this.drawingSystem.setBrushSize(parseInt(event.key));
+                if (this.drawingSystem) {
+                    this.drawingSystem.setBrushSize(parseInt(event.key));
+                }
                 if (this.voxelPanel) {
                     this.voxelPanel.updateBrushSize(parseInt(event.key));
                 }
@@ -274,32 +302,42 @@ class VoxelApp {
                 break;
             case 'f':
             case 'F':
-                this.performanceMonitor.toggle();
+                if (this.performanceMonitor) {
+                    this.performanceMonitor.toggle();
+                }
                 break;
             case 'b':
             case 'B':
-                this.drawingSystem.setToolMode('brush');
+                if (this.drawingSystem) {
+                    this.drawingSystem.setToolMode('brush');
+                }
                 if (this.voxelPanel) {
                     this.voxelPanel.updateToolMode('brush');
                 }
                 break;
             case 'x':
             case 'X':
-                this.drawingSystem.setToolMode('box');
+                if (this.drawingSystem) {
+                    this.drawingSystem.setToolMode('box');
+                }
                 if (this.voxelPanel) {
                     this.voxelPanel.updateToolMode('box');
                 }
                 break;
             case 'l':
             case 'L':
-                this.drawingSystem.setToolMode('line');
+                if (this.drawingSystem) {
+                    this.drawingSystem.setToolMode('line');
+                }
                 if (this.voxelPanel) {
                     this.voxelPanel.updateToolMode('line');
                 }
                 break;
             case 'p':
             case 'P':
-                this.drawingSystem.setToolMode('fill');
+                if (this.drawingSystem) {
+                    this.drawingSystem.setToolMode('fill');
+                }
                 if (this.voxelPanel) {
                     this.voxelPanel.updateToolMode('fill');
                 }
@@ -348,34 +386,47 @@ class VoxelApp {
         requestAnimationFrame(() => this.animate());
         
         // Update controls
-        this.controls.update();
+        if (this.controls) {
+            this.controls.update();
+        }
         
         // Update performance monitor
-        this.performanceMonitor.update();
+        if (this.performanceMonitor) {
+            this.performanceMonitor.update();
+        }
         
         // Update UI
         if (this.performanceMonitor) {
-            document.getElementById('fps')!.textContent = this.performanceMonitor.getFPS().toFixed(0);
+            const fpsEl = document.getElementById('fps');
+            if (fpsEl) fpsEl.textContent = this.performanceMonitor.getFPS().toFixed(0);
         }
         if (this.voxelEngine) {
-            document.getElementById('voxel-count')!.textContent = this.voxelEngine.getVoxelCount().toString();
+            const countEl = document.getElementById('voxel-count');
+            if (countEl) countEl.textContent = this.voxelEngine.getVoxelCount().toString();
         }
         if (this.renderer) {
-            document.getElementById('draw-calls')!.textContent = this.renderer.info.render.calls.toString();
+            const drawEl = document.getElementById('draw-calls');
+            if (drawEl) drawEl.textContent = this.renderer.info.render.calls.toString();
         }
         if (this.drawingSystem) {
-            document.getElementById('voxel-type')!.textContent = this.drawingSystem.getCurrentVoxelTypeName();
-            document.getElementById('tool-mode')!.textContent = this.drawingSystem.toolMode;
-            document.getElementById('brush-size')!.textContent = this.drawingSystem.brushSize.toString();
+            const typeEl = document.getElementById('voxel-type');
+            if (typeEl) typeEl.textContent = this.drawingSystem.getCurrentVoxelTypeName();
+            const toolEl = document.getElementById('tool-mode');
+            if (toolEl) toolEl.textContent = (this.drawingSystem as any).toolMode;
+            const brushEl = document.getElementById('brush-size');
+            if (brushEl) brushEl.textContent = (this.drawingSystem as any).brushSize.toString();
         }
         
-        if (performance.memory) {
-            const memoryMB = (performance.memory.usedJSHeapSize / 1048576).toFixed(1);
-            document.getElementById('memory').textContent = memoryMB;
+        if ((performance as any).memory) {
+            const memoryMB = ((performance as any).memory.usedJSHeapSize / 1048576).toFixed(1);
+            const memEl = document.getElementById('memory');
+            if (memEl) memEl.textContent = memoryMB;
         }
         
         // Render main scene
-        this.renderer.render(this.scene, this.camera);
+        if (this.renderer && this.camera) {
+            this.renderer.render(this.scene, this.camera);
+        }
         
         // Update and render direction indicator
         if (this.directionIndicator && this.camera) {

@@ -69,6 +69,126 @@
             font-size: 20px;
         }
         
+        /* Modal Styling */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 10000;
+            backdrop-filter: blur(4px);
+        }
+        
+        .modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(40, 40, 40, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 24px;
+            min-width: 400px;
+            max-width: 600px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .modal-header {
+            margin-bottom: 20px;
+        }
+        
+        .modal-title {
+            font-size: 20px;
+            font-weight: 500;
+            margin: 0;
+            color: rgba(255, 255, 255, 0.95);
+        }
+        
+        .modal-content {
+            margin-bottom: 24px;
+        }
+        
+        .modal-input {
+            width: 100%;
+            padding: 10px 12px;
+            background: rgba(30, 30, 30, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 14px;
+            margin-top: 8px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        
+        .modal-input:focus {
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+        
+        .modal-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+        
+        .modal-button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            outline: none;
+        }
+        
+        .modal-button-primary {
+            background: rgba(100, 100, 255, 0.8);
+            color: white;
+        }
+        
+        .modal-button-primary:hover {
+            background: rgba(120, 120, 255, 0.9);
+        }
+        
+        .modal-button-secondary {
+            background: rgba(60, 60, 60, 0.8);
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .modal-button-secondary:hover {
+            background: rgba(80, 80, 80, 0.8);
+        }
+        
+        .modal-info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-top: 16px;
+            padding: 16px;
+            background: rgba(30, 30, 30, 0.5);
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .modal-info-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .modal-info-label {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+        }
+        
+        .modal-info-value {
+            color: rgba(255, 255, 255, 0.9);
+        }
+        
         /* Menu Bar Styling */
         .menu-bar {
             position: fixed;
@@ -95,6 +215,8 @@
             transition: all 0.2s ease;
             border-radius: 4px;
             margin-right: 4px;
+            display: flex;
+            align-items: center;
         }
         
         .menu-item:hover {
@@ -197,8 +319,12 @@
         </div>
     </div>
     
-    <!-- Hidden file input for loading/saving -->
-    <input type="file" id="load-voxel-input" accept=".json" style="display: none;">
+    <!-- Hidden file inputs for loading -->
+    <input type="file" id="load-scene-input" accept=".json" style="display: none;">
+    <input type="file" id="import-voxel-input" accept=".json" style="display: none;">
+    
+    <!-- Modal overlay -->
+    <div id="modal-overlay" class="modal-overlay"></div>
     
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -208,45 +334,51 @@
     <!-- Menu handling script -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // Initialize Lucide icons in the menu bar
+            if (window.lucide) {
+                window.lucide.createIcons();
+            }
+            
             const menuItems = document.querySelectorAll('.menu-item');
             let activeDropdown = null;
             
             // Create dropdown menus
             const menus = {
                 file: [
-                    { label: 'Save Voxels', action: 'save-voxels' },
-                    { label: 'Load Voxels', action: 'load-voxels' },
+                    { label: 'Save Scene', action: 'save-scene', icon: 'save' },
+                    { label: 'Load Scene', action: 'load-scene', icon: 'folder-open' },
+                    { label: 'Recent Scenes', action: 'recent-scenes', icon: 'clock', submenu: [] },
                     { type: 'separator' },
-                    { label: 'Export Scene', action: 'export-scene' },
-                    { label: 'Import Scene', action: 'import-scene' },
+                    { label: 'Export Voxels', action: 'export-voxels', icon: 'download' },
+                    { label: 'Import Voxels', action: 'import-voxels', icon: 'upload' },
                     { type: 'separator' },
-                    { label: 'Reload', action: 'reload' }
+                    { label: 'Reload', action: 'reload', icon: 'refresh-cw' }
                 ],
                 edit: [
-                    { label: 'Undo', action: 'undo', shortcut: 'Ctrl+Z' },
-                    { label: 'Redo', action: 'redo', shortcut: 'Ctrl+Y' },
+                    { label: 'Undo', action: 'undo', icon: 'undo', shortcut: 'Ctrl+Z' },
+                    { label: 'Redo', action: 'redo', icon: 'redo', shortcut: 'Ctrl+Y' },
                     { type: 'separator' },
-                    { label: 'Clear All', action: 'clear-all' },
-                    { label: 'Fill Layer', action: 'fill-layer' }
+                    { label: 'Clear All', action: 'clear-all', icon: 'trash-2' },
+                    { label: 'Fill Layer', action: 'fill-layer', icon: 'layers' }
                 ],
                 selection: [
-                    { label: 'Select All', action: 'select-all' },
-                    { label: 'Select None', action: 'select-none' },
-                    { label: 'Invert Selection', action: 'invert-selection' }
+                    { label: 'Select All', action: 'select-all', icon: 'square' },
+                    { label: 'Select None', action: 'select-none', icon: 'square-dashed' },
+                    { label: 'Invert Selection', action: 'invert-selection', icon: 'rotate-3d' }
                 ],
                 view: [
-                    { label: 'Toggle Grid', action: 'toggle-grid', shortcut: 'G' },
-                    { label: 'Reset Camera', action: 'reset-camera', shortcut: 'F' },
-                    { label: 'Toggle Stats', action: 'toggle-stats', shortcut: 'F3' },
+                    { label: 'Toggle Grid', action: 'toggle-grid', icon: 'grid', shortcut: 'G' },
+                    { label: 'Reset Camera', action: 'reset-camera', icon: 'focus', shortcut: 'F' },
+                    { label: 'Toggle Stats', action: 'toggle-stats', icon: 'activity', shortcut: 'F3' },
                     { type: 'separator' },
-                    { label: 'Wireframe Mode', action: 'toggle-wireframe' },
-                    { label: 'Fullscreen', action: 'toggle-fullscreen', shortcut: 'F11' }
+                    { label: 'Wireframe Mode', action: 'toggle-wireframe', icon: 'box' },
+                    { label: 'Fullscreen', action: 'toggle-fullscreen', icon: 'maximize', shortcut: 'F11' }
                 ],
                 help: [
-                    { label: 'Controls', action: 'show-controls' },
-                    { label: 'About', action: 'about' },
+                    { label: 'Controls', action: 'show-controls', icon: 'keyboard' },
+                    { label: 'About', action: 'about', icon: 'info' },
                     { type: 'separator' },
-                    { label: 'Report Issue', action: 'report-issue' }
+                    { label: 'Report Issue', action: 'report-issue', icon: 'bug' }
                 ]
             };
             
@@ -269,8 +401,21 @@
                             item.className = 'menu-dropdown-item';
                             item.setAttribute('data-action', option.action);
                             
+                            // Add icon if specified
+                            if (option.icon) {
+                                const iconSpan = document.createElement('span');
+                                iconSpan.style.cssText = `
+                                    display: inline-flex;
+                                    align-items: center;
+                                    margin-right: 8px;
+                                `;
+                                iconSpan.innerHTML = `<i data-lucide="${option.icon}" style="width: 16px; height: 16px;"></i>`;
+                                item.appendChild(iconSpan);
+                            }
+                            
                             const label = document.createElement('span');
                             label.textContent = option.label;
+                            label.style.flex = '1';
                             item.appendChild(label);
                             
                             if (option.shortcut) {
@@ -278,13 +423,85 @@
                                 shortcut.className = 'menu-shortcut';
                                 shortcut.textContent = option.shortcut;
                                 item.appendChild(shortcut);
+                            } else if (option.submenu) {
+                                const arrow = document.createElement('span');
+                                arrow.textContent = '▶';
+                                arrow.style.cssText = `
+                                    font-size: 10px;
+                                    opacity: 0.6;
+                                    margin-left: 16px;
+                                `;
+                                item.appendChild(arrow);
+                                
+                                // Create submenu
+                                const submenu = document.createElement('div');
+                                submenu.className = 'menu-submenu';
+                                submenu.style.cssText = `
+                                    position: fixed;
+                                    background: rgba(40, 40, 40, 0.95);
+                                    border: 1px solid rgba(255, 255, 255, 0.15);
+                                    border-radius: 6px;
+                                    padding: 4px 0;
+                                    min-width: 280px;
+                                    z-index: 100000;
+                                    display: none;
+                                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                                    backdrop-filter: blur(10px);
+                                `;
+                                
+                                // Update submenu when hovering
+                                let submenuTimeout;
+                                
+                                item.addEventListener('mouseenter', () => {
+                                    clearTimeout(submenuTimeout);
+                                    if (option.action === 'recent-scenes') {
+                                        updateRecentScenesSubmenu(submenu);
+                                    }
+                                    
+                                    // Position the submenu
+                                    const itemRect = item.getBoundingClientRect();
+                                    const dropdownRect = item.parentElement.getBoundingClientRect();
+                                    submenu.style.left = (dropdownRect.right - 4) + 'px';
+                                    submenu.style.top = itemRect.top + 'px';
+                                    submenu.style.display = 'block';
+                                });
+                                
+                                item.addEventListener('mouseleave', (e) => {
+                                    const toElement = e.relatedTarget;
+                                    if (toElement && (submenu.contains(toElement) || toElement === submenu)) {
+                                        return;
+                                    }
+                                    submenuTimeout = setTimeout(() => {
+                                        submenu.style.display = 'none';
+                                    }, 100);
+                                });
+                                
+                                submenu.addEventListener('mouseenter', () => {
+                                    clearTimeout(submenuTimeout);
+                                    submenu.style.display = 'block';
+                                });
+                                
+                                submenu.addEventListener('mouseleave', (e) => {
+                                    const toElement = e.relatedTarget;
+                                    if (toElement && (item.contains(toElement) || toElement === item)) {
+                                        return;
+                                    }
+                                    submenuTimeout = setTimeout(() => {
+                                        submenu.style.display = 'none';
+                                    }, 100);
+                                });
+                                
+                                document.body.appendChild(submenu);
+                                item.submenu = submenu;
                             }
                             
-                            item.addEventListener('click', (e) => {
-                                e.stopPropagation();
-                                handleMenuAction(option.action);
-                                closeDropdowns();
-                            });
+                            if (!option.submenu) {
+                                item.addEventListener('click', (e) => {
+                                    e.stopPropagation();
+                                    handleMenuAction(option.action);
+                                    closeDropdowns();
+                                });
+                            }
                             
                             dropdown.appendChild(item);
                         }
@@ -309,9 +526,21 @@
                         
                         dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
                         activeDropdown = dropdown.style.display === 'block' ? dropdown : null;
+                        
+                        // Initialize icons when showing dropdown
+                        if (dropdown.style.display === 'block' && window.lucide) {
+                            setTimeout(() => window.lucide.createIcons(), 0);
+                        }
                     }
                 });
             });
+            
+            // Initialize Lucide icons in dropdowns after they're created
+            setTimeout(() => {
+                if (window.lucide) {
+                    window.lucide.createIcons();
+                }
+            }, 0);
             
             // Close dropdowns when clicking outside
             document.addEventListener('click', closeDropdowns);
@@ -322,6 +551,91 @@
                     dropdown.style.display = 'none';
                 });
                 activeDropdown = null;
+            }
+            
+            // Update recent scenes submenu
+            function updateRecentScenesSubmenu(submenu) {
+                // Clear existing items
+                submenu.innerHTML = '';
+                
+                // Get recent scenes from localStorage
+                const recentScenes = JSON.parse(localStorage.getItem('recentScenes') || '[]');
+                
+                if (recentScenes.length === 0) {
+                    const emptyItem = document.createElement('div');
+                    emptyItem.className = 'menu-dropdown-item';
+                    emptyItem.style.cssText = `
+                        padding: 8px 12px;
+                        color: rgba(255, 255, 255, 0.5);
+                        font-style: italic;
+                        cursor: default;
+                    `;
+                    emptyItem.textContent = 'No recent scenes';
+                    submenu.appendChild(emptyItem);
+                } else {
+                    recentScenes.forEach((scene, index) => {
+                        const item = document.createElement('div');
+                        item.className = 'menu-dropdown-item';
+                        item.style.cssText = `
+                            padding: 8px 12px;
+                            cursor: pointer;
+                            display: flex;
+                            align-items: center;
+                            gap: 12px;
+                            transition: background 0.2s ease;
+                        `;
+                        
+                        // Add thumbnail
+                        if (scene.thumbnail) {
+                            const thumbnail = document.createElement('img');
+                            thumbnail.src = scene.thumbnail;
+                            thumbnail.style.cssText = `
+                                width: 60px;
+                                height: 45px;
+                                object-fit: cover;
+                                border-radius: 4px;
+                                border: 1px solid rgba(255, 255, 255, 0.2);
+                            `;
+                            item.appendChild(thumbnail);
+                        }
+                        
+                        // Add scene info
+                        const info = document.createElement('div');
+                        info.style.cssText = `
+                            flex: 1;
+                            display: flex;
+                            flex-direction: column;
+                            gap: 2px;
+                        `;
+                        
+                        const name = document.createElement('div');
+                        name.style.cssText = `
+                            color: rgba(255, 255, 255, 0.9);
+                            font-size: 14px;
+                        `;
+                        name.textContent = scene.name || `Scene ${index + 1}`;
+                        info.appendChild(name);
+                        
+                        const date = document.createElement('div');
+                        date.style.cssText = `
+                            color: rgba(255, 255, 255, 0.5);
+                            font-size: 12px;
+                        `;
+                        date.textContent = new Date(scene.timestamp).toLocaleString();
+                        info.appendChild(date);
+                        
+                        item.appendChild(info);
+                        
+                        // Click handler
+                        item.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            loadSceneData(scene.data);
+                            closeDropdowns();
+                        });
+                        
+                        submenu.appendChild(item);
+                    });
+                }
             }
             
             // Handle menu actions
@@ -336,19 +650,78 @@
                 if (!app) return;
                 
                 switch (action) {
-                    case 'save-voxels':
-                        saveVoxelData();
+                    case 'save-scene':
+                        saveSceneData();
                         break;
-                    case 'load-voxels':
-                        document.getElementById('load-voxel-input').click();
+                    case 'load-scene':
+                        document.getElementById('load-scene-input').click();
                         break;
-                    case 'export-scene':
-                        exportScene();
+                    case 'export-voxels':
+                        exportVoxelData();
+                        break;
+                    case 'import-voxels':
+                        document.getElementById('import-voxel-input').click();
+                        break;
+                    case 'undo':
+                        if (app.voxelEngine) {
+                            app.voxelEngine.finalizePendingOperations();
+                            if (app.voxelEngine.undo()) {
+                                console.log('Undo performed from menu');
+                            } else {
+                                showModal({
+                                    title: 'Nothing to Undo',
+                                    content: 'There are no operations to undo.',
+                                    buttons: [{ text: 'OK', primary: true }]
+                                });
+                            }
+                        }
+                        break;
+                    case 'redo':
+                        if (app.voxelEngine) {
+                            if (app.voxelEngine.redo()) {
+                                console.log('Redo performed from menu');
+                            } else {
+                                showModal({
+                                    title: 'Nothing to Redo',
+                                    content: 'There are no operations to redo.',
+                                    buttons: [{ text: 'OK', primary: true }]
+                                });
+                            }
+                        }
                         break;
                     case 'clear-all':
-                        if (confirm('Are you sure you want to clear all voxels?')) {
-                            clearAllVoxels();
-                        }
+                        showModal({
+                            title: 'Clear All Voxels',
+                            content: 'Are you sure you want to clear all voxels? This cannot be undone.',
+                            buttons: [
+                                {
+                                    text: 'Cancel',
+                                    primary: false
+                                },
+                                {
+                                    text: 'Clear All',
+                                    primary: true,
+                                    action: () => {
+                                        clearAllVoxels();
+                                    }
+                                }
+                            ]
+                        });
+                        break;
+                    case 'fill-layer':
+                        fillLayer();
+                        break;
+                    case 'select-all':
+                    case 'select-none':
+                    case 'invert-selection':
+                        showModal({
+                            title: 'Coming Soon',
+                            content: 'Selection tools are currently under development.',
+                            buttons: [{ text: 'OK', primary: true }]
+                        });
+                        break;
+                    case 'toggle-wireframe':
+                        toggleWireframe();
                         break;
                     case 'toggle-grid':
                         toggleGrid();
@@ -374,23 +747,364 @@
                 }
             }
             
+            // Modal helper functions
+            function showModal(options) {
+                const overlay = document.getElementById('modal-overlay');
+                overlay.innerHTML = '';
+                overlay.style.display = 'block';
+                
+                const modal = document.createElement('div');
+                modal.className = 'modal';
+                
+                const header = document.createElement('div');
+                header.className = 'modal-header';
+                
+                const title = document.createElement('h2');
+                title.className = 'modal-title';
+                title.textContent = options.title;
+                header.appendChild(title);
+                
+                const content = document.createElement('div');
+                content.className = 'modal-content';
+                
+                if (options.content) {
+                    if (typeof options.content === 'string') {
+                        content.innerHTML = options.content;
+                    } else {
+                        content.appendChild(options.content);
+                    }
+                }
+                
+                const buttons = document.createElement('div');
+                buttons.className = 'modal-buttons';
+                
+                if (options.buttons) {
+                    options.buttons.forEach(btn => {
+                        const button = document.createElement('button');
+                        button.className = 'modal-button ' + (btn.primary ? 'modal-button-primary' : 'modal-button-secondary');
+                        button.textContent = btn.text;
+                        button.onclick = () => {
+                            if (btn.action) btn.action();
+                            if (!btn.keepOpen) closeModal();
+                        };
+                        buttons.appendChild(button);
+                    });
+                }
+                
+                modal.appendChild(header);
+                modal.appendChild(content);
+                modal.appendChild(buttons);
+                overlay.appendChild(modal);
+                
+                // Close on overlay click
+                overlay.onclick = (e) => {
+                    if (e.target === overlay) {
+                        closeModal();
+                    }
+                };
+                
+                // Close on Escape key
+                const escapeHandler = (e) => {
+                    if (e.key === 'Escape') {
+                        closeModal();
+                        document.removeEventListener('keydown', escapeHandler);
+                    }
+                };
+                document.addEventListener('keydown', escapeHandler);
+                
+                return modal;
+            }
+            
+            function closeModal() {
+                const overlay = document.getElementById('modal-overlay');
+                overlay.style.display = 'none';
+                overlay.innerHTML = '';
+            }
+            
             // Menu action implementations
-            function saveVoxelData() {
+            function generateThumbnail(callback) {
+                const app = window.app;
+                if (!app || !app.renderer) {
+                    callback(null);
+                    return;
+                }
+                
+                // Render current scene
+                app.renderer.render(app.scene, app.camera);
+                
+                // Create a smaller canvas for thumbnail
+                const canvas = document.createElement('canvas');
+                canvas.width = 320;
+                canvas.height = 240;
+                const ctx = canvas.getContext('2d');
+                
+                // Copy renderer canvas to thumbnail canvas
+                ctx.drawImage(app.renderer.domElement, 0, 0, canvas.width, canvas.height);
+                
+                // Convert to base64
+                callback(canvas.toDataURL('image/jpeg', 0.8));
+            }
+            
+            function saveSceneData() {
                 const app = window.app;
                 if (!app || !app.voxelEngine) return;
                 
-                const voxelData = app.voxelEngine.exportVoxels();
-                const dataStr = JSON.stringify(voxelData, null, 2);
-                const blob = new Blob([dataStr], { type: 'application/json' });
+                // Get scene info first
+                const voxelCount = app.voxelEngine.getVoxelCount();
+                const timestamp = new Date().toISOString();
+                const defaultName = 'scene-' + timestamp.slice(0, 19).replace(/:/g, '-');
                 
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'voxel-scene-' + new Date().toISOString().slice(0, 19).replace(/:/g, '-') + '.json';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
+                // Create modal content
+                const contentDiv = document.createElement('div');
+                
+                const label = document.createElement('label');
+                label.textContent = 'Scene Name:';
+                label.style.display = 'block';
+                label.style.marginBottom = '8px';
+                contentDiv.appendChild(label);
+                
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'modal-input';
+                input.value = defaultName;
+                input.placeholder = 'Enter scene name...';
+                contentDiv.appendChild(input);
+                
+                // Add scene info
+                const infoGrid = document.createElement('div');
+                infoGrid.className = 'modal-info-grid';
+                infoGrid.innerHTML = `
+                    <div class="modal-info-item">
+                        <span class="modal-info-label">Voxel Count</span>
+                        <span class="modal-info-value">${voxelCount.toLocaleString()}</span>
+                    </div>
+                    <div class="modal-info-item">
+                        <span class="modal-info-label">Timestamp</span>
+                        <span class="modal-info-value">${new Date(timestamp).toLocaleString()}</span>
+                    </div>
+                `;
+                contentDiv.appendChild(infoGrid);
+                
+                // Show modal
+                showModal({
+                    title: 'Save Scene',
+                    content: contentDiv,
+                    buttons: [
+                        {
+                            text: 'Cancel',
+                            primary: false
+                        },
+                        {
+                            text: 'Save',
+                            primary: true,
+                            action: () => {
+                                const filename = input.value.trim() || defaultName;
+                                const finalFilename = filename.endsWith('.json') ? filename : filename + '.json';
+                                
+                                // Generate thumbnail and save
+                                generateThumbnail((thumbnail) => {
+                                    // Create scene data
+                                    const sceneData = {
+                                        version: '1.0',
+                                        timestamp: timestamp,
+                                        voxels: app.voxelEngine.exportVoxels(),
+                                        camera: {
+                                            position: {
+                                                x: app.camera.position.x,
+                                                y: app.camera.position.y,
+                                                z: app.camera.position.z
+                                            },
+                                            zoom: app.camera.zoom,
+                                            target: {
+                                                x: app.controls.target.x,
+                                                y: app.controls.target.y,
+                                                z: app.controls.target.z
+                                            }
+                                        },
+                                        settings: {
+                                            gridVisible: app.gridHelper.visible,
+                                            currentVoxelType: app.drawingSystem.currentVoxelType,
+                                            brushSize: app.drawingSystem.brushSize,
+                                            toolMode: app.drawingSystem.toolMode
+                                        }
+                                    };
+                                    
+                                    const dataStr = JSON.stringify(sceneData, null, 2);
+                                    const blob = new Blob([dataStr], { type: 'application/json' });
+                                    
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = finalFilename;
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    document.body.removeChild(a);
+                                    URL.revokeObjectURL(url);
+                                    
+                                    // Add to recent scenes
+                                    addToRecentScenes(finalFilename, sceneData, thumbnail);
+                                });
+                            }
+                        }
+                    ]
+                });
+                
+                // Focus input and select text
+                setTimeout(() => {
+                    input.focus();
+                    input.select();
+                }, 100);
+            }
+            
+            function exportVoxelData() {
+                const app = window.app;
+                if (!app || !app.voxelEngine) return;
+                
+                // Get voxel info
+                const voxelCount = app.voxelEngine.getVoxelCount();
+                const defaultName = 'voxels-' + new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+                
+                // Create modal content
+                const contentDiv = document.createElement('div');
+                
+                const label = document.createElement('label');
+                label.textContent = 'Export Filename:';
+                label.style.display = 'block';
+                label.style.marginBottom = '8px';
+                contentDiv.appendChild(label);
+                
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'modal-input';
+                input.value = defaultName;
+                input.placeholder = 'Enter filename...';
+                contentDiv.appendChild(input);
+                
+                // Add export info
+                const infoGrid = document.createElement('div');
+                infoGrid.className = 'modal-info-grid';
+                infoGrid.innerHTML = `
+                    <div class="modal-info-item">
+                        <span class="modal-info-label">Voxel Count</span>
+                        <span class="modal-info-value">${voxelCount.toLocaleString()}</span>
+                    </div>
+                    <div class="modal-info-item">
+                        <span class="modal-info-label">Format</span>
+                        <span class="modal-info-value">JSON (Universal)</span>
+                    </div>
+                `;
+                contentDiv.appendChild(infoGrid);
+                
+                // Show modal
+                showModal({
+                    title: 'Export Voxels',
+                    content: contentDiv,
+                    buttons: [
+                        {
+                            text: 'Cancel',
+                            primary: false
+                        },
+                        {
+                            text: 'Export',
+                            primary: true,
+                            action: () => {
+                                const filename = input.value.trim() || defaultName;
+                                const finalFilename = filename.endsWith('.json') ? filename : filename + '.json';
+                                
+                                const voxelData = app.voxelEngine.exportVoxels();
+                                const dataStr = JSON.stringify(voxelData, null, 2);
+                                const blob = new Blob([dataStr], { type: 'application/json' });
+                                
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = finalFilename;
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                                URL.revokeObjectURL(url);
+                            }
+                        }
+                    ]
+                });
+                
+                // Focus input and select text
+                setTimeout(() => {
+                    input.focus();
+                    input.select();
+                }, 100);
+            }
+            
+            function addToRecentScenes(name, data, thumbnail) {
+                const recentScenes = JSON.parse(localStorage.getItem('recentScenes') || '[]');
+                
+                // Add new scene at beginning
+                recentScenes.unshift({
+                    name: name,
+                    timestamp: Date.now(),
+                    thumbnail: thumbnail,
+                    data: data
+                });
+                
+                // Keep only last 10 scenes
+                if (recentScenes.length > 10) {
+                    recentScenes.length = 10;
+                }
+                
+                localStorage.setItem('recentScenes', JSON.stringify(recentScenes));
+            }
+            
+            function loadSceneData(sceneData) {
+                const app = window.app;
+                if (!app || !app.voxelEngine) return;
+                
+                try {
+                    // Load voxels
+                    if (sceneData.voxels) {
+                        app.voxelEngine.importVoxels(sceneData.voxels);
+                        app.voxelEngine.updateInstances();
+                    }
+                    
+                    // Restore camera
+                    if (sceneData.camera) {
+                        app.camera.position.set(
+                            sceneData.camera.position.x,
+                            sceneData.camera.position.y,
+                            sceneData.camera.position.z
+                        );
+                        app.camera.zoom = sceneData.camera.zoom || 1;
+                        app.camera.updateProjectionMatrix();
+                        
+                        if (sceneData.camera.target) {
+                            app.controls.target.set(
+                                sceneData.camera.target.x,
+                                sceneData.camera.target.y,
+                                sceneData.camera.target.z
+                            );
+                        }
+                    }
+                    
+                    // Restore settings
+                    if (sceneData.settings) {
+                        if (sceneData.settings.gridVisible !== undefined) {
+                            app.gridHelper.visible = sceneData.settings.gridVisible;
+                            app.axisLines.forEach(line => {
+                                line.visible = sceneData.settings.gridVisible;
+                            });
+                        }
+                        if (sceneData.settings.currentVoxelType !== undefined) {
+                            app.drawingSystem.setVoxelType(sceneData.settings.currentVoxelType);
+                        }
+                        if (sceneData.settings.brushSize !== undefined) {
+                            app.drawingSystem.setBrushSize(sceneData.settings.brushSize);
+                        }
+                        if (sceneData.settings.toolMode !== undefined) {
+                            app.drawingSystem.setToolMode(sceneData.settings.toolMode);
+                        }
+                    }
+                } catch (error) {
+                    alert('Error loading scene: ' + error.message);
+                }
             }
             
             function clearAllVoxels() {
@@ -436,40 +1150,198 @@
             }
             
             function showControls() {
-                alert('Voxel Editor Controls:\n\n' +
-                      'Left Click: Place voxel\n' +
-                      'Right Click: Remove voxel\n' +
-                      'Alt + Mouse: Rotate camera\n' +
-                      'Middle Mouse: Pan camera\n' +
-                      'Scroll: Zoom\n' +
-                      '1-9: Select voxel type\n' +
-                      '1-5: Change brush size\n' +
-                      'B: Brush tool\n' +
-                      'X: Box tool\n' +
-                      'L: Line tool\n' +
-                      'P: Fill tool\n' +
-                      'G: Toggle grid\n' +
-                      'F: Toggle performance stats');
+                const content = `
+                    <div style="line-height: 1.8;">
+                        <strong>Mouse Controls:</strong><br>
+                        • Left Click: Place voxel<br>
+                        • Right Click: Remove voxel<br>
+                        • Alt + Mouse: Rotate camera<br>
+                        • Middle Mouse: Pan camera<br>
+                        • Scroll: Zoom<br><br>
+                        
+                        <strong>Keyboard Shortcuts:</strong><br>
+                        • 1-9: Select voxel type<br>
+                        • 1-5: Change brush size<br>
+                        • B: Brush tool<br>
+                        • X: Box tool<br>
+                        • L: Line tool<br>
+                        • P: Fill tool<br>
+                        • G: Toggle grid<br>
+                        • F: Toggle performance stats
+                    </div>
+                `;
+                
+                showModal({
+                    title: 'Controls',
+                    content: content,
+                    buttons: [
+                        {
+                            text: 'OK',
+                            primary: true
+                        }
+                    ]
+                });
             }
             
             function showAbout() {
-                alert('NeverEverLand v007 - High Performance Voxel System\n\n' +
-                      'Built with Three.js and TypeScript\n' +
-                      'Features thin instancing for massive performance\n' +
-                      'Mathematical raycasting for precise interaction\n\n' +
-                      'Supports up to 1M voxel instances');
+                const content = `
+                    <div style="line-height: 1.8;">
+                        <p style="margin-top: 0;"><strong>NeverEverLand v007</strong><br>
+                        High Performance Voxel System</p>
+                        
+                        <p>Built with Three.js and TypeScript<br>
+                        Features thin instancing for massive performance<br>
+                        Mathematical raycasting for precise interaction</p>
+                        
+                        <p style="margin-bottom: 0;">Supports up to 1M voxel instances</p>
+                    </div>
+                `;
+                
+                showModal({
+                    title: 'About',
+                    content: content,
+                    buttons: [
+                        {
+                            text: 'OK',
+                            primary: true
+                        }
+                    ]
+                });
             }
             
-            // Handle file input for loading voxels
-            document.getElementById('load-voxel-input').addEventListener('change', (e) => {
+            function fillLayer() {
+                const app = window.app;
+                if (!app || !app.voxelEngine || !app.drawingSystem) return;
+                
+                // Create modal content
+                const contentDiv = document.createElement('div');
+                
+                // Y Level input
+                const yLabel = document.createElement('label');
+                yLabel.textContent = 'Y Level:';
+                yLabel.style.display = 'block';
+                yLabel.style.marginBottom = '8px';
+                contentDiv.appendChild(yLabel);
+                
+                const yInput = document.createElement('input');
+                yInput.type = 'number';
+                yInput.className = 'modal-input';
+                yInput.value = '0';
+                yInput.placeholder = 'Enter Y level (e.g. 0 for ground)';
+                contentDiv.appendChild(yInput);
+                
+                // Size input
+                const sizeLabel = document.createElement('label');
+                sizeLabel.textContent = 'Square Size:';
+                sizeLabel.style.display = 'block';
+                sizeLabel.style.marginTop = '16px';
+                sizeLabel.style.marginBottom = '8px';
+                contentDiv.appendChild(sizeLabel);
+                
+                const sizeInput = document.createElement('input');
+                sizeInput.type = 'number';
+                sizeInput.className = 'modal-input';
+                sizeInput.value = '20';
+                sizeInput.placeholder = 'Enter size (e.g. 20 for 20x20)';
+                sizeInput.min = '1';
+                sizeInput.max = '100';
+                contentDiv.appendChild(sizeInput);
+                
+                // Show current voxel type
+                const infoDiv = document.createElement('div');
+                infoDiv.style.cssText = 'margin-top: 16px; color: rgba(255, 255, 255, 0.7); font-size: 14px;';
+                infoDiv.textContent = `Current voxel type: ${app.drawingSystem.getCurrentVoxelTypeName()}`;
+                contentDiv.appendChild(infoDiv);
+                
+                // Show modal
+                showModal({
+                    title: 'Fill Layer',
+                    content: contentDiv,
+                    buttons: [
+                        {
+                            text: 'Cancel',
+                            primary: false
+                        },
+                        {
+                            text: 'Fill',
+                            primary: true,
+                            action: () => {
+                                const y = parseInt(yInput.value);
+                                const size = parseInt(sizeInput.value);
+                                
+                                if (isNaN(y) || isNaN(size) || size <= 0) {
+                                    return;
+                                }
+                                
+                                const halfSize = Math.floor(size / 2);
+                                const voxelType = app.drawingSystem.currentVoxelType;
+                                
+                                for (let x = -halfSize; x <= halfSize; x++) {
+                                    for (let z = -halfSize; z <= halfSize; z++) {
+                                        app.voxelEngine.setVoxel(x, y, z, voxelType);
+                                    }
+                                }
+                                
+                                app.voxelEngine.updateInstances();
+                            }
+                        }
+                    ]
+                });
+                
+                // Focus first input
+                setTimeout(() => {
+                    yInput.focus();
+                    yInput.select();
+                }, 100);
+            }
+            
+            function toggleWireframe() {
+                const app = window.app;
+                if (!app || !app.voxelEngine || !app.voxelEngine.renderer) return;
+                
+                const mesh = app.voxelEngine.renderer.mesh;
+                if (mesh && mesh.material) {
+                    mesh.material.wireframe = !mesh.material.wireframe;
+                }
+            }
+            
+            // Handle file input for loading scenes
+            document.getElementById('load-scene-input').addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (file) {
-                    loadVoxelFile(file);
+                    loadSceneFile(file);
                 }
                 e.target.value = '';
             });
             
-            function loadVoxelFile(file) {
+            // Handle file input for importing voxels
+            document.getElementById('import-voxel-input').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    importVoxelFile(file);
+                }
+                e.target.value = '';
+            });
+            
+            function loadSceneFile(file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const sceneData = JSON.parse(e.target.result);
+                        loadSceneData(sceneData);
+                        
+                        // Generate thumbnail and add to recent scenes
+                        generateThumbnail((thumbnail) => {
+                            addToRecentScenes(file.name, sceneData, thumbnail);
+                        });
+                    } catch (error) {
+                        alert('Error loading scene file: ' + error.message);
+                    }
+                };
+                reader.readAsText(file);
+            }
+            
+            function importVoxelFile(file) {
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     try {
@@ -480,7 +1352,7 @@
                             app.voxelEngine.updateInstances();
                         }
                     } catch (error) {
-                        alert('Error loading voxel file: ' + error.message);
+                        alert('Error importing voxel file: ' + error.message);
                     }
                 };
                 reader.readAsText(file);

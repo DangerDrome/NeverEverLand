@@ -125,6 +125,9 @@ export class DrawingSystem {
         
         // Process any pending operations
         this.processPendingOperations();
+        
+        // Finalize undo/redo group
+        this.voxelEngine.finalizePendingOperations();
     }
     
     applyBrush(centerX, centerY, centerZ) {
