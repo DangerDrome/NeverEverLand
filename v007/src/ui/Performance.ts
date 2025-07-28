@@ -1,4 +1,15 @@
 export class PerformanceMonitor {
+    private fps: number = 0;
+    private frameTime: number = 0;
+    private lastTime: number;
+    private frames: number = 0;
+    private lastFpsUpdate: number = 0;
+    private fpsHistory: number[];
+    private frameTimeHistory: number[];
+    private historyIndex: number = 0;
+    private statsElement: HTMLElement | null;
+    private visible: boolean = true;
+    
     constructor() {
         this.fps = 0;
         this.frameTime = 0;
@@ -46,12 +57,12 @@ export class PerformanceMonitor {
     }
     
     getAverageFPS() {
-        const sum = this.fpsHistory.reduce((a, b) => a + b, 0);
+        const sum = this.fpsHistory.reduce((a: number, b: number) => a + b, 0);
         return sum / this.fpsHistory.length;
     }
     
     getAverageFrameTime() {
-        const sum = this.frameTimeHistory.reduce((a, b) => a + b, 0);
+        const sum = this.frameTimeHistory.reduce((a: number, b: number) => a + b, 0);
         return sum / this.frameTimeHistory.length;
     }
     

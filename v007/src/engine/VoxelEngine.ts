@@ -85,7 +85,7 @@ export class VoxelEngine {
             if (!this.voxelsByType.has(type)) {
                 this.voxelsByType.set(type, new Set());
             }
-            this.voxelsByType.get(type).add(key);
+            this.voxelsByType.get(type)!.add(key);
         }
         
         return true;
@@ -265,8 +265,7 @@ export class VoxelEngine {
         };
         
         // Export all voxels by type
-        for (const [typeStr, positions] of this.voxelsByType.entries()) {
-            const type = parseInt(typeStr) as VoxelType;
+        for (const [type, positions] of this.voxelsByType.entries()) {
             if (type !== VoxelType.AIR && positions.size > 0) {
                 voxelData.voxels[type] = Array.from(positions);
             }
