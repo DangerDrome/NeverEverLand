@@ -14,7 +14,7 @@ export enum VoxelType {
 }
 
 export interface VoxelTypeDefinition {
-    color: number;
+    color: number | string;  // Allow hex strings like '#FF0000' for IDE color preview
     transparent?: boolean;
     opacity?: number;
 }

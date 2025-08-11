@@ -2,18 +2,18 @@ import * as THREE from 'three';
 import { VoxelType, VoxelTypeDefinition } from '../types';
 import { EdgeRenderer } from './EdgeRenderer';
 
-// Voxel type definitions with vibrant colors
+// Voxel type definitions with vibrant colors (as RGB strings for IDE color preview)
 const VOXEL_TYPES: Record<VoxelType, VoxelTypeDefinition> = {
-    [VoxelType.AIR]: { color: 0x000000, transparent: true },
-    [VoxelType.GRASS]: { color: 0x90EE90 },      // Light pastel green
-    [VoxelType.DIRT]: { color: 0x8B6914 },       // Dark goldenrod (brownish)
-    [VoxelType.STONE]: { color: 0x696969 },      // Dim gray
-    [VoxelType.WOOD]: { color: 0xDEB887 },       // Burlywood (light brown)
-    [VoxelType.LEAVES]: { color: 0x32CD32 },     // Lime green
-    [VoxelType.WATER]: { color: 0x00CED1, transparent: true, opacity: 0.7 }, // Dark turquoise (more transparent)
-    [VoxelType.SAND]: { color: 0xFFE4B5 },       // Moccasin (sandy color)
-    [VoxelType.SNOW]: { color: 0xF0F8FF, transparent: true, opacity: 0.85 },  // Alice blue (semi-transparent)
-    [VoxelType.ICE]: { color: 0x87CEEB, transparent: true, opacity: 0.9 }   // Sky blue
+    [VoxelType.AIR]: { color: 'rgb(0, 0, 0)', transparent: true },
+    [VoxelType.GRASS]: { color: 'rgb(144, 238, 144)' },      // Light pastel green
+    [VoxelType.DIRT]: { color: 'rgb(139, 105, 20)' },       // Dark goldenrod (brownish)
+    [VoxelType.STONE]: { color: 'rgb(105, 105, 105)' },      // Dim gray
+    [VoxelType.WOOD]: { color: 'rgb(222, 184, 135)' },       // Burlywood (light brown)
+    [VoxelType.LEAVES]: { color: 'rgb(50, 205, 50)' },     // Lime green
+    [VoxelType.WATER]: { color: 'rgb(135, 206, 235)', transparent: true, opacity: 0.95 }, // Sky blue (more transparent)
+    [VoxelType.SAND]: { color: 'rgb(255, 228, 181)' },       // Moccasin (sandy color)
+    [VoxelType.SNOW]: { color: 'rgb(240, 248, 255)', transparent: true, opacity: 0.85 },  // Alice blue (semi-transparent)
+    [VoxelType.ICE]: { color: 'rgb(135, 206, 235)', transparent: true, opacity: 0.9 }   // Sky blue
 };
 
 interface InstanceData {
@@ -176,8 +176,12 @@ export class VoxelRenderer {
                 
                 this.tempMatrix.toArray(this.matricesArray, globalIndex * 16);
                 
-                // Set color
-                this.tempColor.setHex(baseColor);
+                // Set color (handle both string and number formats)
+                if (typeof baseColor === 'string') {
+                    this.tempColor.set(baseColor);
+                } else {
+                    this.tempColor.setHex(baseColor);
+                }
                 this.tempColor.toArray(this.colorsArray, globalIndex * 3);
                 
                 // Set opacity

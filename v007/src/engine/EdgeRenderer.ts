@@ -1,18 +1,18 @@
 import * as THREE from 'three';
 import { VoxelType } from '../types';
 
-// Voxel type colors for edge tinting
-const VOXEL_COLORS: Record<VoxelType, number> = {
-    [VoxelType.AIR]: 0x000000,
-    [VoxelType.GRASS]: 0x90EE90,
-    [VoxelType.DIRT]: 0x8B6914,
-    [VoxelType.STONE]: 0x696969,
-    [VoxelType.WOOD]: 0xDEB887,
-    [VoxelType.LEAVES]: 0x32CD32,
-    [VoxelType.WATER]: 0x00CED1,
-    [VoxelType.SAND]: 0xFFE4B5,
-    [VoxelType.SNOW]: 0xF0F8FF,
-    [VoxelType.ICE]: 0x87CEEB
+// Voxel type colors for edge tinting (as RGB strings for IDE color preview)
+const VOXEL_COLORS: Record<VoxelType, string> = {
+    [VoxelType.AIR]: 'rgb(0, 0, 0)',
+    [VoxelType.GRASS]: 'rgb(144, 238, 144)',
+    [VoxelType.DIRT]: 'rgb(139, 105, 20)',
+    [VoxelType.STONE]: 'rgb(105, 105, 105)',
+    [VoxelType.WOOD]: 'rgb(222, 184, 135)',
+    [VoxelType.LEAVES]: 'rgb(50, 205, 50)',
+    [VoxelType.WATER]: 'rgb(135, 206, 235)',
+    [VoxelType.SAND]: 'rgb(255, 228, 181)',
+    [VoxelType.SNOW]: 'rgb(240, 248, 255)',
+    [VoxelType.ICE]: 'rgb(135, 206, 235)'
 };
 
 // Transparent voxel types that should have limited edge rendering
@@ -140,7 +140,7 @@ export class EdgeRenderer {
                 
                 // Set edge color based on voxel type - darker variation of voxel color
                 const baseColor = VOXEL_COLORS[voxel.type];
-                tempColor.setHex(baseColor);
+                tempColor.set(baseColor);  // THREE.Color.set() handles hex strings
                 
                 // Darken the color for edge contrast (multiply by 0.3 to make it much darker)
                 tempColor.multiplyScalar(0.3);
