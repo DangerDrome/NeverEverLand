@@ -223,6 +223,7 @@ class VoxelApp {
     private gridHelper: THREE.GridHelper | null = null;
     private axisLines: THREE.Line[] = [];
     private selectionMode: boolean = false;
+    private lastMousePos: { x: number; y: number } = { x: 0, y: 0 };
     
     constructor() {
         this.scene = new THREE.Scene();
@@ -565,6 +566,10 @@ class VoxelApp {
     }
     
     onMouseMove(event: MouseEvent) {
+        // Store last mouse position for paste location
+        this.lastMousePos.x = event.clientX;
+        this.lastMousePos.y = event.clientY;
+        
         // Get the canvas bounding rect for accurate mouse position
         const rect = this.renderer!.domElement.getBoundingClientRect();
         
@@ -745,6 +750,56 @@ class VoxelApp {
                 event.preventDefault();
                 if (this.voxelEngine && this.voxelEngine.redo()) {
                     console.log('Redo performed');
+                }
+            } else if (event.key === 'a' || event.key === 'A') {
+                // Select All
+                event.preventDefault();
+                if (this.selectionMode && this.boxSelectionTool) {
+                    this.boxSelectionTool.selectAll();
+                }
+            } else if (event.key === 'i' || event.key === 'I') {
+                // Invert Selection
+                event.preventDefault();
+                if (this.selectionMode && this.boxSelectionTool) {
+                    this.boxSelectionTool.invertSelection();
+                }
+            } else if (event.key === 'c' || event.key === 'C') {
+                // Copy Selection
+                event.preventDefault();
+                if (this.selectionMode && this.boxSelectionTool) {
+                    this.boxSelectionTool.copySelection();
+                }
+            } else if (event.key === 'x' || event.key === 'X') {
+                // Cut Selection
+                event.preventDefault();
+                if (this.selectionMode && this.boxSelectionTool) {
+                    this.boxSelectionTool.cutSelection();
+                }
+            } else if (event.key === 'v' || event.key === 'V') {
+                // Paste Selection
+                event.preventDefault();
+                if (this.selectionMode && this.boxSelectionTool) {
+                    // Get mouse world position for paste location
+                    const mouse = new THREE.Vector2(
+                        (this.lastMousePos.x / window.innerWidth) * 2 - 1,
+                        -(this.lastMousePos.y / window.innerHeight) * 2 + 1
+                    );
+                    const raycaster = new THREE.Raycaster();
+                    if (this.camera) {
+                        raycaster.setFromCamera(mouse, this.camera);
+                        
+                        // Cast ray to ground plane
+                        const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+                        const intersection = new THREE.Vector3();
+                        raycaster.ray.intersectPlane(groundPlane, intersection);
+                        
+                        // Paste at intersection or without position
+                        if (intersection.x !== 0 || intersection.z !== 0) {
+                            this.boxSelectionTool.pasteSelection(intersection);
+                        } else {
+                            this.boxSelectionTool.pasteSelection();
+                        }
+                    }
                 }
             }
             return;

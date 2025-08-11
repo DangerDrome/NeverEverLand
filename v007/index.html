@@ -712,13 +712,37 @@
                         fillLayer();
                         break;
                     case 'select-all':
+                        if (app.boxSelectionTool && app.selectionMode) {
+                            app.boxSelectionTool.selectAll();
+                        } else {
+                            showModal({
+                                title: 'Selection Mode Required',
+                                content: 'Please enter selection mode (press S) to use selection tools.',
+                                buttons: [{ text: 'OK', primary: true }]
+                            });
+                        }
+                        break;
                     case 'select-none':
+                        if (app.boxSelectionTool && app.selectionMode) {
+                            app.boxSelectionTool.selectNone();
+                        } else {
+                            showModal({
+                                title: 'Selection Mode Required',
+                                content: 'Please enter selection mode (press S) to use selection tools.',
+                                buttons: [{ text: 'OK', primary: true }]
+                            });
+                        }
+                        break;
                     case 'invert-selection':
-                        showModal({
-                            title: 'Coming Soon',
-                            content: 'Selection tools are currently under development.',
-                            buttons: [{ text: 'OK', primary: true }]
-                        });
+                        if (app.boxSelectionTool && app.selectionMode) {
+                            app.boxSelectionTool.invertSelection();
+                        } else {
+                            showModal({
+                                title: 'Selection Mode Required',
+                                content: 'Please enter selection mode (press S) to use selection tools.',
+                                buttons: [{ text: 'OK', primary: true }]
+                            });
+                        }
                         break;
                     case 'toggle-wireframe':
                         toggleWireframe();

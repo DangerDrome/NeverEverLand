@@ -54,6 +54,10 @@ export class BoxSelectionTool {
     // Adding to selection state
     private isAddingToSelection: boolean = false;
     
+    // Clipboard for copy/paste
+    private clipboard: Array<{ relX: number; relY: number; relZ: number; type: VoxelType }> | null = null;
+    private clipboardCenter: { x: number; y: number; z: number } | null = null;
+    
     constructor(scene: THREE.Scene, voxelEngine: VoxelEngine, camera: THREE.OrthographicCamera) {
         this.scene = scene;
         this.voxelEngine = voxelEngine;
@@ -1268,6 +1272,230 @@ export class BoxSelectionTool {
         
         // Clear the selection after deletion
         this.clearSelection();
+    }
+    
+    /**
+     * Select all voxels in the world
+     */
+    selectAll(): void {
+        // Record previous selection for undo
+        const prevSelection = [...this.selectedVoxels];
+        
+        // Get all voxels from the engine
+        const allVoxels = this.voxelEngine.getAllVoxels();
+        
+        // Convert to SelectedVoxel format
+        this.selectedVoxels = allVoxels.map((voxel: { x: number; y: number; z: number; type: VoxelType }) => ({
+            x: voxel.x,
+            y: voxel.y,
+            z: voxel.z,
+            type: voxel.type
+        }));
+        
+        // Record selection change for undo/redo
+        this.voxelEngine.recordSelectionChange(prevSelection, this.selectedVoxels);
+        this.previousSelection = [...this.selectedVoxels];
+        
+        // Update visual selection
+        this.updateSelectionOutline();
+        this.showSelectedVoxels();
+        
+        // Show gizmo at selection center if voxels were selected
+        if (this.selectedVoxels.length > 0) {
+            const center = this.getSelectionCenter();
+            this.transformGizmo.show(center);
+        }
+        
+        console.log(`Selected all ${this.selectedVoxels.length} voxels`);
+    }
+    
+    /**
+     * Clear all selection (select none)
+     */
+    selectNone(): void {
+        if (this.selectedVoxels.length === 0) return;
+        
+        // Record previous selection for undo
+        const prevSelection = [...this.selectedVoxels];
+        
+        // Clear selection
+        this.selectedVoxels = [];
+        
+        // Record selection change for undo/redo
+        this.voxelEngine.recordSelectionChange(prevSelection, this.selectedVoxels);
+        this.previousSelection = [];
+        
+        // Clear visuals
+        this.clearSelectionVisuals();
+        
+        console.log('Cleared selection');
+    }
+    
+    /**
+     * Invert the current selection
+     */
+    invertSelection(): void {
+        // Get all voxels
+        const allVoxels = this.voxelEngine.getAllVoxels();
+        
+        // Record previous selection for undo
+        const prevSelection = [...this.selectedVoxels];
+        
+        // Create a set of currently selected voxel keys for efficient lookup
+        const selectedKeys = new Set(
+            this.selectedVoxels.map(v => `${v.x},${v.y},${v.z}`)
+        );
+        
+        // Filter to get unselected voxels
+        const invertedSelection = allVoxels.filter((voxel: { x: number; y: number; z: number; type: VoxelType }) => 
+            !selectedKeys.has(`${voxel.x},${voxel.y},${voxel.z}`)
+        );
+        
+        // Update selection
+        this.selectedVoxels = invertedSelection.map((voxel: { x: number; y: number; z: number; type: VoxelType }) => ({
+            x: voxel.x,
+            y: voxel.y,
+            z: voxel.z,
+            type: voxel.type
+        }));
+        
+        // Record selection change for undo/redo
+        this.voxelEngine.recordSelectionChange(prevSelection, this.selectedVoxels);
+        this.previousSelection = [...this.selectedVoxels];
+        
+        // Update visual selection
+        this.updateSelectionOutline();
+        this.showSelectedVoxels();
+        
+        // Show gizmo at selection center if voxels were selected
+        if (this.selectedVoxels.length > 0) {
+            const center = this.getSelectionCenter();
+            this.transformGizmo.show(center);
+        }
+        
+        console.log(`Inverted selection: ${this.selectedVoxels.length} voxels selected`);
+    }
+    
+    /**
+     * Copy selected voxels to clipboard
+     */
+    copySelection(): void {
+        if (this.selectedVoxels.length === 0) {
+            console.log('No voxels selected to copy');
+            return;
+        }
+        
+        // Calculate center of selection
+        let centerX = 0, centerY = 0, centerZ = 0;
+        for (const voxel of this.selectedVoxels) {
+            centerX += voxel.x;
+            centerY += voxel.y;
+            centerZ += voxel.z;
+        }
+        centerX = Math.floor(centerX / this.selectedVoxels.length);
+        centerY = Math.floor(centerY / this.selectedVoxels.length);
+        centerZ = Math.floor(centerZ / this.selectedVoxels.length);
+        
+        // Store relative positions
+        this.clipboard = this.selectedVoxels.map(voxel => ({
+            relX: voxel.x - centerX,
+            relY: voxel.y - centerY,
+            relZ: voxel.z - centerZ,
+            type: voxel.type
+        }));
+        
+        this.clipboardCenter = { x: centerX, y: centerY, z: centerZ };
+        
+        console.log(`Copied ${this.clipboard.length} voxels to clipboard`);
+    }
+    
+    /**
+     * Paste voxels from clipboard at mouse position
+     */
+    pasteSelection(worldPos?: THREE.Vector3): void {
+        if (!this.clipboard || this.clipboard.length === 0) {
+            console.log('Nothing in clipboard to paste');
+            return;
+        }
+        
+        // Determine paste position
+        let pasteX = 0, pasteY = 0, pasteZ = 0;
+        const voxelSize = this.voxelEngine.getVoxelSize();
+        
+        if (worldPos) {
+            // Use provided world position (mouse position)
+            pasteX = Math.floor(worldPos.x / voxelSize);
+            pasteY = Math.floor(worldPos.y / voxelSize);
+            pasteZ = Math.floor(worldPos.z / voxelSize);
+        } else if (this.selectedVoxels.length > 0) {
+            // Paste relative to current selection center
+            const center = this.getSelectionCenter();
+            pasteX = Math.floor(center.x / voxelSize);
+            pasteY = Math.floor(center.y / voxelSize);
+            pasteZ = Math.floor(center.z / voxelSize);
+        } else if (this.clipboardCenter) {
+            // Paste at original position offset by 2 voxels
+            pasteX = this.clipboardCenter.x + 2;
+            pasteY = this.clipboardCenter.y;
+            pasteZ = this.clipboardCenter.z + 2;
+        }
+        
+        // Record previous selection for undo
+        const prevSelection = [...this.selectedVoxels];
+        
+        // Place voxels and build new selection
+        const newSelection: SelectedVoxel[] = [];
+        for (const clipVoxel of this.clipboard) {
+            const x = pasteX + clipVoxel.relX;
+            const y = pasteY + clipVoxel.relY;
+            const z = pasteZ + clipVoxel.relZ;
+            
+            // Place the voxel
+            this.voxelEngine.setVoxel(x, y, z, clipVoxel.type);
+            
+            // Add to new selection
+            newSelection.push({ x, y, z, type: clipVoxel.type });
+        }
+        
+        // Update engine visual
+        this.voxelEngine.updateInstances();
+        
+        // Select the pasted voxels
+        this.selectedVoxels = newSelection;
+        
+        // Record selection change
+        this.voxelEngine.recordSelectionChange(prevSelection, this.selectedVoxels);
+        this.previousSelection = [...this.selectedVoxels];
+        
+        // Update visuals
+        this.updateSelectionOutline();
+        this.showSelectedVoxels();
+        
+        // Show gizmo at paste center
+        if (this.selectedVoxels.length > 0) {
+            const center = this.getSelectionCenter();
+            this.transformGizmo.show(center);
+        }
+        
+        console.log(`Pasted ${newSelection.length} voxels at (${pasteX}, ${pasteY}, ${pasteZ})`);
+    }
+    
+    /**
+     * Cut selected voxels (copy then delete)
+     */
+    cutSelection(): void {
+        if (this.selectedVoxels.length === 0) {
+            console.log('No voxels selected to cut');
+            return;
+        }
+        
+        // Copy to clipboard first
+        this.copySelection();
+        
+        // Then delete the selected voxels
+        this.deleteSelectedVoxels();
+        
+        console.log(`Cut ${this.clipboard?.length || 0} voxels`);
     }
     
     /**

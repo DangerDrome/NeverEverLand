@@ -379,4 +379,24 @@ export class VoxelEngine {
     getShowEdges(): boolean {
         return this.renderer.getShowEdges();
     }
+    
+    // Get all voxels in the world
+    getAllVoxels(): Array<{ x: number; y: number; z: number; type: VoxelType }> {
+        const allVoxels: Array<{ x: number; y: number; z: number; type: VoxelType }> = [];
+        
+        // Iterate through all stored voxels
+        for (const [key, type] of this.voxels.entries()) {
+            if (type !== VoxelType.AIR) {
+                const pos = this.parsePositionKey(key);
+                allVoxels.push({
+                    x: pos.x,
+                    y: pos.y,
+                    z: pos.z,
+                    type: type
+                });
+            }
+        }
+        
+        return allVoxels;
+    }
 }
