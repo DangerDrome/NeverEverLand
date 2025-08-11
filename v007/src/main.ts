@@ -6,6 +6,139 @@ import { PerformanceMonitor } from './ui/Performance';
 import { DirectionIndicator } from './ui/DirectionIndicator';
 import { VoxelPanel } from './ui/VoxelPanel';
 
+// =====================================
+// SETTINGS - Customize your experience
+// =====================================
+
+const SETTINGS = {
+    // Camera Settings
+    camera: {
+        frustumSize: 20,              // Size of the orthographic camera view
+        position: {                   // Initial camera position
+            x: 20,
+            y: 20,
+            z: 20
+        },
+        lookAt: {                      // Where camera looks at initially
+            x: 0,
+            y: 0,
+            z: 0
+        },
+        near: 0.0001,                     // Near clipping plane
+        far: 1000                      // Far clipping plane
+    },
+    
+    // Controls Settings
+    controls: {
+        enableDamping: true,           // Smooth camera movement
+        dampingFactor: 0.05,           // How smooth the damping is
+        screenSpacePanning: true,      // Pan in screen space
+        minZoom: 0.1,                  // Maximum zoom out (smaller = further out)
+        maxZoom: 20,                   // Maximum zoom in (larger = closer)
+        mouseButtons: {                // Mouse button configuration
+            left: THREE.MOUSE.ROTATE,
+            middle: THREE.MOUSE.PAN,
+            right: THREE.MOUSE.ROTATE
+        }
+    },
+    
+    // Renderer Settings
+    renderer: {
+        antialias: true,               // Enable antialiasing
+        powerPreference: "high-performance", // GPU preference
+        shadowMap: {
+            enabled: true,             // Enable shadows
+            type: THREE.PCFSoftShadowMap // Shadow quality
+        }
+    },
+    
+    // Scene Settings
+    scene: {
+        backgroundColor: 0x87CEEB,     // Sky blue background
+        fog: {
+            enabled: false,            // Toggle fog effect
+            near: 50,                  // Fog start distance
+            far: 200                   // Fog end distance
+        }
+    },
+    
+    // Lighting Settings
+    lighting: {
+        ambient: {
+            color: 0xffffff,           // Ambient light color
+            intensity: 0.6             // Ambient light intensity
+        },
+        directional: {
+            color: 0xffffff,           // Directional light color
+            intensity: 0.8,            // Directional light intensity
+            position: {                // Light position
+                x: 50,
+                y: 100,
+                z: 50
+            },
+            shadow: {
+                mapSize: 2048,         // Shadow map resolution
+                camera: {              // Shadow camera bounds
+                    left: -50,
+                    right: 50,
+                    top: 50,
+                    bottom: -50
+                }
+            }
+        }
+    },
+    
+    // Ground Plane Settings
+    ground: {
+        size: 200,                     // Ground plane size
+        color: 0xaaaaaa,               // Ground color (medium grey)
+        roughness: 0.8,                // Material roughness
+        metalness: 0.2,                // Material metalness
+        yPosition: -0.01              // Y position (slightly below to avoid z-fighting)
+    },
+    
+    // Grid Settings
+    grid: {
+        size: 100,                     // Grid size
+        divisions: 100,                // Number of grid divisions
+        colorCenterLine: 0x444444,     // Center line color
+        colorGrid: 0x222222,           // Grid line color
+        opacity: 0.4,                  // Grid opacity
+        axisLines: {
+            xColor: 0x884444,          // X-axis color (subtle red)
+            zColor: 0x444488,          // Z-axis color (subtle blue)
+            opacity: 0.5,              // Axis line opacity
+            length: 50                 // Axis line length (extends from -length to +length)
+        }
+    },
+    
+    // Test Scene Settings
+    testScene: {
+        enabled: true,                 // Whether to create test scene on start
+        mode: 'flat',                  // 'empty', 'flat', 'starter'
+        flatGround: {
+            sizeX: 3,                  // Half-width of flat ground
+            sizeZ: 3                   // Half-depth of flat ground
+        }
+    },
+    
+    // Performance Settings
+    performance: {
+        highPerformanceMode: true,     // Enable high performance optimizations
+        showStats: true,               // Show performance stats on start
+        targetFPS: 60                  // Target frames per second
+    },
+    
+    // UI Settings
+    ui: {
+        showLoadingScreen: true,       // Show loading screen
+        showControls: true,            // Show controls panel
+        showStats: true,               // Show stats panel
+        defaultBrushSize: 1,           // Default brush size
+        defaultVoxelType: VoxelType.GRASS // Default voxel type
+    }
+};
+
 class VoxelApp {
     private scene: THREE.Scene;
     private camera: THREE.OrthographicCamera | null;
@@ -39,118 +172,158 @@ class VoxelApp {
     }
     
     init() {
-        // Hide loading, show UI
-        const loadingEl = document.getElementById('loading');
-        if (loadingEl) loadingEl.style.display = 'none';
-        const statsEl = document.getElementById('stats');
-        if (statsEl) statsEl.style.display = 'block';
-        const controlsEl = document.getElementById('controls');
-        if (controlsEl) controlsEl.style.display = 'block';
+        // Hide loading, show UI based on settings
+        if (SETTINGS.ui.showLoadingScreen) {
+            const loadingEl = document.getElementById('loading');
+            if (loadingEl) loadingEl.style.display = 'none';
+        }
+        if (SETTINGS.ui.showStats) {
+            const statsEl = document.getElementById('stats');
+            if (statsEl) statsEl.style.display = 'block';
+        }
+        if (SETTINGS.ui.showControls) {
+            const controlsEl = document.getElementById('controls');
+            if (controlsEl) controlsEl.style.display = 'block';
+        }
         
         // Setup renderer
         this.renderer = new THREE.WebGLRenderer({ 
-            antialias: true,
-            powerPreference: "high-performance"
+            antialias: SETTINGS.renderer.antialias,
+            powerPreference: SETTINGS.renderer.powerPreference
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(window.devicePixelRatio);
-        this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        this.renderer.shadowMap.enabled = SETTINGS.renderer.shadowMap.enabled;
+        this.renderer.shadowMap.type = SETTINGS.renderer.shadowMap.type;
         const containerEl = document.getElementById('container');
         if (containerEl) containerEl.appendChild(this.renderer.domElement);
         
         // Setup camera
         const aspect = window.innerWidth / window.innerHeight;
-        const frustumSize = 20;
+        const frustumSize = SETTINGS.camera.frustumSize;
         this.camera = new THREE.OrthographicCamera(
             -frustumSize * aspect / 2,
             frustumSize * aspect / 2,
             frustumSize / 2,
             -frustumSize / 2,
-            0.1,
-            1000
+            SETTINGS.camera.near,
+            SETTINGS.camera.far
         );
         
         // Position camera for isometric view
-        this.camera.position.set(20, 20, 20);
-        this.camera.lookAt(0, 0, 0);
+        this.camera.position.set(
+            SETTINGS.camera.position.x,
+            SETTINGS.camera.position.y,
+            SETTINGS.camera.position.z
+        );
+        this.camera.lookAt(
+            SETTINGS.camera.lookAt.x,
+            SETTINGS.camera.lookAt.y,
+            SETTINGS.camera.lookAt.z
+        );
         console.log('Camera position:', this.camera.position);
         console.log('Camera looking at:', new THREE.Vector3(0, 0, 0));
         
         // Setup controls
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-        this.controls.enableDamping = true;
-        this.controls.dampingFactor = 0.05;
-        this.controls.screenSpacePanning = true;
-        this.controls.minZoom = 0.5;
-        this.controls.maxZoom = 10;
+        this.controls.enableDamping = SETTINGS.controls.enableDamping;
+        this.controls.dampingFactor = SETTINGS.controls.dampingFactor;
+        this.controls.screenSpacePanning = SETTINGS.controls.screenSpacePanning;
+        this.controls.minZoom = SETTINGS.controls.minZoom;
+        this.controls.maxZoom = SETTINGS.controls.maxZoom;
         
-        // Configure mouse buttons: LEFT = rotate, MIDDLE = pan, RIGHT = pan
+        // Configure mouse buttons
         this.controls.mouseButtons = {
-            LEFT: THREE.MOUSE.ROTATE,
-            MIDDLE: THREE.MOUSE.PAN,
-            RIGHT: THREE.MOUSE.ROTATE
+            LEFT: SETTINGS.controls.mouseButtons.left,
+            MIDDLE: SETTINGS.controls.mouseButtons.middle,
+            RIGHT: SETTINGS.controls.mouseButtons.right
         };
         
         // Setup scene
-        this.scene.background = new THREE.Color(0x87CEEB); // Sky blue
-        // this.scene.fog = new THREE.Fog(0x87CEEB, 50, 200); // Disable fog for now
+        this.scene.background = new THREE.Color(SETTINGS.scene.backgroundColor);
+        if (SETTINGS.scene.fog.enabled) {
+            this.scene.fog = new THREE.Fog(
+                SETTINGS.scene.backgroundColor,
+                SETTINGS.scene.fog.near,
+                SETTINGS.scene.fog.far
+            );
+        }
         
         // Lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        const ambientLight = new THREE.AmbientLight(
+            SETTINGS.lighting.ambient.color,
+            SETTINGS.lighting.ambient.intensity
+        );
         this.scene.add(ambientLight);
         
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        directionalLight.position.set(50, 100, 50);
+        const directionalLight = new THREE.DirectionalLight(
+            SETTINGS.lighting.directional.color,
+            SETTINGS.lighting.directional.intensity
+        );
+        directionalLight.position.set(
+            SETTINGS.lighting.directional.position.x,
+            SETTINGS.lighting.directional.position.y,
+            SETTINGS.lighting.directional.position.z
+        );
         directionalLight.castShadow = true;
-        directionalLight.shadow.camera.left = -50;
-        directionalLight.shadow.camera.right = 50;
-        directionalLight.shadow.camera.top = 50;
-        directionalLight.shadow.camera.bottom = -50;
-        directionalLight.shadow.mapSize.width = 2048;
-        directionalLight.shadow.mapSize.height = 2048;
+        directionalLight.shadow.camera.left = SETTINGS.lighting.directional.shadow.camera.left;
+        directionalLight.shadow.camera.right = SETTINGS.lighting.directional.shadow.camera.right;
+        directionalLight.shadow.camera.top = SETTINGS.lighting.directional.shadow.camera.top;
+        directionalLight.shadow.camera.bottom = SETTINGS.lighting.directional.shadow.camera.bottom;
+        directionalLight.shadow.mapSize.width = SETTINGS.lighting.directional.shadow.mapSize;
+        directionalLight.shadow.mapSize.height = SETTINGS.lighting.directional.shadow.mapSize;
         this.scene.add(directionalLight);
         
         // Ground plane
-        const groundGeometry = new THREE.PlaneGeometry(200, 200);
+        const groundGeometry = new THREE.PlaneGeometry(
+            SETTINGS.ground.size,
+            SETTINGS.ground.size
+        );
         const groundMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0xaaaaaa,  // Medium grey
-            roughness: 0.8,
-            metalness: 0.2
+            color: SETTINGS.ground.color,
+            roughness: SETTINGS.ground.roughness,
+            metalness: SETTINGS.ground.metalness
         });
         const ground = new THREE.Mesh(groundGeometry, groundMaterial);
         ground.rotation.x = -Math.PI / 2;
-        ground.position.y = -0.01; // Slightly below to avoid z-fighting
+        ground.position.y = SETTINGS.ground.yPosition;
         ground.receiveShadow = true;
         this.scene.add(ground);
         
         // Enhanced grid with balanced visibility
-        this.gridHelper = new THREE.GridHelper(100, 100, 0x444444, 0x222222);
-        this.gridHelper.material.opacity = 0.4;
+        this.gridHelper = new THREE.GridHelper(
+            SETTINGS.grid.size,
+            SETTINGS.grid.divisions,
+            SETTINGS.grid.colorCenterLine,
+            SETTINGS.grid.colorGrid
+        );
+        this.gridHelper.material.opacity = SETTINGS.grid.opacity;
         this.gridHelper.material.transparent = true;
         this.scene.add(this.gridHelper);
         
         // Add subtle main axis lines for X and Z
+        const axisLength = SETTINGS.grid.axisLines.length;
+        
         // X-axis line (subtle red tint)
         const xAxisGeometry = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(-50, 0.01, 0),
-            new THREE.Vector3(50, 0.01, 0)
+            new THREE.Vector3(-axisLength, 0.01, 0),
+            new THREE.Vector3(axisLength, 0.01, 0)
         ]);
         const xAxisLine = new THREE.Line(xAxisGeometry, new THREE.LineBasicMaterial({ 
-            color: 0x884444, 
-            opacity: 0.5, 
+            color: SETTINGS.grid.axisLines.xColor, 
+            opacity: SETTINGS.grid.axisLines.opacity, 
             transparent: true
         }));
         this.scene.add(xAxisLine);
         
         // Z-axis line (subtle blue tint)
         const zAxisGeometry = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(0, 0.01, -50),
-            new THREE.Vector3(0, 0.01, 50)
+            new THREE.Vector3(0, 0.01, -axisLength),
+            new THREE.Vector3(0, 0.01, axisLength)
         ]);
         const zAxisLine = new THREE.Line(zAxisGeometry, new THREE.LineBasicMaterial({ 
-            color: 0x444488, 
-            opacity: 0.5, 
+            color: SETTINGS.grid.axisLines.zColor, 
+            opacity: SETTINGS.grid.axisLines.opacity, 
             transparent: true
         }));
         this.scene.add(zAxisLine);
@@ -195,7 +368,7 @@ class VoxelApp {
     
     onWindowResize() {
         const aspect = window.innerWidth / window.innerHeight;
-        const frustumSize = 20;
+        const frustumSize = SETTINGS.camera.frustumSize;
         
         if (this.camera) {
             this.camera.left = -frustumSize * aspect / 2;
@@ -402,23 +575,36 @@ class VoxelApp {
             return;
         }
         
-        // Option 1: Start with empty scene (uncomment if preferred)
-        // this.voxelEngine.updateInstances();
-        // return;
-        
-        // Option 2: Simple flat ground (current)
-        for (let x = -3; x <= 3; x++) {
-            for (let z = -3; z <= 3; z++) {
-                this.voxelEngine.setVoxel(x, 0, z, VoxelType.GRASS);
-            }
+        if (!SETTINGS.testScene.enabled) {
+            this.voxelEngine.updateInstances();
+            return;
         }
         
-        // Option 3: Just a few starter blocks
-        // this.voxelEngine.setVoxel(0, 0, 0, VoxelType.GRASS);
-        // this.voxelEngine.setVoxel(1, 0, 0, VoxelType.SAND);
-        // this.voxelEngine.setVoxel(-1, 0, 0, VoxelType.DIRT);
-        // this.voxelEngine.setVoxel(0, 0, 1, VoxelType.WATER);
-        // this.voxelEngine.setVoxel(0, 0, -1, VoxelType.STONE);
+        switch (SETTINGS.testScene.mode) {
+            case 'empty':
+                // Start with empty scene
+                break;
+                
+            case 'flat':
+                // Simple flat ground
+                const sizeX = SETTINGS.testScene.flatGround.sizeX;
+                const sizeZ = SETTINGS.testScene.flatGround.sizeZ;
+                for (let x = -sizeX; x <= sizeX; x++) {
+                    for (let z = -sizeZ; z <= sizeZ; z++) {
+                        this.voxelEngine.setVoxel(x, 0, z, VoxelType.GRASS);
+                    }
+                }
+                break;
+                
+            case 'starter':
+                // Just a few starter blocks
+                this.voxelEngine.setVoxel(0, 0, 0, VoxelType.GRASS);
+                this.voxelEngine.setVoxel(1, 0, 0, VoxelType.SAND);
+                this.voxelEngine.setVoxel(-1, 0, 0, VoxelType.DIRT);
+                this.voxelEngine.setVoxel(0, 0, 1, VoxelType.WATER);
+                this.voxelEngine.setVoxel(0, 0, -1, VoxelType.STONE);
+                break;
+        }
         
         this.voxelEngine.updateInstances();
     }

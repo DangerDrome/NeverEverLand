@@ -12,7 +12,10 @@
       "WebFetch(domain:localhost)",
       "mcp__ide__getDiagnostics",
       "Bash(npx tsc:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(chmod:*)",
+      "Bash(./devserver.sh)",
+      "Bash(./devserver.sh:*)"
     ],
     "deny": []
   }
