@@ -25,6 +25,7 @@ export class BoxSelectionTool {
     private selectionStart: THREE.Vector3 | null = null;
     private selectionEnd: THREE.Vector3 | null = null;
     private selectedVoxels: SelectedVoxel[] = [];
+    private previousSelection: SelectedVoxel[] = [];
     
     // Visual elements
     private selectionBox: THREE.Box3Helper | null = null;
@@ -118,11 +119,18 @@ export class BoxSelectionTool {
      * Select a single voxel
      */
     private selectSingleVoxel(x: number, y: number, z: number, type: VoxelType): void {
-        // Clear previous selection
-        this.clearSelection();
+        // Store previous selection for undo
+        const prevSelection = [...this.previousSelection];
+        
+        // Clear previous selection visually
+        this.clearSelectionVisuals();
         
         // Add single voxel to selection
         this.selectedVoxels = [{ x, y, z, type }];
+        
+        // Record selection change
+        this.voxelEngine.recordSelectionChange(prevSelection, this.selectedVoxels);
+        this.previousSelection = [...this.selectedVoxels];
         
         // Update visuals
         this.updateSelectionOutline();
@@ -150,6 +158,9 @@ export class BoxSelectionTool {
         );
         
         if (!isAlreadySelected) {
+            // Store previous selection for undo
+            const prevSelection = [...this.previousSelection];
+            
             // Add to selection
             this.selectedVoxels.push({ x, y, z, type });
             
@@ -161,6 +172,10 @@ export class BoxSelectionTool {
             if (this.selectedVoxels.length > 0) {
                 const center = this.getSelectionCenter();
                 this.transformGizmo.show(center);
+                
+                // Record selection change
+                this.voxelEngine.recordSelectionChange(prevSelection, this.selectedVoxels);
+                this.previousSelection = [...this.selectedVoxels];
             }
             
             console.log(`Added voxel at (${x}, ${y}, ${z}) to selection. Total: ${this.selectedVoxels.length} voxels`);
@@ -233,6 +248,14 @@ export class BoxSelectionTool {
         if (this.selectedVoxels.length > 0) {
             const center = this.getSelectionCenter();
             this.transformGizmo.show(center);
+            
+            // Record selection change
+            const prevSelection = addToExisting ? [...existingSelection].map(key => {
+                const [x, y, z] = key.split(',').map(Number);
+                return { x, y, z, type: this.voxelEngine.getVoxel(x, y, z) };
+            }) : [];
+            this.voxelEngine.recordSelectionChange(prevSelection, this.selectedVoxels);
+            this.previousSelection = [...this.selectedVoxels];
         }
         
         console.log(`Selected ${this.selectedVoxels.length} contiguous voxels of type ${VoxelType[targetType]}`);
@@ -352,6 +375,11 @@ export class BoxSelectionTool {
         if (this.selectedVoxels.length > 0) {
             const center = this.getSelectionCenter();
             this.transformGizmo.show(center);
+            
+            // Record selection change
+            const prevSelection = this.isAddingToSelection ? [...this.previousSelection] : [];
+            this.voxelEngine.recordSelectionChange(prevSelection, this.selectedVoxels);
+            this.previousSelection = [...this.selectedVoxels];
         }
         
         console.log(`Selected ${this.selectedVoxels.length} voxels`);
@@ -983,8 +1011,21 @@ export class BoxSelectionTool {
         // Update the engine's visual representation
         this.voxelEngine.updateInstances();
         
+        // Record selection change - if duplicating, we're selecting the new voxels
+        const prevSelection = [...this.previousSelection];
+        
         // Update selected voxels list
         this.selectedVoxels = newVoxels;
+        
+        // If we duplicated, we want to select the new copies
+        if (this.isDuplicating) {
+            // Record the selection change to the new duplicated voxels
+            this.voxelEngine.recordSelectionChange(prevSelection, newVoxels);
+            this.previousSelection = [...newVoxels];
+        } else {
+            // For move/rotate, selection stays the same but at new positions
+            this.previousSelection = [...newVoxels];
+        }
         
         // Update selection visuals
         this.updateSelectionOutline();
@@ -1231,11 +1272,9 @@ export class BoxSelectionTool {
     }
     
     /**
-     * Clear selection
+     * Clear selection visuals only (without recording undo)
      */
-    clearSelection(): void {
-        this.selectedVoxels = [];
-        
+    private clearSelectionVisuals(): void {
         if (this.selectionBox) {
             this.scene.remove(this.selectionBox);
             this.selectionBox.geometry.dispose();
@@ -1262,6 +1301,26 @@ export class BoxSelectionTool {
     }
     
     /**
+     * Clear selection (with undo recording)
+     */
+    clearSelection(): void {
+        if (this.selectedVoxels.length === 0) return;
+        
+        // Store previous selection for undo
+        const prevSelection = [...this.previousSelection];
+        
+        // Clear selection
+        this.selectedVoxels = [];
+        
+        // Record selection change
+        this.voxelEngine.recordSelectionChange(prevSelection, []);
+        this.previousSelection = [];
+        
+        // Clear visuals
+        this.clearSelectionVisuals();
+    }
+    
+    /**
      * Check if currently selecting
      */
     isInSelectionMode(): boolean {
@@ -1280,6 +1339,75 @@ export class BoxSelectionTool {
      */
     getTransformMode(): 'move' | 'rotate' | null {
         return this.transformMode;
+    }
+    
+    /**
+     * Restore selection from saved state (used by undo/redo)
+     */
+    restoreSelection(selectedVoxels: Array<{ x: number; y: number; z: number; type: VoxelType }>): void {
+        // Clear visuals
+        this.clearSelectionVisuals();
+        
+        // Restore the selection without recording it
+        this.selectedVoxels = selectedVoxels.map(v => ({ ...v }));
+        this.previousSelection = [...this.selectedVoxels];
+        
+        // Reset duplication state when restoring
+        this.isDuplicating = false;
+        
+        if (this.selectedVoxels.length > 0) {
+            // Update visuals
+            this.updateSelectionOutline();
+            this.showSelectedVoxels();
+            
+            // Show gizmo at selection center
+            const center = this.getSelectionCenter();
+            this.transformGizmo.show(center);
+        }
+        
+        console.log(`Selection restored: ${this.selectedVoxels.length} voxels`);
+    }
+    
+    /**
+     * Get current selection state for saving
+     */
+    getSelectionState(): Array<{ x: number; y: number; z: number; type: VoxelType }> {
+        return this.selectedVoxels.map(v => ({ ...v }));
+    }
+    
+    /**
+     * Refresh selection after undo/redo - removes voxels that no longer exist
+     */
+    refreshSelection(): void {
+        if (this.selectedVoxels.length === 0) return;
+        
+        // Filter out voxels that no longer exist (were removed by undo/redo)
+        const validVoxels: SelectedVoxel[] = [];
+        for (const voxel of this.selectedVoxels) {
+            const currentType = this.voxelEngine.getVoxel(voxel.x, voxel.y, voxel.z);
+            if (currentType !== VoxelType.AIR) {
+                // Update the type in case it changed
+                validVoxels.push({ x: voxel.x, y: voxel.y, z: voxel.z, type: currentType });
+            }
+        }
+        
+        // Update the selection
+        this.selectedVoxels = validVoxels;
+        
+        // If all voxels were removed, clear the selection
+        if (this.selectedVoxels.length === 0) {
+            this.clearSelection();
+        } else {
+            // Refresh the visual representation
+            this.updateSelectionOutline();
+            this.showSelectedVoxels();
+            
+            // Update gizmo position
+            const center = this.getSelectionCenter();
+            this.transformGizmo.show(center);
+        }
+        
+        console.log(`Selection refreshed: ${this.selectedVoxels.length} voxels remain`);
     }
     
     /**

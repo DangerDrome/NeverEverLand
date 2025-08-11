@@ -343,6 +343,17 @@ export class VoxelEngine {
         return this.undoRedoManager.redo();
     }
     
+    recordSelectionChange(
+        previousSelection: Array<{ x: number; y: number; z: number; type: VoxelType }>,
+        newSelection: Array<{ x: number; y: number; z: number; type: VoxelType }>
+    ): void {
+        this.undoRedoManager.recordSelectionChange(previousSelection, newSelection);
+    }
+    
+    setSelectionCallback(callback: (selection: Array<{ x: number; y: number; z: number; type: VoxelType }>) => void): void {
+        this.undoRedoManager.setSelectionCallback(callback);
+    }
+    
     finalizePendingOperations(): void {
         this.undoRedoManager.finalizePendingOperations();
     }

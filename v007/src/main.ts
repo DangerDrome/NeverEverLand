@@ -441,6 +441,13 @@ class VoxelApp {
         // Initialize box selection tool
         if (this.camera) {
             this.boxSelectionTool = new BoxSelectionTool(this.scene, this.voxelEngine, this.camera);
+            
+            // Set up selection callback for undo/redo
+            this.voxelEngine.setSelectionCallback((selection) => {
+                if (this.boxSelectionTool) {
+                    this.boxSelectionTool.restoreSelection(selection);
+                }
+            });
         }
         
         // Setup event listeners

@@ -8,24 +8,79 @@ interface VoxelOperation {
     previousType: VoxelType;
 }
 
+interface SelectionOperation {
+    type: 'selection';
+    previousSelection: Array<{ x: number; y: number; z: number; type: VoxelType }>;
+    newSelection: Array<{ x: number; y: number; z: number; type: VoxelType }>;
+}
+
+type Operation = VoxelOperation | SelectionOperation;
+
 interface OperationGroup {
-    operations: VoxelOperation[];
+    operations: Operation[];
     timestamp: number;
 }
 
 export class UndoRedoManager {
     private undoStack: OperationGroup[] = [];
     private redoStack: OperationGroup[] = [];
-    private currentGroup: VoxelOperation[] = [];
+    private currentGroup: Operation[] = [];
     private lastOperationTime: number = 0;
     private readonly maxHistorySize: number;
     private readonly groupingTimeMs: number = 100; // Group operations within 100ms
     private voxelEngine: VoxelEngine;
     private groupTimer: number | null = null;
+    private selectionCallback: ((selection: Array<{ x: number; y: number; z: number; type: VoxelType }>) => void) | null = null;
     
     constructor(voxelEngine: VoxelEngine, maxHistorySize: number = 100) {
         this.voxelEngine = voxelEngine;
         this.maxHistorySize = maxHistorySize;
+    }
+    
+    /**
+     * Set the callback for selection restoration
+     */
+    setSelectionCallback(callback: (selection: Array<{ x: number; y: number; z: number; type: VoxelType }>) => void): void {
+        this.selectionCallback = callback;
+    }
+    
+    /**
+     * Record a selection change as an operation
+     */
+    recordSelectionChange(
+        previousSelection: Array<{ x: number; y: number; z: number; type: VoxelType }>,
+        newSelection: Array<{ x: number; y: number; z: number; type: VoxelType }>
+    ): void {
+        // Don't record if selections are the same
+        if (this.selectionsEqual(previousSelection, newSelection)) return;
+        
+        const operation: SelectionOperation = {
+            type: 'selection',
+            previousSelection: previousSelection.map(v => ({ ...v })),
+            newSelection: newSelection.map(v => ({ ...v }))
+        };
+        
+        // Add to current group
+        this.currentGroup.push(operation);
+        
+        // Clear any existing timer
+        if (this.groupTimer) {
+            window.clearTimeout(this.groupTimer);
+        }
+        
+        // Set timer to finalize group
+        this.groupTimer = window.setTimeout(() => {
+            this.finalizeGroup();
+        }, this.groupingTimeMs);
+        
+        // Clear redo stack when new operation is performed
+        this.redoStack = [];
+    }
+    
+    private selectionsEqual(a: Array<{ x: number; y: number; z: number; type: VoxelType }>, b: Array<{ x: number; y: number; z: number; type: VoxelType }>): boolean {
+        if (a.length !== b.length) return false;
+        const aSet = new Set(a.map(v => `${v.x},${v.y},${v.z}`));
+        return b.every(v => aSet.has(`${v.x},${v.y},${v.z}`));
     }
     
     /**
@@ -110,14 +165,22 @@ export class UndoRedoManager {
         // Apply operations in reverse order
         for (let i = group.operations.length - 1; i >= 0; i--) {
             const op = group.operations[i];
-            // Restore previous state without recording undo
-            this.voxelEngine.setVoxel(
-                op.position.x,
-                op.position.y,
-                op.position.z,
-                op.previousType,
-                false // Don't record undo operations
-            );
+            
+            if (op.type === 'selection') {
+                // Restore previous selection
+                if (this.selectionCallback) {
+                    this.selectionCallback(op.previousSelection);
+                }
+            } else {
+                // Restore previous voxel state without recording undo
+                this.voxelEngine.setVoxel(
+                    op.position.x,
+                    op.position.y,
+                    op.position.z,
+                    op.previousType,
+                    false // Don't record undo operations
+                );
+            }
         }
         
         // Update rendering
@@ -139,13 +202,20 @@ export class UndoRedoManager {
         
         // Apply operations in original order
         for (const op of group.operations) {
-            this.voxelEngine.setVoxel(
-                op.position.x,
-                op.position.y,
-                op.position.z,
-                op.voxelType,
-                false // Don't record undo operations
-            );
+            if (op.type === 'selection') {
+                // Restore new selection
+                if (this.selectionCallback) {
+                    this.selectionCallback(op.newSelection);
+                }
+            } else {
+                this.voxelEngine.setVoxel(
+                    op.position.x,
+                    op.position.y,
+                    op.position.z,
+                    op.voxelType,
+                    false // Don't record undo operations
+                );
+            }
         }
         
         // Update rendering
