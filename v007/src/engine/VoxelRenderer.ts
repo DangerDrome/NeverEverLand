@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { VoxelType, VoxelTypeDefinition } from '../types';
+import { EdgeRenderer } from './EdgeRenderer';
 
 // Voxel type definitions with vibrant colors
 const VOXEL_TYPES: Record<VoxelType, VoxelTypeDefinition> = {
@@ -9,9 +10,9 @@ const VOXEL_TYPES: Record<VoxelType, VoxelTypeDefinition> = {
     [VoxelType.STONE]: { color: 0x696969 },      // Dim gray
     [VoxelType.WOOD]: { color: 0xDEB887 },       // Burlywood (light brown)
     [VoxelType.LEAVES]: { color: 0x32CD32 },     // Lime green
-    [VoxelType.WATER]: { color: 0x00CED1, transparent: true, opacity: 0.8 }, // Dark turquoise
+    [VoxelType.WATER]: { color: 0x00CED1, transparent: true, opacity: 0.7 }, // Dark turquoise (more transparent)
     [VoxelType.SAND]: { color: 0xFFE4B5 },       // Moccasin (sandy color)
-    [VoxelType.SNOW]: { color: 0xF0F8FF },       // Alice blue (bright white-blue)
+    [VoxelType.SNOW]: { color: 0xF0F8FF, transparent: true, opacity: 0.85 },  // Alice blue (semi-transparent)
     [VoxelType.ICE]: { color: 0x87CEEB, transparent: true, opacity: 0.9 }   // Sky blue
 };
 
@@ -24,14 +25,20 @@ export class VoxelRenderer {
     private scene: THREE.Scene;
     private voxelSize: number;
     private geometry: THREE.BoxGeometry;
+    private edgesGeometry: THREE.EdgesGeometry;
     private materials: Map<VoxelType, THREE.MeshStandardMaterial>;
-    private mesh: THREE.InstancedMesh | null;
+    private opaqueMesh: THREE.InstancedMesh | null;
+    private transparentMesh: THREE.InstancedMesh | null;
+    private edgeRenderer: EdgeRenderer;
     private matricesArray: Float32Array;
     private colorsArray: Float32Array;
+    private opacityArray: Float32Array;
     private maxInstances: number;
     private instanceData: Map<VoxelType, InstanceData>;
     private tempMatrix: THREE.Matrix4;
     private tempColor: THREE.Color;
+    private showEdges: boolean;
+    private currentVoxelData: { x: number; y: number; z: number; type: VoxelType }[];
     
     constructor(scene: THREE.Scene, voxelSize = 1.0) {
         this.scene = scene;
@@ -39,16 +46,26 @@ export class VoxelRenderer {
         
         // Geometry shared by all voxel types
         this.geometry = new THREE.BoxGeometry(this.voxelSize, this.voxelSize, this.voxelSize);
+        this.edgesGeometry = new THREE.EdgesGeometry(this.geometry);
         
         // Materials for each voxel type
         this.materials = new Map();
         
-        // Single mesh with multiple groups for each voxel type
-        this.mesh = null;
+        // Separate meshes for opaque and transparent voxels
+        this.opaqueMesh = null;
+        this.transparentMesh = null;
+        this.showEdges = false;
         
-        // Buffers for thin instancing
+        // Edge renderer for clean edge display
+        this.edgeRenderer = new EdgeRenderer(scene, voxelSize);
+        
+        // Store current voxel data for edge updates
+        this.currentVoxelData = [];
+        
+        // Buffers for instancing
         this.matricesArray = new Float32Array(0);
         this.colorsArray = new Float32Array(0);
+        this.opacityArray = new Float32Array(0);
         this.maxInstances = 1048576; // 1M instances
         
         // Instance data per type
@@ -94,6 +111,7 @@ export class VoxelRenderer {
         // Pre-allocate buffers
         this.matricesArray = new Float32Array(this.maxInstances * 16);
         this.colorsArray = new Float32Array(this.maxInstances * 3);
+        this.opacityArray = new Float32Array(this.maxInstances);
         
         // Initialize instance data tracking
         for (const type of this.materials.keys()) {
@@ -106,34 +124,48 @@ export class VoxelRenderer {
     
     updateFromVoxelsByType(voxelsByType: Map<VoxelType, Set<string>>): void {
         console.log('VoxelRenderer.updateFromVoxelsByType called with:', voxelsByType);
-        // Calculate instance counts and assign start indices
-        let totalInstances = 0;
+        
+        // Separate opaque and transparent voxels
+        let opaqueCount = 0;
+        let transparentCount = 0;
+        
+        // Collect all voxel data for edge rendering (including type)
+        const allVoxelData: { x: number; y: number; z: number; type: VoxelType }[] = [];
+        
+        // First pass: count instances for each category
         for (const [type, positions] of voxelsByType.entries()) {
             if (type === VoxelType.AIR) continue;
             
-            const data = this.instanceData.get(type);
-            if (data) {
-                data.startIndex = totalInstances;
-                data.count = Math.min(positions.size, this.maxInstances - totalInstances);
-                totalInstances += data.count;
+            const typeInfo = VOXEL_TYPES[type];
+            if (typeInfo.transparent) {
+                transparentCount += positions.size;
+            } else {
+                opaqueCount += positions.size;
             }
         }
         
-        // Fill buffers
+        // Allocate instance indices
+        let opaqueIndex = 0;
+        let transparentIndex = 0;
+        
+        // Second pass: fill buffers
         for (const [type, positions] of voxelsByType.entries()) {
             if (type === VoxelType.AIR) continue;
             
-            const data = this.instanceData.get(type);
-            if (!data || data.count === 0) continue;
-            
-            const baseColor = VOXEL_TYPES[type].color;
-            let localIndex = 0;
+            const typeInfo = VOXEL_TYPES[type];
+            const baseColor = typeInfo.color;
+            const opacity = typeInfo.opacity || 1.0;
+            const isTransparent = typeInfo.transparent || false;
             
             for (const posKey of positions) {
-                if (localIndex >= data.count) break;
-                
                 const [x, y, z] = posKey.split(',').map(Number);
-                const globalIndex = data.startIndex + localIndex;
+                
+                // Collect voxel data for edge rendering (including type)
+                allVoxelData.push({ x, y, z, type });
+                
+                // CRITICAL FIX: Offset transparent voxels to come after opaque ones in the buffer
+                // This prevents them from overwriting each other
+                const globalIndex = isTransparent ? (opaqueCount + transparentIndex) : opaqueIndex;
                 
                 // Set transformation matrix - offset by half voxel size to center in grid cells
                 this.tempMatrix.makeTranslation(
@@ -144,76 +176,126 @@ export class VoxelRenderer {
                 
                 this.tempMatrix.toArray(this.matricesArray, globalIndex * 16);
                 
-                // Set color - no darkness modification to keep vibrant colors
+                // Set color
                 this.tempColor.setHex(baseColor);
-                
-                // Debug: Log the color being set for first few voxels
-                if (globalIndex < 5) {
-                    console.log(`Voxel ${globalIndex} (${VoxelType[type]}): color=0x${baseColor.toString(16)} rgb=(${this.tempColor.r.toFixed(2)}, ${this.tempColor.g.toFixed(2)}, ${this.tempColor.b.toFixed(2)})`);
-                }
-                
-                // Optional: very subtle variation (uncomment if desired)
-                // const variation = 0.95 + Math.random() * 0.1;
-                // this.tempColor.multiplyScalar(variation);
-                
                 this.tempColor.toArray(this.colorsArray, globalIndex * 3);
                 
-                localIndex++;
+                // Set opacity
+                this.opacityArray[globalIndex] = opacity;
+                
+                // Debug: Log the first few transparent voxels
+                if (isTransparent && globalIndex < 3) {
+                    console.log(`Transparent voxel ${globalIndex} (${VoxelType[type]}): color=0x${baseColor.toString(16)}, opacity=${opacity}`);
+                }
+                
+                // Increment appropriate index
+                if (isTransparent) {
+                    transparentIndex++;
+                } else {
+                    opaqueIndex++;
+                }
             }
         }
         
-        this.updateMesh(totalInstances);
+        this.updateMeshes(opaqueCount, transparentCount);
+        
+        // Store current voxel data for edge toggle
+        this.currentVoxelData = allVoxelData;
+        
+        // Update edge renderer with all voxel data if edges are visible
+        if (this.showEdges) {
+            this.edgeRenderer.updateEdges(allVoxelData);
+        }
     }
     
-    updateMesh(totalInstances: number): void {
+    updateMeshes(opaqueCount: number, transparentCount: number): void {
         // Remove old meshes
-        if (this.mesh) {
-            this.scene.remove(this.mesh);
-            this.mesh.geometry.dispose();
-            this.mesh = null;
+        if (this.opaqueMesh) {
+            this.scene.remove(this.opaqueMesh);
+            this.opaqueMesh.geometry.dispose();
+            this.opaqueMesh = null;
+        }
+        if (this.transparentMesh) {
+            this.scene.remove(this.transparentMesh);
+            this.transparentMesh.geometry.dispose();
+            this.transparentMesh = null;
         }
         
-        if (totalInstances === 0) {
-            return;
-        }
-        
-        // Create simple material - let Three.js handle instance colors natively
-        const material = new THREE.MeshStandardMaterial({
-            roughness: 0.8,
-            metalness: 0.2
-        });
-        
-        // Create mesh with all instances
-        this.mesh = new THREE.InstancedMesh(this.geometry, material, totalInstances);
-        this.mesh.count = totalInstances;
-        this.mesh.castShadow = true;
-        this.mesh.receiveShadow = true;
-        this.mesh.frustumCulled = true;
-        
-        // Apply transforms and colors using Three.js built-in methods
         const tempMatrix = new THREE.Matrix4();
         const tempColor = new THREE.Color();
         
-        for (let i = 0; i < totalInstances; i++) {
-            // Set transformation matrix
-            tempMatrix.fromArray(this.matricesArray, i * 16);
-            this.mesh.setMatrixAt(i, tempMatrix);
+        // Create opaque mesh
+        if (opaqueCount > 0) {
+            const opaqueMaterial = new THREE.MeshStandardMaterial({
+                roughness: 0.8,
+                metalness: 0.2
+            });
             
-            // Set instance color using Three.js built-in method
-            tempColor.fromArray(this.colorsArray, i * 3);
-            this.mesh.setColorAt(i, tempColor);
+            this.opaqueMesh = new THREE.InstancedMesh(this.geometry, opaqueMaterial, opaqueCount);
+            this.opaqueMesh.count = opaqueCount;
+            this.opaqueMesh.castShadow = true;
+            this.opaqueMesh.receiveShadow = true;
+            this.opaqueMesh.frustumCulled = true;
+            
+            // Apply transforms and colors for opaque instances
+            for (let i = 0; i < opaqueCount; i++) {
+                tempMatrix.fromArray(this.matricesArray, i * 16);
+                this.opaqueMesh.setMatrixAt(i, tempMatrix);
+                
+                tempColor.fromArray(this.colorsArray, i * 3);
+                this.opaqueMesh.setColorAt(i, tempColor);
+            }
+            
+            this.opaqueMesh.instanceMatrix.needsUpdate = true;
+            if (this.opaqueMesh.instanceColor) {
+                this.opaqueMesh.instanceColor.needsUpdate = true;
+            }
+            
+            this.scene.add(this.opaqueMesh);
         }
         
-        // Mark attributes as needing update
-        this.mesh.instanceMatrix.needsUpdate = true;
-        if (this.mesh.instanceColor) {
-            this.mesh.instanceColor.needsUpdate = true;
+        // Create transparent mesh
+        if (transparentCount > 0) {
+            // Custom shader material for transparency with per-instance opacity
+            const transparentMaterial = new THREE.MeshStandardMaterial({
+                roughness: 0.8,
+                metalness: 0.2,
+                transparent: true,
+                opacity: 0.8,  // Base opacity
+                depthWrite: false,  // Important for proper transparency
+                side: THREE.DoubleSide  // Render both sides for water
+            });
+            
+            this.transparentMesh = new THREE.InstancedMesh(this.geometry, transparentMaterial, transparentCount);
+            this.transparentMesh.count = transparentCount;
+            this.transparentMesh.castShadow = true;
+            this.transparentMesh.receiveShadow = true;
+            this.transparentMesh.frustumCulled = true;
+            this.transparentMesh.renderOrder = 1;  // Render after opaque objects
+            
+            // Apply transforms and colors for transparent instances
+            // CRITICAL: Read from the correct offset in the buffer (after opaque voxels)
+            for (let i = 0; i < transparentCount; i++) {
+                const bufferIndex = opaqueCount + i;  // Offset by opaque count
+                tempMatrix.fromArray(this.matricesArray, bufferIndex * 16);
+                this.transparentMesh.setMatrixAt(i, tempMatrix);
+                
+                tempColor.fromArray(this.colorsArray, bufferIndex * 3);
+                // Apply opacity to color alpha channel
+                const opacity = this.opacityArray[bufferIndex];
+                tempColor.multiplyScalar(opacity);
+                this.transparentMesh.setColorAt(i, tempColor);
+            }
+            
+            this.transparentMesh.instanceMatrix.needsUpdate = true;
+            if (this.transparentMesh.instanceColor) {
+                this.transparentMesh.instanceColor.needsUpdate = true;
+            }
+            
+            this.scene.add(this.transparentMesh);
         }
         
-        this.scene.add(this.mesh);
-        
-        console.log(`Created mesh with ${totalInstances} instances`);
-        console.log('First few colors:', this.colorsArray.slice(0, 9)); // Show first 3 voxel colors (3 components each)
+        console.log(`Created meshes: opaque=${opaqueCount}, transparent=${transparentCount}`);
     }
     
     // Get instance count for a specific type
@@ -231,13 +313,44 @@ export class VoxelRenderer {
         return total;
     }
     
+    // Toggle edge display
+    toggleEdges(): void {
+        this.showEdges = !this.showEdges;
+        this.edgeRenderer.setVisible(this.showEdges);
+        
+        // Immediately update edges based on current state
+        if (this.showEdges) {
+            // Use stored voxel data to immediately show edges
+            if (this.currentVoxelData.length > 0) {
+                this.edgeRenderer.updateEdges(this.currentVoxelData);
+            }
+        } else {
+            // Clear edges when toggled off
+            this.edgeRenderer.clearEdges();
+        }
+    }
+    
+    // Get edge display state
+    getShowEdges(): boolean {
+        return this.showEdges;
+    }
+    
     // Clear all instances
     clear() {
-        if (this.mesh) {
-            this.scene.remove(this.mesh);
-            this.mesh.geometry.dispose();
-            this.mesh = null;
+        if (this.opaqueMesh) {
+            this.scene.remove(this.opaqueMesh);
+            this.opaqueMesh.geometry.dispose();
+            this.opaqueMesh = null;
         }
+        if (this.transparentMesh) {
+            this.scene.remove(this.transparentMesh);
+            this.transparentMesh.geometry.dispose();
+            this.transparentMesh = null;
+        }
+        
+        // Clear edges and stored data
+        this.edgeRenderer.clearEdges();
+        this.currentVoxelData = [];
         
         for (const data of this.instanceData.values()) {
             data.startIndex = 0;
@@ -250,6 +363,7 @@ export class VoxelRenderer {
         this.clear();
         
         this.geometry.dispose();
+        this.edgesGeometry.dispose();
         
         for (const material of this.materials.values()) {
             material.dispose();
@@ -257,5 +371,8 @@ export class VoxelRenderer {
         
         this.materials.clear();
         this.instanceData.clear();
+        
+        // Dispose edge renderer
+        this.edgeRenderer.dispose();
     }
 }

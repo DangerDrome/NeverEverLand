@@ -27,7 +27,9 @@ NeverEverLand is a Three.js-based isometric game engine with multiple versions:
 - **v002**: Modular approach with WFC (Wave Function Collapse) terrain generation, player movement, and minimap
 - **v003**: Entity Component System (ECS) architecture with proper modular file structure
 - **v004**: Not specified in detail
-- **v005**: Hybrid voxel/tile system with advanced editing capabilities (current active version)
+- **v005**: Hybrid voxel/tile system with advanced editing capabilities
+- **v006**: Performance optimized version with tilt-shift effects
+- **v007**: High-performance TypeScript voxel engine with VOX format support (current active version)
 
 ## Architecture
 
@@ -63,6 +65,17 @@ Both versions share these fundamental components:
 - **StyleUI Framework**: Complete UI component library with panels, drag & drop
 - **Post-processing**: Pixelation and bloom effects
 - **Voxel Editing**: Real-time voxel placement/removal with chunked rendering
+
+**v007** (`v007/src/main.ts`):
+- **TypeScript Architecture**: Full type safety with strict typing
+- **High-Performance Rendering**: Instanced mesh rendering supporting 1M+ voxels at 60 FPS
+- **VOX Format Support**: Import/export MagicaVoxel .vox files with automatic coordinate conversion
+- **Advanced Tools**: Brush, eraser, box, line, and fill tools for voxel editing
+- **Undo/Redo System**: Complete operation history with automatic grouping
+- **Tilt-Shift Effect**: Depth of field post-processing from v006
+- **Orthographic Camera Fix**: Negative near plane (-500) prevents clipping at all zoom levels
+- **File I/O System**: `/v007/src/io/` contains VoxParser, VoxWriter, and FileManager
+- **Settings System**: Centralized configuration in main.ts for easy customization
 
 ## Key Features
 

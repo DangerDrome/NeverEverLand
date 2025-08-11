@@ -221,10 +221,12 @@ export class DrawingSystem {
                     
                     // Apply voxel change immediately
                     if (this.drawMode === 'add') {
+                        // When adding, replace any existing voxel with the new type
                         if (this.voxelEngine.setVoxel(vx, vy, vz, this.currentVoxelType)) {
                             changed = true;
                         }
                     } else {
+                        // When removing (eraser mode or right-click), set to AIR
                         if (this.voxelEngine.setVoxel(vx, vy, vz, VoxelType.AIR)) {
                             changed = true;
                         }

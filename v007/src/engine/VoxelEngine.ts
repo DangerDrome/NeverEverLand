@@ -358,4 +358,14 @@ export class VoxelEngine {
     clearUndoHistory(): void {
         this.undoRedoManager.clear();
     }
+    
+    // Toggle edge display
+    toggleEdges(): void {
+        this.renderer.toggleEdges();
+    }
+    
+    // Get edge display state
+    getShowEdges(): boolean {
+        return this.renderer.getShowEdges();
+    }
 }

@@ -1,10 +1,14 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { TiltShiftPass } from './postprocessing/TiltShiftPass';
 import { VoxelEngine, VoxelType } from './engine/VoxelEngine';
 import { DrawingSystem } from './interaction/DrawingSystem';
 import { PerformanceMonitor } from './ui/Performance';
 import { DirectionIndicator } from './ui/DirectionIndicator';
 import { VoxelPanel } from './ui/VoxelPanel';
+import { FileManager } from './io/FileManager';
 
 // =====================================
 // SETTINGS - Customize your experience
@@ -59,9 +63,28 @@ const SETTINGS = {
     scene: {
         backgroundColor: 0x87CEEB,     // Sky blue background
         fog: {
-            enabled: false,            // Toggle fog effect
-            near: 50,                  // Fog start distance
-            far: 200                   // Fog end distance
+            enabled: false,             // Toggle fog effect
+            color: 0x87CEEB,           // Fog color (default matches sky for seamless blend)
+                                       // Try: 0xffffff (white), 0x000000 (black), 0xffcc88 (sunset)
+            opacity: 1.0,              // Fog opacity/density (0.0 = transparent, 1.0 = opaque)
+                                       // Note: This affects fog density calculation
+            near: 10,                  // Fog start distance
+            far: 100                   // Fog end distance
+        },
+        
+        // Global Shadow Settings
+        shadows: {
+            // Shadow Darkness/Opacity (controlled via ambient light intensity)
+            // 0.0 = pitch black shadows, 1.0 = no shadows visible
+            darkness: 0.4,             // How dark shadows appear (0.4 = 60% shadow opacity)
+            
+            // Shadow Color Tint (affects ambient light color)
+            colorTint: 0x000000,       // Shadow color tint (use 0x000000 for pure black)
+                                      // Try 0x0000ff for blue shadows, 0x4a4a8f for purple
+            
+            // Calculated ambient intensity (don't modify directly)
+            // This will be calculated as: 1.0 - darkness
+            getAmbientIntensity: function() { return 1.0 - this.darkness; }
         }
     },
     
@@ -69,24 +92,46 @@ const SETTINGS = {
     lighting: {
         ambient: {
             color: 0xffffff,           // Ambient light color
-            intensity: 0.6             // Ambient light intensity
+            intensity: 0.6             // Ambient light intensity (controls shadow darkness)
+                                      // Higher = lighter shadows, Lower = darker shadows
         },
         directional: {
             color: 0xffffff,           // Directional light color
             intensity: 0.8,            // Directional light intensity
-            position: {                // Light position
-                x: 50,
-                y: 100,
-                z: 50
+            position: {                // Light position (increased for better coverage)
+                x: 100,
+                y: 200,
+                z: 100
             },
             shadow: {
-                mapSize: 2048,         // Shadow map resolution
-                camera: {              // Shadow camera bounds
-                    left: -50,
-                    right: 50,
-                    top: 50,
-                    bottom: -50
-                }
+                // Shadow Map Quality
+                mapSize: 4096,         // Resolution of shadow map (higher = better quality but more GPU usage)
+                                      // Options: 512, 1024, 2048, 4096, 8192
+                
+                // Shadow Camera Configuration
+                camera: {              
+                    // Orthographic shadow camera bounds (area that casts shadows)
+                    left: -100,        // Left boundary of shadow area (increased)
+                    right: 100,        // Right boundary of shadow area (increased)
+                    top: 100,          // Top boundary of shadow area (increased)
+                    bottom: -100,      // Bottom boundary of shadow area (increased)
+                    near: 0.1,         // Near clipping plane for shadow camera (closer)
+                    far: 1000          // Far clipping plane for shadow camera (further)
+                },
+                
+                // Shadow Bias Settings (fine-tune to prevent artifacts)
+                bias: 0.0001,          // Depth bias - prevents shadow acne (dark speckles on surfaces)
+                                      // Too high = shadows detach from objects (peter panning)
+                                      // Too low/negative = shadow acne artifacts
+                                      // Good range: 0.0001 to 0.001
+                
+                normalBias: 0.001,     // Normal-based bias - helps with curved surfaces
+                                      // Pushes shadows along surface normals
+                                      // Good range: 0 to 0.01
+                
+                // Shadow Appearance
+                radius: 1,             // Shadow softness (blur radius) - higher = softer shadows
+                blurSamples: 25        // Number of samples for shadow blur (affects quality)
             }
         }
     },
@@ -118,10 +163,25 @@ const SETTINGS = {
     // Test Scene Settings
     testScene: {
         enabled: true,                 // Whether to create test scene on start
-        mode: 'flat',                  // 'empty', 'flat', 'starter'
+        mode: 'empty',                 // 'empty', 'flat', 'starter' - START WITH EMPTY SCENE
         flatGround: {
             sizeX: 3,                  // Half-width of flat ground
             sizeZ: 3                   // Half-depth of flat ground
+        }
+    },
+    
+    // Post-Processing Effects
+    postProcessing: {
+        enabled: true,                 // Enable post-processing effects
+        
+        // Tilt-Shift Depth of Field (v006 style)
+        tiltShift: {
+            enabled: false,            // Start disabled like v006
+            focusPosition: 0.5,        // Y position of focus band (0-1, 0.5 = center)
+            focusBandwidth: 0.3,       // Width of sharp focus band
+            blurStrength: 10.0,         // Maximum blur amount
+            gammaCorrection: 2.2,      // Gamma correction to compensate for blur darkening
+            bladeCount: 6              // Aperture blade count (0=circular, 3-8=polygonal bokeh)
         }
     },
     
@@ -146,12 +206,15 @@ class VoxelApp {
     private scene: THREE.Scene;
     private camera: THREE.OrthographicCamera | null;
     private renderer: THREE.WebGLRenderer | null;
+    private composer: EffectComposer | null;
+    private tiltShiftPass: TiltShiftPass | null;
     private controls: OrbitControls | null;
     private voxelEngine: VoxelEngine | null;
     private drawingSystem: DrawingSystem | null;
     private performanceMonitor: PerformanceMonitor | null;
     private directionIndicator: DirectionIndicator | null;
     private voxelPanel: VoxelPanel | null;
+    private fileManager: FileManager | null;
     private raycaster: THREE.Raycaster;
     private mouse: THREE.Vector2;
     private gridHelper: THREE.GridHelper | null = null;
@@ -161,12 +224,15 @@ class VoxelApp {
         this.scene = new THREE.Scene();
         this.camera = null;
         this.renderer = null;
+        this.composer = null;
+        this.tiltShiftPass = null;
         this.controls = null;
         this.voxelEngine = null;
         this.drawingSystem = null;
         this.performanceMonitor = null;
         this.directionIndicator = null;
         this.voxelPanel = null;
+        this.fileManager = null;
         
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
@@ -245,17 +311,30 @@ class VoxelApp {
         // Setup scene
         this.scene.background = new THREE.Color(SETTINGS.scene.backgroundColor);
         if (SETTINGS.scene.fog.enabled) {
+            // Apply fog with custom color and adjusted density based on opacity
+            const fogColor = new THREE.Color(SETTINGS.scene.fog.color);
+            
+            // Adjust fog distances based on opacity (lower opacity = further distances)
+            const opacityMultiplier = 1.0 / Math.max(0.1, SETTINGS.scene.fog.opacity);
+            const adjustedNear = SETTINGS.scene.fog.near * opacityMultiplier;
+            const adjustedFar = SETTINGS.scene.fog.far * opacityMultiplier;
+            
             this.scene.fog = new THREE.Fog(
-                SETTINGS.scene.backgroundColor,
-                SETTINGS.scene.fog.near,
-                SETTINGS.scene.fog.far
+                fogColor,
+                adjustedNear,
+                adjustedFar
             );
         }
         
-        // Lighting
+        // Lighting with shadow control
+        // Mix shadow color tint with white based on darkness
+        const shadowTint = new THREE.Color(SETTINGS.scene.shadows.colorTint);
+        const white = new THREE.Color(0xffffff);
+        const ambientColor = white.clone().lerp(shadowTint, SETTINGS.scene.shadows.darkness * 0.3);
+        
         const ambientLight = new THREE.AmbientLight(
-            SETTINGS.lighting.ambient.color,
-            SETTINGS.lighting.ambient.intensity
+            ambientColor,
+            SETTINGS.scene.shadows.getAmbientIntensity()  // Use calculated intensity based on shadow darkness
         );
         this.scene.add(ambientLight);
         
@@ -273,8 +352,14 @@ class VoxelApp {
         directionalLight.shadow.camera.right = SETTINGS.lighting.directional.shadow.camera.right;
         directionalLight.shadow.camera.top = SETTINGS.lighting.directional.shadow.camera.top;
         directionalLight.shadow.camera.bottom = SETTINGS.lighting.directional.shadow.camera.bottom;
+        directionalLight.shadow.camera.near = SETTINGS.lighting.directional.shadow.camera.near;
+        directionalLight.shadow.camera.far = SETTINGS.lighting.directional.shadow.camera.far;
         directionalLight.shadow.mapSize.width = SETTINGS.lighting.directional.shadow.mapSize;
         directionalLight.shadow.mapSize.height = SETTINGS.lighting.directional.shadow.mapSize;
+        directionalLight.shadow.bias = SETTINGS.lighting.directional.shadow.bias;
+        directionalLight.shadow.normalBias = SETTINGS.lighting.directional.shadow.normalBias;
+        directionalLight.shadow.radius = SETTINGS.lighting.directional.shadow.radius;
+        directionalLight.shadow.blurSamples = SETTINGS.lighting.directional.shadow.blurSamples;
         this.scene.add(directionalLight);
         
         // Ground plane
@@ -334,12 +419,20 @@ class VoxelApp {
         // Store references for toggling
         this.axisLines = [xAxisLine, zAxisLine];
         
+        // Setup post-processing
+        this.setupPostProcessing();
+        
         // Initialize systems
         this.voxelEngine = new VoxelEngine(this.scene);
         this.drawingSystem = new DrawingSystem(this.voxelEngine);
         this.performanceMonitor = new PerformanceMonitor();
         this.directionIndicator = new DirectionIndicator();
         this.voxelPanel = new VoxelPanel(this.drawingSystem);
+        
+        // Initialize file manager and connect to panel
+        this.fileManager = new FileManager(this.voxelEngine);
+        this.voxelPanel.setFileManager(this.fileManager);
+        this.voxelPanel.setVoxelEngine(this.voxelEngine);
         
         // Setup event listeners
         this.setupEventListeners();
@@ -351,6 +444,41 @@ class VoxelApp {
         console.log('Creating test scene...');
         this.createTestScene();
         console.log('Voxel count after test scene:', this.voxelEngine.getVoxelCount());
+    }
+    
+    setupPostProcessing() {
+        if (!SETTINGS.postProcessing.enabled || !this.renderer || !this.camera) return;
+        
+        try {
+            // Create effect composer
+            this.composer = new EffectComposer(this.renderer);
+            
+            // Add render pass
+            const renderPass = new RenderPass(this.scene, this.camera);
+            this.composer.addPass(renderPass);
+            
+            // Add tilt-shift pass (v006 style)
+            this.tiltShiftPass = new TiltShiftPass(
+                window.innerWidth,
+                window.innerHeight
+            );
+            
+            // Apply settings from config
+            this.tiltShiftPass.focusPosition = SETTINGS.postProcessing.tiltShift.focusPosition;
+            this.tiltShiftPass.focusBandwidth = SETTINGS.postProcessing.tiltShift.focusBandwidth;
+            this.tiltShiftPass.blurStrength = SETTINGS.postProcessing.tiltShift.blurStrength;
+            this.tiltShiftPass.gammaCorrection = SETTINGS.postProcessing.tiltShift.gammaCorrection;
+            this.tiltShiftPass.bladeCount = SETTINGS.postProcessing.tiltShift.bladeCount;
+            this.tiltShiftPass.enabled = SETTINGS.postProcessing.tiltShift.enabled;
+            
+            this.composer.addPass(this.tiltShiftPass);
+            
+            console.log('Post-processing initialized with tilt-shift');
+        } catch (error) {
+            console.warn('Post-processing failed to initialize:', error);
+            this.composer = null;
+            this.tiltShiftPass = null;
+        }
     }
     
     setupEventListeners() {
@@ -384,6 +512,16 @@ class VoxelApp {
         if (this.renderer) {
             this.renderer.setSize(window.innerWidth, window.innerHeight);
         }
+        
+        // Update composer size
+        if (this.composer) {
+            this.composer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        // Update tilt-shift size
+        if (this.tiltShiftPass) {
+            this.tiltShiftPass.setSize(window.innerWidth, window.innerHeight);
+        }
     }
     
     onMouseMove(event: MouseEvent) {
@@ -402,9 +540,9 @@ class VoxelApp {
         // Update preview
         this.drawingSystem!.updatePreview(hit);
         
-        // Continue drawing if mouse is held down (brush mode only)
+        // Continue drawing if mouse is held down (brush or eraser mode)
         if (event.buttons && this.drawingSystem!.isDrawing && 
-            this.drawingSystem!.toolMode === 'brush' && hit) {
+            (this.drawingSystem!.toolMode === 'brush' || this.drawingSystem!.toolMode === 'eraser') && hit) {
             let pos;
             
             // When adding voxels, constrain to the initial drawing surface
@@ -533,6 +671,14 @@ class VoxelApp {
                     this.performanceMonitor.toggle();
                 }
                 break;
+            case 't':
+            case 'T':
+                // Toggle tilt-shift effect
+                if (this.tiltShiftPass) {
+                    this.tiltShiftPass.enabled = !this.tiltShiftPass.enabled;
+                    console.log('Tilt-shift:', this.tiltShiftPass.enabled ? 'ON' : 'OFF');
+                }
+                break;
             case 'b':
             case 'B':
                 if (this.drawingSystem) {
@@ -578,6 +724,29 @@ class VoxelApp {
                     this.voxelPanel.updateToolMode('fill');
                 }
                 break;
+            case 'w':
+            case 'W':
+                // Toggle wireframe/edges
+                if (this.voxelEngine) {
+                    this.voxelEngine.toggleEdges();
+                    const edgeButton = document.getElementById('edge-toggle-button') as HTMLButtonElement;
+                    if (edgeButton) {
+                        const isActive = this.voxelEngine.getShowEdges();
+                        const edgeIcon = edgeButton.querySelector('span');
+                        
+                        if (isActive) {
+                            edgeButton.style.background = 'rgba(100, 200, 100, 0.3)';
+                            edgeButton.style.borderColor = 'rgba(100, 200, 100, 0.8)';
+                            if (edgeIcon) edgeIcon.style.color = 'rgba(100, 255, 100, 1)';
+                        } else {
+                            edgeButton.style.background = 'rgba(100, 100, 100, 0.2)';
+                            edgeButton.style.borderColor = 'transparent';
+                            if (edgeIcon) edgeIcon.style.color = 'rgba(255, 255, 255, 0.8)';
+                        }
+                    }
+                    console.log('Wireframe:', this.voxelEngine.getShowEdges() ? 'ON' : 'OFF');
+                }
+                break;
         }
     }
     
@@ -598,14 +767,31 @@ class VoxelApp {
                 break;
                 
             case 'flat':
-                // Simple flat ground
+                // Simple flat ground with water and snow features
                 const sizeX = SETTINGS.testScene.flatGround.sizeX;
                 const sizeZ = SETTINGS.testScene.flatGround.sizeZ;
                 for (let x = -sizeX; x <= sizeX; x++) {
                     for (let z = -sizeZ; z <= sizeZ; z++) {
-                        this.voxelEngine.setVoxel(x, 0, z, VoxelType.GRASS);
+                        // Create a small pond in the corner
+                        if (x >= 1 && x <= 3 && z >= 1 && z <= 3) {
+                            this.voxelEngine.setVoxel(x, 0, z, VoxelType.WATER);
+                            // Add some water depth
+                            this.voxelEngine.setVoxel(x, 1, z, VoxelType.WATER);
+                        } 
+                        // Add some snow patches
+                        else if ((x === -2 && z === -2) || (x === -1 && z === -2) || (x === -2 && z === -1)) {
+                            this.voxelEngine.setVoxel(x, 0, z, VoxelType.GRASS);
+                            this.voxelEngine.setVoxel(x, 1, z, VoxelType.SNOW);
+                        }
+                        // Regular grass
+                        else {
+                            this.voxelEngine.setVoxel(x, 0, z, VoxelType.GRASS);
+                        }
                     }
                 }
+                // Add a small ice structure
+                this.voxelEngine.setVoxel(0, 1, -2, VoxelType.ICE);
+                this.voxelEngine.setVoxel(0, 2, -2, VoxelType.ICE);
                 break;
                 
             case 'starter':
@@ -672,9 +858,13 @@ class VoxelApp {
             if (memEl) memEl.textContent = memoryMB;
         }
         
-        // Render main scene
+        // Render scene with post-processing or directly
         if (this.renderer && this.camera) {
-            this.renderer.render(this.scene, this.camera);
+            if (this.composer && SETTINGS.postProcessing.enabled) {
+                this.composer.render();
+            } else {
+                this.renderer.render(this.scene, this.camera);
+            }
         }
         
         // Update and render direction indicator

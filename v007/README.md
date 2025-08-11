@@ -26,11 +26,12 @@ A complete TypeScript-based voxel engine with instanced rendering, supporting up
 ### Keyboard Shortcuts
 - **H**: Show/hide help menu
 - **1-9**: Select voxel type (Grass, Dirt, Stone, Wood, Leaves, Water, Sand, Snow, Ice)
-- **Q/W/E/A/S/D**: Select drawing tools
-  - **Q**: Brush tool
-  - **W**: Box tool  
-  - **E**: Line tool
-  - **A**: Fill tool
+- **B**: Brush tool
+- **E**: Eraser tool
+- **X**: Box tool
+- **L**: Line tool
+- **P**: Fill tool
+- **W**: Toggle wireframe/edge display
 - **Z**: Undo last action (Ctrl+Z also works)
 - **Y**: Redo (Ctrl+Y / Ctrl+Shift+Z also work)
 - **G**: Toggle grid overlay
@@ -45,6 +46,13 @@ A complete TypeScript-based voxel engine with instanced rendering, supporting up
 - **Box**: Draw rectangular volumes (click and drag)
 - **Line**: Draw straight lines between two points
 - **Fill**: Fill connected areas of the same type
+- **Eraser**: Remove voxels (E key)
+
+### File Operations
+- **Import VOX**: Load MagicaVoxel .vox files
+- **Import JSON**: Load saved project files with full metadata
+- **Export VOX**: Save as MagicaVoxel compatible .vox file
+- **Export JSON**: Save with complete scene data and settings
 
 ## ✨ Features
 
@@ -53,7 +61,20 @@ A complete TypeScript-based voxel engine with instanced rendering, supporting up
 - **Instanced Rendering**: Single draw call per voxel type for maximum performance
 - **Mathematical Raycasting**: DDA algorithm for precise voxel selection
 - **Undo/Redo System**: Complete operation history with automatic grouping
-- **Save/Load**: Export and import voxel scenes as JSON files
+- **Save/Load**: Export and import voxel scenes as JSON or VOX files
+
+### Import/Export Support
+- **VOX Format**: Full MagicaVoxel compatibility
+  - Import .vox files from MagicaVoxel
+  - Export scenes for use in MagicaVoxel
+  - Automatic coordinate system conversion (Y-up ↔ Z-up)
+  - Color palette mapping to voxel types
+  - Support for models up to 256×256×256 voxels
+- **JSON Format**: Native format with metadata
+  - Complete scene preservation
+  - Voxel type information
+  - Scene bounds and statistics
+  - Human-readable format
 
 ### Performance
 - ✅ **1M+ Voxels**: Supports over 1 million voxels at 60 FPS

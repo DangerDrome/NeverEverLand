@@ -1,5 +1,6 @@
 import { VoxelType } from '../engine/VoxelEngine';
 import { DrawingSystem } from '../interaction/DrawingSystem';
+import { FileManager } from '../io/FileManager';
 
 interface VoxelButtonInfo {
     type: VoxelType;
@@ -10,6 +11,8 @@ interface VoxelButtonInfo {
 
 export class VoxelPanel {
     private drawingSystem: DrawingSystem;
+    private fileManager: FileManager | null = null;
+    private voxelEngine: any | null = null;  // Reference to voxel engine for edge toggle
     private element: HTMLElement | null = null;
     private voxelButtons: Map<VoxelType, HTMLElement> = new Map();
     private toolButtons: Map<string, HTMLElement> = new Map();
@@ -122,6 +125,32 @@ export class VoxelPanel {
             <span id="brush-size-value" style="font-weight: bold; color: #fff;">1</span>
         `;
         this.element.appendChild(brushInfo);
+        
+        // Add file operations section
+        const separator3 = document.createElement('div');
+        separator3.style.cssText = `
+            width: 1px;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.2);
+            margin: 0 8px;
+        `;
+        this.element.appendChild(separator3);
+        
+        // Add file buttons
+        this.createFileButtons();
+        
+        // Add another separator
+        const separator4 = document.createElement('div');
+        separator4.style.cssText = `
+            width: 1px;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.2);
+            margin: 0 8px;
+        `;
+        this.element.appendChild(separator4);
+        
+        // Add view options buttons
+        this.createViewButtons();
         
         // Add to page
         document.body.appendChild(this.element);
@@ -237,6 +266,241 @@ export class VoxelPanel {
         });
         
         return button;
+    }
+    
+    private createViewButtons(): void {
+        // Edge/Wireframe toggle button
+        const edgeButton = document.createElement('button');
+        edgeButton.id = 'edge-toggle-button';
+        edgeButton.title = 'Toggle Wireframe (W)';
+        edgeButton.style.cssText = `
+            width: 40px;
+            height: 40px;
+            border: 2px solid transparent;
+            border-radius: 6px;
+            background: rgba(100, 100, 100, 0.2);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        `;
+        
+        const edgeIcon = document.createElement('span');
+        edgeIcon.style.cssText = `
+            color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+        edgeIcon.innerHTML = `<i data-lucide="grid-3x3" style="width: 20px; height: 20px; stroke-width: 2;"></i>`;
+        edgeButton.appendChild(edgeIcon);
+        
+        edgeButton.addEventListener('click', () => {
+            if (this.voxelEngine) {
+                this.voxelEngine.toggleEdges();
+                const isActive = this.voxelEngine.getShowEdges();
+                
+                if (isActive) {
+                    edgeButton.style.background = 'rgba(100, 200, 100, 0.3)';
+                    edgeButton.style.borderColor = 'rgba(100, 200, 100, 0.8)';
+                    edgeIcon.style.color = 'rgba(100, 255, 100, 1)';
+                } else {
+                    edgeButton.style.background = 'rgba(100, 100, 100, 0.2)';
+                    edgeButton.style.borderColor = 'transparent';
+                    edgeIcon.style.color = 'rgba(255, 255, 255, 0.8)';
+                }
+                
+                // Re-initialize Lucide icons
+                if ((window as any).lucide) {
+                    (window as any).lucide.createIcons();
+                }
+            }
+        });
+        
+        edgeButton.addEventListener('mouseenter', () => {
+            if (!this.voxelEngine?.getShowEdges()) {
+                edgeButton.style.background = 'rgba(100, 100, 100, 0.3)';
+                edgeButton.style.transform = 'scale(1.05)';
+            }
+        });
+        
+        edgeButton.addEventListener('mouseleave', () => {
+            if (!this.voxelEngine?.getShowEdges()) {
+                edgeButton.style.background = 'rgba(100, 100, 100, 0.2)';
+                edgeButton.style.transform = 'scale(1)';
+            }
+        });
+        
+        this.element!.appendChild(edgeButton);
+    }
+    
+    private createFileButtons(): void {
+        // Import button
+        const importButton = document.createElement('button');
+        importButton.title = 'Import VOX/JSON';
+        importButton.style.cssText = `
+            width: 40px;
+            height: 40px;
+            border: 2px solid transparent;
+            border-radius: 6px;
+            background: rgba(50, 150, 50, 0.2);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        `;
+        
+        const importIcon = document.createElement('span');
+        importIcon.style.cssText = `
+            color: rgba(100, 255, 100, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+        importIcon.innerHTML = `<i data-lucide="upload" style="width: 20px; height: 20px; stroke-width: 2;"></i>`;
+        importButton.appendChild(importIcon);
+        
+        // Hidden file input
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = '.vox,.json';
+        fileInput.style.display = 'none';
+        fileInput.addEventListener('change', async (e) => {
+            const target = e.target as HTMLInputElement;
+            if (target.files && target.files[0] && this.fileManager) {
+                try {
+                    await this.fileManager.importFile(target.files[0]);
+                    console.log('File imported successfully');
+                } catch (error) {
+                    console.error('Import failed:', error);
+                    alert(`Failed to import file: ${error}`);
+                }
+                target.value = ''; // Reset input
+            }
+        });
+        document.body.appendChild(fileInput);
+        
+        importButton.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        importButton.addEventListener('mouseenter', () => {
+            importButton.style.background = 'rgba(50, 150, 50, 0.3)';
+            importButton.style.transform = 'scale(1.05)';
+        });
+        
+        importButton.addEventListener('mouseleave', () => {
+            importButton.style.background = 'rgba(50, 150, 50, 0.2)';
+            importButton.style.transform = 'scale(1)';
+        });
+        
+        this.element!.appendChild(importButton);
+        
+        // Export VOX button
+        const exportVoxButton = document.createElement('button');
+        exportVoxButton.title = 'Export as VOX';
+        exportVoxButton.style.cssText = `
+            width: 40px;
+            height: 40px;
+            border: 2px solid transparent;
+            border-radius: 6px;
+            background: rgba(150, 50, 150, 0.2);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        `;
+        
+        const exportVoxIcon = document.createElement('span');
+        exportVoxIcon.style.cssText = `
+            color: rgba(255, 100, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+        exportVoxIcon.innerHTML = `<i data-lucide="download" style="width: 20px; height: 20px; stroke-width: 2;"></i>`;
+        exportVoxButton.appendChild(exportVoxIcon);
+        
+        exportVoxButton.addEventListener('click', async () => {
+            if (this.fileManager) {
+                try {
+                    await this.fileManager.exportFile('vox');
+                    console.log('VOX file exported successfully');
+                } catch (error) {
+                    console.error('Export failed:', error);
+                    alert(`Failed to export VOX file: ${error}`);
+                }
+            }
+        });
+        
+        exportVoxButton.addEventListener('mouseenter', () => {
+            exportVoxButton.style.background = 'rgba(150, 50, 150, 0.3)';
+            exportVoxButton.style.transform = 'scale(1.05)';
+        });
+        
+        exportVoxButton.addEventListener('mouseleave', () => {
+            exportVoxButton.style.background = 'rgba(150, 50, 150, 0.2)';
+            exportVoxButton.style.transform = 'scale(1)';
+        });
+        
+        this.element!.appendChild(exportVoxButton);
+        
+        // Export JSON button
+        const exportJsonButton = document.createElement('button');
+        exportJsonButton.title = 'Export as JSON';
+        exportJsonButton.style.cssText = `
+            width: 40px;
+            height: 40px;
+            border: 2px solid transparent;
+            border-radius: 6px;
+            background: rgba(50, 100, 150, 0.2);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        `;
+        
+        const exportJsonIcon = document.createElement('span');
+        exportJsonIcon.style.cssText = `
+            color: rgba(100, 200, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+        exportJsonIcon.innerHTML = `<i data-lucide="file-json" style="width: 20px; height: 20px; stroke-width: 2;"></i>`;
+        exportJsonButton.appendChild(exportJsonIcon);
+        
+        exportJsonButton.addEventListener('click', async () => {
+            if (this.fileManager) {
+                try {
+                    await this.fileManager.exportFile('json');
+                    console.log('JSON file exported successfully');
+                } catch (error) {
+                    console.error('Export failed:', error);
+                    alert(`Failed to export JSON file: ${error}`);
+                }
+            }
+        });
+        
+        exportJsonButton.addEventListener('mouseenter', () => {
+            exportJsonButton.style.background = 'rgba(50, 100, 150, 0.3)';
+            exportJsonButton.style.transform = 'scale(1.05)';
+        });
+        
+        exportJsonButton.addEventListener('mouseleave', () => {
+            exportJsonButton.style.background = 'rgba(50, 100, 150, 0.2)';
+            exportJsonButton.style.transform = 'scale(1)';
+        });
+        
+        this.element!.appendChild(exportJsonButton);
     }
     
     private createToolButtons(): void {
@@ -425,6 +689,14 @@ export class VoxelPanel {
     public updateToolMode(mode: string): void {
         // Update the internal selection
         this.selectTool(mode);
+    }
+    
+    public setFileManager(fileManager: FileManager): void {
+        this.fileManager = fileManager;
+    }
+    
+    public setVoxelEngine(voxelEngine: any): void {
+        this.voxelEngine = voxelEngine;
     }
     
     public dispose(): void {

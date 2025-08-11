@@ -15,7 +15,8 @@
       "Bash(npm run build:*)",
       "Bash(chmod:*)",
       "Bash(./devserver.sh)",
-      "Bash(./devserver.sh:*)"
+      "Bash(./devserver.sh:*)",
+      "Bash(mkdir:*)"
     ],
     "deny": []
   }
