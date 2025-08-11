@@ -24,8 +24,11 @@ const SETTINGS = {
             y: 0,
             z: 0
         },
-        near: 0.0001,                     // Near clipping plane
-        far: 1000                      // Far clipping plane
+        // IMPORTANT: Negative near plane is the solution for orthographic cameras!
+        // This allows the camera to see objects "behind" its position, preventing
+        // clipping issues when zooming in/out with extreme zoom ranges (0.1x - 20x)
+        near: -500,                    // Negative value prevents near clipping at all zoom levels
+        far: 2000                      // Extended far plane for large scenes
     },
     
     // Controls Settings
