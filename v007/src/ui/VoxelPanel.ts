@@ -242,6 +242,7 @@ export class VoxelPanel {
     private createToolButtons(): void {
         const tools = [
             { id: 'brush', name: 'Brush', icon: 'brush', key: 'B' },
+            { id: 'eraser', name: 'Eraser', icon: 'eraser', key: 'E' },
             { id: 'box', name: 'Box', icon: 'square', key: 'X' },
             { id: 'line', name: 'Line', icon: 'minus', key: 'L' },
             { id: 'fill', name: 'Fill', icon: 'paint-bucket', key: 'P' }

@@ -33,7 +33,7 @@ export class DrawingSystem {
         this.drawMode = 'add'; // 'add' or 'remove'
         this.currentVoxelType = VoxelType.GRASS;
         this.brushSize = 1;
-        this.toolMode = 'brush'; // 'brush', 'box', 'line', 'fill'
+        this.toolMode = 'brush'; // 'brush', 'eraser', 'box', 'line', 'fill'
         
         // Tool state
         this.boxStart = null;
@@ -96,13 +96,17 @@ export class DrawingSystem {
             return;
         }
         
-        const pos = this.drawMode === 'add' ? hit.adjacentPos : hit.voxelPos;
+        // For eraser tool, always use voxel position (removal mode)
+        // For other tools, use the appropriate position based on draw mode
+        const pos = (this.toolMode === 'eraser' || this.drawMode === 'remove') 
+            ? hit.voxelPos 
+            : hit.adjacentPos;
         
         // Update tool previews
         this.updateToolPreview(hit);
         
-        // For brush and fill tools, show single preview
-        if (this.toolMode === 'brush' || this.toolMode === 'fill') {
+        // For brush, eraser, and fill tools, show single preview
+        if (this.toolMode === 'brush' || this.toolMode === 'eraser' || this.toolMode === 'fill') {
             // Update preview group position - offset by half voxel size to center in grid cells
             this.previewGroup.position.set(
                 pos.x * this.voxelEngine.voxelSize + this.voxelEngine.voxelSize * 0.5,
@@ -113,13 +117,22 @@ export class DrawingSystem {
             // Scale preview based on brush size
             this.previewGroup.scale.setScalar(this.brushSize);
             
-            // Update preview color based on mode
-            if (this.drawMode === 'add') {
-                this.previewMaterial.color.setHex(0x00ff00);
-                this.edgeMaterial.color.setHex(0x00ff00);
-            } else {
+            // Update preview color based on tool
+            if (this.toolMode === 'eraser') {
+                // Red preview for eraser
                 this.previewMaterial.color.setHex(0xff0000);
                 this.edgeMaterial.color.setHex(0xff0000);
+                this.previewMaterial.opacity = 0.3; // Make it more transparent
+            } else if (this.drawMode === 'add') {
+                // Green preview for add
+                this.previewMaterial.color.setHex(0x00ff00);
+                this.edgeMaterial.color.setHex(0x00ff00);
+                this.previewMaterial.opacity = 0.5;
+            } else {
+                // Red preview for remove
+                this.previewMaterial.color.setHex(0xff0000);
+                this.edgeMaterial.color.setHex(0xff0000);
+                this.previewMaterial.opacity = 0.3;
             }
             
             this.previewGroup.visible = true;
@@ -132,10 +145,11 @@ export class DrawingSystem {
         if (!hit) return;
         
         this.isDrawing = true;
-        this.drawMode = mode;
+        // If using eraser tool, always remove voxels
+        this.drawMode = this.toolMode === 'eraser' ? 'remove' : mode;
         
         // Store the surface normal to constrain drawing to this plane
-        if (mode === 'add' && hit.normal) {
+        if (mode === 'add' && hit.normal && this.toolMode !== 'eraser') {
             this.drawingSurface = {
                 normal: hit.normal.clone(),
                 basePos: { ...hit.adjacentPos }, // Store the base position for all axes
@@ -145,10 +159,11 @@ export class DrawingSystem {
             this.drawingSurface = null;
         }
         
-        const pos = mode === 'add' ? hit.adjacentPos : hit.voxelPos;
+        const pos = this.drawMode === 'add' ? hit.adjacentPos : hit.voxelPos;
         
         switch (this.toolMode) {
             case 'brush':
+            case 'eraser':
                 this.applyBrush(pos.x, pos.y, pos.z);
                 break;
             case 'box':
@@ -417,7 +432,10 @@ export class DrawingSystem {
         
         if (!hit) return;
         
-        const pos = this.drawMode === 'add' ? hit.adjacentPos : hit.voxelPos;
+        // For eraser tool, always use voxel position
+        const pos = (this.toolMode === 'eraser' || this.drawMode === 'remove') 
+            ? hit.voxelPos 
+            : hit.adjacentPos;
         
         if (this.toolMode === 'box' && this.boxStart) {
             this.previewBoxTool(this.boxStart, pos);

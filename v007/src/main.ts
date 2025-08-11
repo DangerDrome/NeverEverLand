@@ -542,6 +542,15 @@ class VoxelApp {
                     this.voxelPanel.updateToolMode('brush');
                 }
                 break;
+            case 'e':
+            case 'E':
+                if (this.drawingSystem) {
+                    this.drawingSystem.setToolMode('eraser');
+                }
+                if (this.voxelPanel) {
+                    this.voxelPanel.updateToolMode('eraser');
+                }
+                break;
             case 'x':
             case 'X':
                 if (this.drawingSystem) {
