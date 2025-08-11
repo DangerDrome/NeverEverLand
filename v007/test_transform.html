@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transform Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: monospace;
+            background: #222;
+            color: #fff;
+        }
+        #instructions {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.8);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div id="instructions">
+        <h3>Testing Voxel Transformation</h3>
+        <p>1. Press 'B' for brush tool and place some voxels</p>
+        <p>2. Press 'S' for selection tool</p>
+        <p>3. Click and drag to select voxels</p>
+        <p>4. Use the gizmo arrows to move selected voxels</p>
+        <p>5. Watch if voxels are erased during drag (they shouldn't be!)</p>
+        <p>6. Release mouse - voxels should move to new position</p>
+        <hr>
+        <p><strong>Expected:</strong> Blue preview shows where voxels will go</p>
+        <p><strong>Bug to verify fixed:</strong> Original voxels should remain visible during drag</p>
+    </div>
+    <iframe src="http://localhost:8007/" style="width:100vw;height:100vh;border:none;"></iframe>
+</body>
+</html>

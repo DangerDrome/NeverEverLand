@@ -202,6 +202,21 @@ export class DrawingSystem {
         this.voxelEngine.finalizePendingOperations();
     }
     
+    /**
+     * Hide the preview (e.g., when switching to selection mode)
+     */
+    hidePreview(): void {
+        this.previewGroup.visible = false;
+        this.clearToolPreviews();
+    }
+    
+    /**
+     * Show the preview (e.g., when returning to drawing mode)
+     */
+    showPreview(): void {
+        this.previewGroup.visible = true;
+    }
+    
     applyBrush(centerX: number, centerY: number, centerZ: number): void {
         const radius = Math.floor(this.brushSize / 2);
         let changed = false;

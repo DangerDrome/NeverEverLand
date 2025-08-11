@@ -509,7 +509,8 @@ export class VoxelPanel {
             { id: 'eraser', name: 'Eraser', icon: 'eraser', key: 'E' },
             { id: 'box', name: 'Box', icon: 'square', key: 'X' },
             { id: 'line', name: 'Line', icon: 'minus', key: 'L' },
-            { id: 'fill', name: 'Fill', icon: 'paint-bucket', key: 'P' }
+            { id: 'fill', name: 'Fill', icon: 'paint-bucket', key: 'P' },
+            { id: 'selection', name: 'Selection', icon: 'box-select', key: 'S' }
         ];
         
         tools.forEach(tool => {
@@ -592,7 +593,23 @@ export class VoxelPanel {
     
     private selectTool(toolId: string): void {
         this.selectedTool = toolId;
-        this.drawingSystem.setToolMode(toolId);
+        
+        // Map tool IDs to keyboard shortcuts
+        const toolKeys: { [key: string]: string } = {
+            'brush': 'b',
+            'eraser': 'e', 
+            'box': 'x',
+            'line': 'l',
+            'fill': 'p',
+            'selection': 's'
+        };
+        
+        // Dispatch the appropriate keyboard event
+        // This ensures selection mode is properly exited when switching tools
+        if (toolKeys[toolId]) {
+            const event = new KeyboardEvent('keydown', { key: toolKeys[toolId] });
+            window.dispatchEvent(event);
+        }
         
         // Update button states
         this.toolButtons.forEach((button, id) => {
