@@ -139,7 +139,7 @@ const SETTINGS = {
     
     // Ground Plane Settings
     ground: {
-        size: 200,                     // Ground plane size
+        size: 10000,                     // Ground plane size (doubled)
         color: 0xaaaaaa,               // Ground color (medium grey)
         roughness: 0.8,                // Material roughness
         metalness: 0.2,                // Material metalness
@@ -177,7 +177,7 @@ const SETTINGS = {
         
         // Tilt-Shift Depth of Field (v006 style)
         tiltShift: {
-            enabled: false,            // Start disabled like v006
+            enabled: true,            // Start disabled like v006
             focusPosition: 0.5,        // Y position of focus band (0-1, 0.5 = center)
             focusBandwidth: 0.3,       // Width of sharp focus band
             blurStrength: 10.0,         // Maximum blur amount
@@ -199,7 +199,8 @@ const SETTINGS = {
         showControls: true,            // Show controls panel
         showStats: true,               // Show stats panel
         defaultBrushSize: 1,           // Default brush size
-        defaultVoxelType: VoxelType.GRASS // Default voxel type
+        defaultVoxelType: VoxelType.GRASS, // Default voxel type
+        showWireframe: true            // Show wireframe/edges on startup
     }
 };
 
@@ -427,7 +428,7 @@ class VoxelApp {
         this.setupPostProcessing();
         
         // Initialize systems
-        this.voxelEngine = new VoxelEngine(this.scene);
+        this.voxelEngine = new VoxelEngine(this.scene, SETTINGS.ui.showWireframe);
         this.drawingSystem = new DrawingSystem(this.voxelEngine);
         this.performanceMonitor = new PerformanceMonitor();
         this.directionIndicator = new DirectionIndicator();
@@ -453,6 +454,9 @@ class VoxelApp {
         // Setup event listeners
         this.setupEventListeners();
         
+        // Initialize button states
+        this.initializeButtonStates();
+        
         // Start render loop
         this.animate();
         
@@ -460,6 +464,26 @@ class VoxelApp {
         console.log('Creating test scene...');
         this.createTestScene();
         console.log('Voxel count after test scene:', this.voxelEngine.getVoxelCount());
+    }
+    
+    initializeButtonStates() {
+        // Initialize edge/wireframe button based on SETTINGS
+        const edgeButton = document.getElementById('edge-toggle-button') as HTMLButtonElement;
+        if (edgeButton && SETTINGS.ui.showWireframe) {
+            const edgeIcon = edgeButton.querySelector('span');
+            edgeButton.style.background = 'rgba(100, 200, 100, 0.3)';
+            edgeButton.style.borderColor = 'rgba(100, 200, 100, 0.8)';
+            if (edgeIcon) edgeIcon.style.color = 'rgba(100, 255, 100, 1)';
+        }
+        
+        // Initialize tilt-shift button (ON by default)
+        const tiltShiftButton = document.getElementById('tiltshift-toggle-button') as HTMLButtonElement;
+        if (tiltShiftButton) {
+            const tiltShiftIcon = tiltShiftButton.querySelector('span');
+            tiltShiftButton.style.background = 'rgba(100, 200, 100, 0.3)';
+            tiltShiftButton.style.borderColor = 'rgba(100, 200, 100, 0.8)';
+            if (tiltShiftIcon) tiltShiftIcon.style.color = 'rgba(100, 255, 100, 1)';
+        }
     }
     
     setupPostProcessing() {
@@ -756,6 +780,23 @@ class VoxelApp {
                 if (this.tiltShiftPass) {
                     this.tiltShiftPass.enabled = !this.tiltShiftPass.enabled;
                     console.log('Tilt-shift:', this.tiltShiftPass.enabled ? 'ON' : 'OFF');
+                    
+                    // Update button state
+                    const tiltShiftButton = document.getElementById('tiltshift-toggle-button') as HTMLButtonElement;
+                    if (tiltShiftButton) {
+                        const isActive = this.tiltShiftPass.enabled;
+                        const tiltShiftIcon = tiltShiftButton.querySelector('span');
+                        
+                        if (isActive) {
+                            tiltShiftButton.style.background = 'rgba(100, 200, 100, 0.3)';
+                            tiltShiftButton.style.borderColor = 'rgba(100, 200, 100, 0.8)';
+                            if (tiltShiftIcon) tiltShiftIcon.style.color = 'rgba(100, 255, 100, 1)';
+                        } else {
+                            tiltShiftButton.style.background = 'rgba(100, 100, 100, 0.2)';
+                            tiltShiftButton.style.borderColor = 'transparent';
+                            if (tiltShiftIcon) tiltShiftIcon.style.color = 'rgba(255, 255, 255, 0.8)';
+                        }
+                    }
                 }
                 break;
             case 'b':

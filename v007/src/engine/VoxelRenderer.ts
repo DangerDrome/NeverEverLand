@@ -40,7 +40,7 @@ export class VoxelRenderer {
     private showEdges: boolean;
     private currentVoxelData: { x: number; y: number; z: number; type: VoxelType }[];
     
-    constructor(scene: THREE.Scene, voxelSize = 1.0) {
+    constructor(scene: THREE.Scene, voxelSize = 1.0, initialShowEdges = true) {
         this.scene = scene;
         this.voxelSize = voxelSize;
         
@@ -54,10 +54,13 @@ export class VoxelRenderer {
         // Separate meshes for opaque and transparent voxels
         this.opaqueMesh = null;
         this.transparentMesh = null;
-        this.showEdges = false;
+        this.showEdges = initialShowEdges;
         
         // Edge renderer for clean edge display
         this.edgeRenderer = new EdgeRenderer(scene, voxelSize);
+        
+        // Set initial edge visibility based on showEdges
+        this.edgeRenderer.setVisible(this.showEdges);
         
         // Store current voxel data for edge updates
         this.currentVoxelData = [];

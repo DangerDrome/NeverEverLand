@@ -1011,21 +1011,20 @@ export class BoxSelectionTool {
         // Update the engine's visual representation
         this.voxelEngine.updateInstances();
         
-        // Record selection change - if duplicating, we're selecting the new voxels
-        const prevSelection = [...this.previousSelection];
+        // For move/rotate operations, we need to record a selection change that maps
+        // the old positions to new positions, so when undoing, selection follows the voxels
+        if (!this.isDuplicating) {
+            // Record selection change from old positions to new positions
+            // When undoing, this will restore selection to the original positions
+            this.voxelEngine.recordSelectionChange(this.originalVoxels, newVoxels);
+        } else {
+            // For duplication, record selection change from original to duplicated
+            this.voxelEngine.recordSelectionChange(this.originalVoxels, newVoxels);
+        }
         
         // Update selected voxels list
         this.selectedVoxels = newVoxels;
-        
-        // If we duplicated, we want to select the new copies
-        if (this.isDuplicating) {
-            // Record the selection change to the new duplicated voxels
-            this.voxelEngine.recordSelectionChange(prevSelection, newVoxels);
-            this.previousSelection = [...newVoxels];
-        } else {
-            // For move/rotate, selection stays the same but at new positions
-            this.previousSelection = [...newVoxels];
-        }
+        this.previousSelection = [...newVoxels];
         
         // Update selection visuals
         this.updateSelectionOutline();

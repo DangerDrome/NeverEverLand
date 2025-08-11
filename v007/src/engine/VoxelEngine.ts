@@ -13,7 +13,7 @@ export class VoxelEngine {
     private renderer: VoxelRenderer;
     private undoRedoManager: UndoRedoManager;
     
-    constructor(scene: THREE.Scene) {
+    constructor(scene: THREE.Scene, showWireframe = true) {
         this.scene = scene;
         this.voxelSize = 1.0; // 1 meter voxels for simplicity
         
@@ -22,7 +22,7 @@ export class VoxelEngine {
         this.voxelsByType = new Map(); // key: voxel type, value: Set of position strings
         
         // Voxel renderer handles all rendering
-        this.renderer = new VoxelRenderer(scene, this.voxelSize);
+        this.renderer = new VoxelRenderer(scene, this.voxelSize, showWireframe);
         
         // Initialize undo/redo manager
         this.undoRedoManager = new UndoRedoManager(this);

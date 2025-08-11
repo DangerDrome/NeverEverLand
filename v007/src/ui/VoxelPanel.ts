@@ -334,6 +334,59 @@ export class VoxelPanel {
         });
         
         this.element!.appendChild(edgeButton);
+        
+        // Tilt-shift toggle button
+        const tiltShiftButton = document.createElement('button');
+        tiltShiftButton.id = 'tiltshift-toggle-button';
+        tiltShiftButton.title = 'Toggle Tilt-Shift (T)';
+        tiltShiftButton.style.cssText = `
+            width: 40px;
+            height: 40px;
+            border: 2px solid transparent;
+            border-radius: 6px;
+            background: rgba(100, 100, 100, 0.2);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            margin-left: 5px;
+        `;
+        
+        const tiltShiftIcon = document.createElement('span');
+        tiltShiftIcon.style.cssText = `
+            color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+        tiltShiftIcon.innerHTML = `<i data-lucide="focus" style="width: 20px; height: 20px; stroke-width: 2;"></i>`;
+        tiltShiftButton.appendChild(tiltShiftIcon);
+        
+        tiltShiftButton.addEventListener('click', () => {
+            // Dispatch a keyboard event to toggle tilt-shift
+            const event = new KeyboardEvent('keydown', { key: 'T' });
+            window.dispatchEvent(event);
+        });
+        
+        tiltShiftButton.addEventListener('mouseenter', () => {
+            const isActive = (window as any).app?.tiltShiftPass?.enabled;
+            if (!isActive) {
+                tiltShiftButton.style.background = 'rgba(100, 100, 100, 0.3)';
+                tiltShiftButton.style.transform = 'scale(1.05)';
+            }
+        });
+        
+        tiltShiftButton.addEventListener('mouseleave', () => {
+            const isActive = (window as any).app?.tiltShiftPass?.enabled;
+            if (!isActive) {
+                tiltShiftButton.style.background = 'rgba(100, 100, 100, 0.2)';
+                tiltShiftButton.style.transform = 'scale(1)';
+            }
+        });
+        
+        this.element!.appendChild(tiltShiftButton);
     }
     
     private createFileButtons(): void {
