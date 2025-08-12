@@ -760,6 +760,14 @@ export class BoxSelectionTool {
             this.transformRotation.set(0, 0, 0);
             this.originalVoxels = [];
             this.isDuplicating = false;
+            
+            // Restore transparency to selection after dragging
+            if (this.selectedVoxelsMesh) {
+                const material = this.selectedVoxelsMesh.material as THREE.MeshBasicMaterial;
+                material.transparent = true;
+                material.opacity = 0.3;
+                material.depthWrite = false;
+            }
         }
     }
     
@@ -831,16 +839,17 @@ export class BoxSelectionTool {
     private updateSelectionPreview(previewVoxels: SelectedVoxel[]): void {
         if (!this.selectedVoxelsMesh) return;
         
-        // Update color if duplicating
+        // Update color and make solid when dragging
+        const material = this.selectedVoxelsMesh.material as THREE.MeshBasicMaterial;
         if (this.isDuplicating) {
-            const material = this.selectedVoxelsMesh.material as THREE.MeshBasicMaterial;
             material.color.set('rgb(100, 255, 100)'); // Green for duplication
-            material.opacity = 0.6;
         } else {
-            const material = this.selectedVoxelsMesh.material as THREE.MeshBasicMaterial;
             material.color.set('rgb(100, 150, 255)'); // Blue for normal move
-            material.opacity = 0.5;
         }
+        // Make solid instead of transparent when dragging
+        material.transparent = false;
+        material.opacity = 1.0;
+        material.depthWrite = true;
         
         // Update the positions of the selection preview mesh
         const voxelSize = this.voxelEngine.getVoxelSize();
@@ -1273,6 +1282,14 @@ export class BoxSelectionTool {
         if (this.selectedVoxels.length > 0) {
             const center = this.getSelectionCenter();
             this.transformGizmo.show(center);
+            
+            // Restore transparency to selection after canceling
+            if (this.selectedVoxelsMesh) {
+                const material = this.selectedVoxelsMesh.material as THREE.MeshBasicMaterial;
+                material.transparent = true;
+                material.opacity = 0.3;
+                material.depthWrite = false;
+            }
         } else {
             this.transformGizmo.hide();
         }
