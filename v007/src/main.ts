@@ -233,7 +233,7 @@ class VoxelApp {
     private raycaster: THREE.Raycaster;
     private mouse: THREE.Vector2;
     private gridHelper: THREE.GridHelper | null = null;
-    private axisLines: THREE.Line[] = [];
+    private axisLines: (THREE.Mesh | THREE.Line)[] = [];
     private selectionMode: boolean = false;
     private lastMousePos: { x: number; y: number } = { x: 0, y: 0 };
     private currentBrushSize: number = SETTINGS.brush.defaultSize;
@@ -409,35 +409,63 @@ class VoxelApp {
         this.gridHelper.material.transparent = true;
         this.scene.add(this.gridHelper);
         
-        // Add subtle main axis lines for X and Z
+        // Add thick glowing main axis lines for X and Z
         const axisLength = SETTINGS.grid.axisLines.length;
+        const axisThickness = 0.005; // Thickness of the axis lines (0.5cm - reduced from 1.5cm)
+        const axisHeight = 0.001; // Slightly above ground to avoid z-fighting
         
-        // X-axis line (subtle red tint)
-        const xAxisGeometry = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(-axisLength, 0.01, 0),
-            new THREE.Vector3(axisLength, 0.01, 0)
-        ]);
-        const xAxisLine = new THREE.Line(xAxisGeometry, new THREE.LineBasicMaterial({ 
-            color: SETTINGS.grid.axisLines.xColor, 
-            opacity: SETTINGS.grid.axisLines.opacity, 
+        // X-axis line (glowing red)
+        const xAxisGeometry = new THREE.BoxGeometry(axisLength * 2, axisThickness, axisThickness);
+        const xAxisMaterial = new THREE.MeshBasicMaterial({ 
+            color: SETTINGS.grid.axisLines.xColor,
+            opacity: 0.9,
             transparent: true
-        }));
+        });
+        const xAxisLine = new THREE.Mesh(xAxisGeometry, xAxisMaterial);
+        xAxisLine.position.set(0, axisHeight, 0);
+        xAxisLine.renderOrder = 1; // Render on top of ground
         this.scene.add(xAxisLine);
         
-        // Z-axis line (subtle blue tint)
-        const zAxisGeometry = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(0, 0.01, -axisLength),
-            new THREE.Vector3(0, 0.01, axisLength)
-        ]);
-        const zAxisLine = new THREE.Line(zAxisGeometry, new THREE.LineBasicMaterial({ 
-            color: SETTINGS.grid.axisLines.zColor, 
-            opacity: SETTINGS.grid.axisLines.opacity, 
+        // Add glow effect for X-axis
+        const xGlowGeometry = new THREE.BoxGeometry(axisLength * 2, axisThickness * 3, axisThickness * 3);
+        const xGlowMaterial = new THREE.MeshBasicMaterial({ 
+            color: SETTINGS.grid.axisLines.xColor,
+            opacity: 0.2,
+            transparent: true,
+            blending: THREE.AdditiveBlending
+        });
+        const xGlow = new THREE.Mesh(xGlowGeometry, xGlowMaterial);
+        xGlow.position.set(0, axisHeight, 0);
+        xGlow.renderOrder = 0;
+        this.scene.add(xGlow);
+        
+        // Z-axis line (glowing blue)
+        const zAxisGeometry = new THREE.BoxGeometry(axisThickness, axisThickness, axisLength * 2);
+        const zAxisMaterial = new THREE.MeshBasicMaterial({ 
+            color: SETTINGS.grid.axisLines.zColor,
+            opacity: 0.9,
             transparent: true
-        }));
+        });
+        const zAxisLine = new THREE.Mesh(zAxisGeometry, zAxisMaterial);
+        zAxisLine.position.set(0, axisHeight, 0);
+        zAxisLine.renderOrder = 1;
         this.scene.add(zAxisLine);
         
+        // Add glow effect for Z-axis
+        const zGlowGeometry = new THREE.BoxGeometry(axisThickness * 3, axisThickness * 3, axisLength * 2);
+        const zGlowMaterial = new THREE.MeshBasicMaterial({ 
+            color: SETTINGS.grid.axisLines.zColor,
+            opacity: 0.2,
+            transparent: true,
+            blending: THREE.AdditiveBlending
+        });
+        const zGlow = new THREE.Mesh(zGlowGeometry, zGlowMaterial);
+        zGlow.position.set(0, axisHeight, 0);
+        zGlow.renderOrder = 0;
+        this.scene.add(zGlow);
+        
         // Store references for toggling
-        this.axisLines = [xAxisLine, zAxisLine];
+        this.axisLines = [xAxisLine, xGlow, zAxisLine, zGlow];
         
         // Setup post-processing
         this.setupPostProcessing();
