@@ -90,21 +90,35 @@ export class DrawingSystem {
         this.voxelEngine.scene.add(this.previewGroup);
     }
     
-    updatePreview(hit: any): void {
-        if (!hit) {
+    updatePreview(hit: any, constrainedPos?: { x: number; y: number; z: number }): void {
+        // If we have a constrained position (during drawing), use that
+        // Otherwise use the hit position or hide preview
+        if (!hit && !constrainedPos) {
             this.previewGroup.visible = false;
             this.clearToolPreviews();
             return;
         }
         
-        // For eraser tool, always use voxel position (removal mode)
-        // For other tools, use the appropriate position based on draw mode
-        const pos = (this.toolMode === 'eraser' || this.drawMode === 'remove') 
-            ? hit.voxelPos 
-            : hit.adjacentPos;
+        let pos;
+        if (constrainedPos) {
+            // Use the constrained position during drawing
+            // This allows preview to overlay existing voxels
+            pos = constrainedPos;
+        } else if (hit) {
+            // Normal preview behavior when not drawing
+            pos = (this.toolMode === 'eraser' || this.drawMode === 'remove') 
+                ? hit.voxelPos 
+                : hit.adjacentPos;
+        } else {
+            this.previewGroup.visible = false;
+            this.clearToolPreviews();
+            return;
+        }
         
         // Update tool previews
-        this.updateToolPreview(hit);
+        if (hit) {
+            this.updateToolPreview(hit);
+        }
         
         // For brush, eraser, and fill tools, show preview
         if (this.toolMode === 'brush' || this.toolMode === 'eraser' || this.toolMode === 'fill') {

@@ -655,110 +655,95 @@ class VoxelApp {
             return;
         }
         
-        // Update preview
-        this.drawingSystem!.updatePreview(hit);
+        // Calculate constrained position if we're actively drawing
+        let constrainedPos = null;
         
-        // Continue drawing if mouse is held down (brush or eraser mode)
-        if (event.buttons && this.drawingSystem!.isDrawing && 
-            (this.drawingSystem!.toolMode === 'brush' || this.drawingSystem!.toolMode === 'eraser')) {
+        if (this.drawingSystem!.isDrawing && 
+            (this.drawingSystem!.toolMode === 'brush' || this.drawingSystem!.toolMode === 'eraser') &&
+            this.drawingSystem!.drawingSurface) {
             
-            // For eraser, we need to handle the case where hit might be null (no voxel under cursor)
-            // but we still want to continue erasing along the constrained plane
-            if (!hit && this.drawingSystem!.toolMode === 'eraser' && this.drawingSystem!.drawingSurface) {
-                // Project mouse ray onto the constrained plane for continuous erasing
-                const voxelSize = this.voxelEngine!.getVoxelSize();
-                const normal = this.drawingSystem!.drawingSurface.normal;
-                const basePos = this.drawingSystem!.drawingSurface.basePos;
-                
-                // Get a point along the ray
+            const voxelSize = this.voxelEngine!.getVoxelSize();
+            const normal = this.drawingSystem!.drawingSurface.normal;
+            const basePos = this.drawingSystem!.drawingSurface.basePos;
+            const absX = Math.abs(normal.x);
+            const absY = Math.abs(normal.y);
+            const absZ = Math.abs(normal.z);
+            
+            if (!hit) {
+                // No hit - project ray onto the constrained plane
                 const rayPoint = this.raycaster.ray.origin.clone().add(
                     this.raycaster.ray.direction.clone().multiplyScalar(10)
                 );
                 
-                // Convert to voxel coordinates and constrain to plane
-                const absX = Math.abs(normal.x);
-                const absY = Math.abs(normal.y);
-                const absZ = Math.abs(normal.z);
-                
-                let pos;
                 if (absY > absX && absY > absZ) {
                     // Horizontal plane - use ray's X/Z, constrained Y
-                    pos = {
+                    constrainedPos = {
                         x: Math.floor(rayPoint.x / voxelSize),
                         y: basePos.y,
                         z: Math.floor(rayPoint.z / voxelSize)
                     };
                 } else if (absX > absY && absX > absZ) {
                     // Vertical X plane - constrained X, use ray's Y/Z
-                    pos = {
+                    constrainedPos = {
                         x: basePos.x,
                         y: Math.floor(rayPoint.y / voxelSize),
                         z: Math.floor(rayPoint.z / voxelSize)
                     };
                 } else {
                     // Vertical Z plane - use ray's X/Y, constrained Z
-                    pos = {
+                    constrainedPos = {
                         x: Math.floor(rayPoint.x / voxelSize),
                         y: Math.floor(rayPoint.y / voxelSize),
                         z: basePos.z
                     };
                 }
-                
-                this.drawingSystem!.applyBrush(pos.x, pos.y, pos.z);
-                // Update instances for immediate visual feedback during drag
-                this.voxelEngine!.updateInstances();
-                return;
-            }
-            
-            if (!hit) return; // No hit and not erasing with constraint
-            
-            let pos;
-            
-            // Constrain to the initial drawing surface to prevent unwanted voxel modifications
-            if (this.drawingSystem!.drawingSurface) {
-                const normal = this.drawingSystem!.drawingSurface.normal;
-                
-                // Determine which axis is dominant in the normal
-                const absX = Math.abs(normal.x);
-                const absY = Math.abs(normal.y);
-                const absZ = Math.abs(normal.z);
-                
-                // Get the appropriate base position
-                const targetPos = this.drawingSystem!.toolMode === 'eraser' ? hit.voxelPos : hit.adjacentPos;
+            } else {
+                // We have a hit - constrain to the original surface
+                // Always use voxelPos to prevent climbing
+                const targetPos = hit.voxelPos;
                 
                 if (absY > absX && absY > absZ) {
-                    // Horizontal surface (floor/ceiling)
-                    // Use current position for X/Z but constrain Y to the initial plane
-                    pos = {
+                    // Horizontal surface - keep Y constant
+                    constrainedPos = {
                         x: targetPos.x,
-                        y: this.drawingSystem!.drawingSurface.basePos.y,
+                        y: basePos.y,
                         z: targetPos.z
                     };
                 } else if (absX > absY && absX > absZ) {
-                    // Vertical surface facing X (east/west wall)
-                    // Constrain X to the initial plane, use current position for Y/Z
-                    pos = {
-                        x: this.drawingSystem!.drawingSurface.basePos.x,
+                    // Vertical X surface - keep X constant
+                    constrainedPos = {
+                        x: basePos.x,
                         y: targetPos.y,
                         z: targetPos.z
                     };
                 } else {
-                    // Vertical surface facing Z (north/south wall)
-                    // Constrain Z to the initial plane, use current position for X/Y
-                    pos = {
+                    // Vertical Z surface - keep Z constant
+                    constrainedPos = {
                         x: targetPos.x,
                         y: targetPos.y,
-                        z: this.drawingSystem!.drawingSurface.basePos.z
+                        z: basePos.z
                     };
                 }
-            } else {
-                // If no surface stored (shouldn't happen), use normal logic
-                pos = this.drawingSystem!.drawMode === 'add' ? hit.adjacentPos : hit.voxelPos;
             }
+        }
+        
+        // Update preview with constrained position during drawing
+        this.drawingSystem!.updatePreview(hit, constrainedPos || undefined);
+        
+        // Continue drawing if mouse is held down (brush or eraser mode)
+        if (event.buttons && this.drawingSystem!.isDrawing && 
+            (this.drawingSystem!.toolMode === 'brush' || this.drawingSystem!.toolMode === 'eraser')) {
             
-            this.drawingSystem!.applyBrush(pos.x, pos.y, pos.z);
-            // Update for immediate visual feedback
-            this.voxelEngine!.updateInstances();
+            if (constrainedPos) {
+                // Use the constrained position for drawing
+                this.drawingSystem!.applyBrush(constrainedPos.x, constrainedPos.y, constrainedPos.z);
+                this.voxelEngine!.updateInstances();
+            } else if (hit) {
+                // Fallback if no drawing surface (shouldn't happen normally)
+                const pos = this.drawingSystem!.drawMode === 'add' ? hit.adjacentPos : hit.voxelPos;
+                this.drawingSystem!.applyBrush(pos.x, pos.y, pos.z);
+                this.voxelEngine!.updateInstances();
+            }
         }
     }
     
