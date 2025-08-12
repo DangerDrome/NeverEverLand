@@ -38,8 +38,8 @@ export class EdgeRenderer {
     private transparentMaterial: THREE.MeshBasicMaterial;
     
     // Performance controls
-    private static readonly MAX_EDGES_TO_RENDER = 5000;
-    private static readonly EDGE_BATCH_SIZE = 1000;
+    private static readonly MAX_EDGES_TO_RENDER = 50000;  // Much higher limit - 50k voxels
+    private static readonly EDGE_BATCH_SIZE = 50000;  // Don't sample, render all or none
     private isDisabledForPerformance: boolean = false;
     
     constructor(scene: THREE.Scene, voxelSize: number = 1.0, initialVisible: boolean = true) {
@@ -47,8 +47,8 @@ export class EdgeRenderer {
         this.voxelSize = voxelSize;
         this.visible = initialVisible;
         
-        // Create thin box geometry for edges (like a line but with volume for instancing)
-        const edgeThickness = voxelSize * 0.02; // 2% of voxel size
+        // Create thicker box geometry for edges to prevent flickering
+        const edgeThickness = voxelSize * 0.04; // 4% of voxel size for thicker, more stable edges
         this.edgeGeometry = new THREE.BoxGeometry(edgeThickness, edgeThickness, edgeThickness);
         
         // Material for opaque voxel edges
@@ -91,14 +91,8 @@ export class EdgeRenderer {
             return;
         }
         
-        // For performance, only render edges for a subset of voxels if there are many
+        // Don't sample voxels - render all or none to avoid visual corruption
         let voxelsToRender = voxelData;
-        if (voxelData.length > EdgeRenderer.EDGE_BATCH_SIZE) {
-            // Sample evenly distributed voxels
-            const step = Math.ceil(voxelData.length / EdgeRenderer.EDGE_BATCH_SIZE);
-            voxelsToRender = voxelData.filter((_, index) => index % step === 0);
-            console.log(`Rendering edges for ${voxelsToRender.length} of ${voxelData.length} voxels`);
-        }
         
         // Separate transparent and opaque voxels
         const opaqueVoxels = voxelsToRender.filter(v => !TRANSPARENT_TYPES.has(v.type));
@@ -137,83 +131,96 @@ export class EdgeRenderer {
         material: THREE.Material,
         thickness: number
     ): void {
-        // Create a simple wireframe box geometry
-        const boxGeometry = new THREE.BoxGeometry(this.voxelSize, this.voxelSize, this.voxelSize);
-        const edgesGeometry = new THREE.EdgesGeometry(boxGeometry);
-        const lineGeometry = new THREE.BufferGeometry();
+        // Create multiple line segments with slight offsets to simulate thickness
+        const halfSize = this.voxelSize * 0.5;
+        const edgeOffset = this.voxelSize * 0.002; // Small offset for multiple passes
         
-        // Convert edges to a line segments geometry
-        const positions: number[] = [];
-        const colors: number[] = [];
-        
-        for (const voxel of voxelData) {
-            const x = voxel.x * this.voxelSize + this.voxelSize * 0.5;
-            const y = voxel.y * this.voxelSize + this.voxelSize * 0.5;
-            const z = voxel.z * this.voxelSize + this.voxelSize * 0.5;
-            // Use exact voxel size for edges to prevent gaps and overlaps
-            const halfSize = this.voxelSize * 0.5;
+        // Create 3 passes with slight offsets for thicker appearance
+        for (let pass = 0; pass < 3; pass++) {
+            const offset = edgeOffset * (pass - 1);
             
-            // Use black edges for maximum visibility
-            const baseColor = new THREE.Color(0x000000);  // Black edges for better contrast
+            // Pre-calculate buffer size for better performance
+            const edgesPerVoxel = 24;  // 12 edges * 2 vertices each
+            const totalVertices = voxelData.length * edgesPerVoxel;
             
-            // Define the 12 edges of a cube as line segments
-            const edges = [
+            // Pre-allocate typed arrays for better performance
+            const positions = new Float32Array(totalVertices * 3);
+            const colors = new Float32Array(totalVertices * 3);
+            
+            // Pre-define edge offsets (12 edges as vertex pairs) with slight variation
+            const h = halfSize + offset;
+            const edgeOffsets = [
                 // Bottom face
-                [-halfSize, -halfSize, -halfSize], [halfSize, -halfSize, -halfSize],
-                [halfSize, -halfSize, -halfSize], [halfSize, -halfSize, halfSize],
-                [halfSize, -halfSize, halfSize], [-halfSize, -halfSize, halfSize],
-                [-halfSize, -halfSize, halfSize], [-halfSize, -halfSize, -halfSize],
+                -h, -h, -h, h, -h, -h,
+                h, -h, -h, h, -h, h,
+                h, -h, h, -h, -h, h,
+                -h, -h, h, -h, -h, -h,
                 // Top face
-                [-halfSize, halfSize, -halfSize], [halfSize, halfSize, -halfSize],
-                [halfSize, halfSize, -halfSize], [halfSize, halfSize, halfSize],
-                [halfSize, halfSize, halfSize], [-halfSize, halfSize, halfSize],
-                [-halfSize, halfSize, halfSize], [-halfSize, halfSize, -halfSize],
+                -h, h, -h, h, h, -h,
+                h, h, -h, h, h, h,
+                h, h, h, -h, h, h,
+                -h, h, h, -h, h, -h,
                 // Vertical edges
-                [-halfSize, -halfSize, -halfSize], [-halfSize, halfSize, -halfSize],
-                [halfSize, -halfSize, -halfSize], [halfSize, halfSize, -halfSize],
-                [halfSize, -halfSize, halfSize], [halfSize, halfSize, halfSize],
-                [-halfSize, -halfSize, halfSize], [-halfSize, halfSize, halfSize]
+                -h, -h, -h, -h, h, -h,
+                h, -h, -h, h, h, -h,
+                h, -h, h, h, h, h,
+                -h, -h, h, -h, h, h
             ];
             
-            // Add edge positions and colors
-            for (let i = 0; i < edges.length; i += 2) {
-                positions.push(
-                    x + edges[i][0], y + edges[i][1], z + edges[i][2],
-                    x + edges[i + 1][0], y + edges[i + 1][1], z + edges[i + 1][2]
-                );
-                colors.push(
-                    baseColor.r, baseColor.g, baseColor.b,
-                    baseColor.r, baseColor.g, baseColor.b
-                );
+            // Use dark color for edges with varying intensity
+            const intensity = pass === 1 ? 0 : 0.2; // Center line is darkest
+            const baseColor = new THREE.Color(intensity, intensity, intensity);
+            
+            let posIndex = 0;
+            let colorIndex = 0;
+            
+            // Process each voxel
+            for (const voxel of voxelData) {
+                const x = voxel.x * this.voxelSize + this.voxelSize * 0.5;
+                const y = voxel.y * this.voxelSize + this.voxelSize * 0.5;
+                const z = voxel.z * this.voxelSize + this.voxelSize * 0.5;
+                
+                // Add all edge vertices for this voxel
+                for (let i = 0; i < edgeOffsets.length; i += 3) {
+                    positions[posIndex++] = x + edgeOffsets[i];
+                    positions[posIndex++] = y + edgeOffsets[i + 1];
+                    positions[posIndex++] = z + edgeOffsets[i + 2];
+                    
+                    colors[colorIndex++] = baseColor.r;
+                    colors[colorIndex++] = baseColor.g;
+                    colors[colorIndex++] = baseColor.b;
+                }
             }
+            
+            // Create geometry with pre-allocated buffers
+            const lineGeometry = new THREE.BufferGeometry();
+            lineGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            lineGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            // Use different opacity for each pass to create depth
+            const opacity = pass === 1 ? 
+                (material.transparent ? 0.4 : 1.0) : // Center line more opaque
+                (material.transparent ? 0.2 : 0.5);  // Outer lines less opaque
+            
+            const lineMaterial = new THREE.LineBasicMaterial({
+                vertexColors: true,
+                transparent: true,
+                opacity: opacity,
+                depthTest: true,
+                depthWrite: false,
+                linewidth: 1  // Standard width, thickness comes from multiple passes
+            });
+            
+            const lineSegments = new THREE.LineSegments(lineGeometry, lineMaterial);
+            lineSegments.frustumCulled = false;  // Disable frustum culling
+            lineSegments.renderOrder = 2 + pass * 0.1;  // Slight render order variation
+            
+            // Compute bounding box for proper culling
+            lineGeometry.computeBoundingBox();
+            
+            this.edgeMeshes.push(lineSegments as any);
+            this.scene.add(lineSegments);
         }
-        
-        // Create line segments
-        lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        lineGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-        
-        const lineMaterial = new THREE.LineBasicMaterial({
-            vertexColors: true,
-            transparent: true,
-            opacity: material.transparent ? 0.3 : 0.8,  // Good visibility balance
-            depthTest: true,  // IMPORTANT: Test depth so backfaces are hidden
-            depthWrite: false,  // Don't write to depth buffer
-            linewidth: 2  // Note: linewidth > 1 only works with WebGLRenderer, not WebGL2
-        });
-        
-        const lineSegments = new THREE.LineSegments(lineGeometry, lineMaterial);
-        lineSegments.frustumCulled = false;  // Disable frustum culling to prevent disappearing
-        lineSegments.renderOrder = 2;  // Render slightly after voxels
-        
-        // Compute bounding box for proper culling
-        lineSegments.geometry.computeBoundingBox();
-        
-        this.edgeMeshes.push(lineSegments as any); // Cast to InstancedMesh type for compatibility
-        this.scene.add(lineSegments);
-        
-        // Dispose temporary geometry
-        boxGeometry.dispose();
-        edgesGeometry.dispose();
     }
     
     /**

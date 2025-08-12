@@ -437,12 +437,12 @@ export class VoxelRenderer {
         
         // Update edges if enabled and under the performance limit
         if (this.showEdges && allVoxelData.length > 0) {
-            if (allVoxelData.length < 5000) {
+            if (allVoxelData.length < 50000) {  // Increased limit to 50k voxels
                 // Update edges with ALL current voxels in the scene
                 this.edgeRenderer.updateEdges(allVoxelData);
             } else {
                 // Too many voxels, disable edges for performance
-                console.warn(`Disabling edges: ${allVoxelData.length} voxels exceeds 5000 limit`);
+                console.warn(`Disabling edges: ${allVoxelData.length} voxels exceeds 50000 limit`);
                 this.edgeRenderer.clearEdges();
                 this.showEdges = false;
                 this.edgeRenderer.setVisible(false);
@@ -548,7 +548,7 @@ export class VoxelRenderer {
         this.currentVoxelData = allVoxelData;
         
         // Update edges if needed (with throttling)
-        if (this.showEdges && allVoxelData.length < 5000) {
+        if (this.showEdges && allVoxelData.length < 50000) {  // Increased limit to 50k
             this.edgeRenderer.updateEdges(allVoxelData);
         } else if (this.showEdges) {
             this.edgeRenderer.clearEdges();
@@ -593,9 +593,9 @@ export class VoxelRenderer {
             }
             
             // Only show edges if voxel count is reasonable
-            if (this.currentVoxelData.length > 0 && this.currentVoxelData.length < 5000) {
+            if (this.currentVoxelData.length > 0 && this.currentVoxelData.length < 50000) {  // Increased limit to 50k
                 this.edgeRenderer.updateEdges(this.currentVoxelData);
-            } else if (this.currentVoxelData.length >= 5000) {
+            } else if (this.currentVoxelData.length >= 50000) {
                 console.warn('Too many voxels for edge rendering, disabling edges for performance');
                 this.showEdges = false;
                 this.edgeRenderer.setVisible(false);
@@ -614,7 +614,7 @@ export class VoxelRenderer {
     
     // Force update edges with current voxel data
     forceUpdateEdges(): void {
-        if (this.showEdges && this.currentVoxelData.length > 0 && this.currentVoxelData.length < 5000) {
+        if (this.showEdges && this.currentVoxelData.length > 0 && this.currentVoxelData.length < 50000) {  // Increased limit to 50k
             this.edgeRenderer.updateEdges(this.currentVoxelData);
         }
     }
