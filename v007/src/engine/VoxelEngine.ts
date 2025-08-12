@@ -13,6 +13,13 @@ export class VoxelEngine {
     private renderer: VoxelRenderer;
     private undoRedoManager: UndoRedoManager;
     
+    // Batch update system
+    private batchMode: boolean = false;
+    private batchedChanges: Set<string> = new Set();
+    private updateTimer: number | null = null;
+    private lastUpdateTime: number = 0;
+    private readonly MIN_UPDATE_INTERVAL = 8; // ~120fps for smoother drawing
+    
     constructor(scene: THREE.Scene, showWireframe = true, voxelSize = 0.1) {
         this.scene = scene;
         this.voxelSize = voxelSize; // Current voxel size for the world
@@ -95,6 +102,11 @@ export class VoxelEngine {
             this.voxelsByType.get(type)!.add(key);
         }
         
+        // Track changed voxel for batch update
+        if (this.batchMode) {
+            this.batchedChanges.add(key);
+        }
+        
         return true;
     }
     
@@ -110,8 +122,77 @@ export class VoxelEngine {
     
     // Update all instance buffers
     updateInstances(): void {
-        // Use the new renderer
-        this.renderer.updateFromVoxelsByType(this.voxelsByType);
+        if (this.batchMode) {
+            // In batch mode, defer the update
+            this.scheduleUpdate();
+        } else {
+            // Immediate update
+            this.performUpdate();
+        }
+    }
+    
+    // Start batch mode for multiple voxel operations
+    startBatch(): void {
+        this.batchMode = true;
+        this.batchedChanges.clear();
+    }
+    
+    // End batch mode and apply all changes
+    endBatch(): void {
+        if (!this.batchMode) return;
+        
+        this.batchMode = false;
+        
+        if (this.batchedChanges.size > 0) {
+            this.performUpdate();
+            this.batchedChanges.clear();
+        }
+        
+        // Clear any pending timer
+        if (this.updateTimer !== null) {
+            clearTimeout(this.updateTimer);
+            this.updateTimer = null;
+        }
+    }
+    
+    // Schedule an update with throttling
+    private scheduleUpdate(): void {
+        // Cancel existing timer
+        if (this.updateTimer !== null) {
+            clearTimeout(this.updateTimer);
+        }
+        
+        // Calculate time since last update
+        const now = Date.now();
+        const timeSinceLastUpdate = now - this.lastUpdateTime;
+        
+        if (timeSinceLastUpdate >= this.MIN_UPDATE_INTERVAL) {
+            // Enough time has passed, update immediately
+            this.performUpdate();
+        } else {
+            // Schedule update after minimum interval
+            const delay = this.MIN_UPDATE_INTERVAL - timeSinceLastUpdate;
+            this.updateTimer = window.setTimeout(() => {
+                this.performUpdate();
+                this.updateTimer = null;
+            }, delay);
+        }
+    }
+    
+    // Perform the actual update
+    private performUpdate(): void {
+        this.renderer.updateFromVoxelsByType(this.voxelsByType, this.batchMode);
+        this.lastUpdateTime = Date.now();
+        
+        // Clear batched changes after update
+        if (this.batchMode) {
+            this.batchedChanges.clear();
+        }
+        
+        // Force edge update even in batch mode for immediate visual feedback
+        if (this.batchMode && this.renderer.getShowEdges()) {
+            this.renderer.forceUpdateEdges();
+        }
     }
     
     
@@ -433,6 +514,11 @@ export class VoxelEngine {
         return this.renderer.getShowEdges();
     }
     
+    // Force update edges
+    forceUpdateEdges(): void {
+        this.renderer.forceUpdateEdges();
+    }
+    
     // Get all voxels in the world
     getAllVoxels(): Array<{ x: number; y: number; z: number; type: VoxelType }> {
         const allVoxels: Array<{ x: number; y: number; z: number; type: VoxelType }> = [];
@@ -451,5 +537,10 @@ export class VoxelEngine {
         }
         
         return allVoxels;
+    }
+    
+    // Check if batch mode is active
+    isBatchMode(): boolean {
+        return this.batchMode;
     }
 }

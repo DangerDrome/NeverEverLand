@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { VoxelType, VoxelTypeDefinition } from '../types';
 import { EdgeRenderer } from './EdgeRenderer';
+import { PerformanceMonitor } from '../utils/PerformanceMonitor';
 
 // Voxel type definitions with vibrant colors (as RGB strings for IDE color preview)
 const VOXEL_TYPES: Record<VoxelType, VoxelTypeDefinition> = {
@@ -30,15 +31,25 @@ export class VoxelRenderer {
     private opaqueMesh: THREE.InstancedMesh | null;
     private transparentMesh: THREE.InstancedMesh | null;
     private edgeRenderer: EdgeRenderer;
-    private matricesArray: Float32Array;
-    private colorsArray: Float32Array;
-    private opacityArray: Float32Array;
-    private maxInstances: number;
     private instanceData: Map<VoxelType, InstanceData>;
     private tempMatrix: THREE.Matrix4;
     private tempColor: THREE.Color;
     private showEdges: boolean;
     private currentVoxelData: { x: number; y: number; z: number; type: VoxelType }[];
+    
+    // Performance optimization: pre-allocated buffers
+    private static readonly INITIAL_CAPACITY = 100000;  // Pre-allocate for 100k voxels
+    private static readonly GROWTH_FACTOR = 2;  // Double capacity when needed
+    private opaqueCapacity: number = 0;
+    private transparentCapacity: number = 0;
+    private opaqueCount: number = 0;
+    private transparentCount: number = 0;
+    private voxelPositionMap: Map<string, number> = new Map();  // Maps position key to instance index
+    private usedIndices: Set<number> = new Set();  // Track which indices are in use
+    private freeOpaqueIndices: number[] = [];  // Pool of free opaque indices
+    private freeTransparentIndices: number[] = [];  // Pool of free transparent indices
+    private needsFullRebuild: boolean = false;
+    private invisibleMatrix: THREE.Matrix4;
     
     constructor(scene: THREE.Scene, voxelSize = 1.0, initialShowEdges = true) {
         this.scene = scene;
@@ -56,20 +67,12 @@ export class VoxelRenderer {
         this.transparentMesh = null;
         this.showEdges = initialShowEdges;
         
-        // Edge renderer for clean edge display
-        this.edgeRenderer = new EdgeRenderer(scene, voxelSize);
-        
-        // Set initial edge visibility based on showEdges
+        // Edge renderer for clean edge display - ensure it's visible if showEdges is true
+        this.edgeRenderer = new EdgeRenderer(scene, voxelSize, this.showEdges);
         this.edgeRenderer.setVisible(this.showEdges);
         
         // Store current voxel data for edge updates
         this.currentVoxelData = [];
-        
-        // Buffers for instancing
-        this.matricesArray = new Float32Array(0);
-        this.colorsArray = new Float32Array(0);
-        this.opacityArray = new Float32Array(0);
-        this.maxInstances = 1048576; // 1M instances
         
         // Instance data per type
         this.instanceData = new Map();
@@ -77,6 +80,9 @@ export class VoxelRenderer {
         // Temporary objects
         this.tempMatrix = new THREE.Matrix4();
         this.tempColor = new THREE.Color();
+        
+        // Matrix for hiding instances (scale to 0)
+        this.invisibleMatrix = new THREE.Matrix4().makeScale(0, 0, 0);
         
         this.initialize();
     }
@@ -111,11 +117,6 @@ export class VoxelRenderer {
             this.materials.set(type, material);
         }
         
-        // Pre-allocate buffers
-        this.matricesArray = new Float32Array(this.maxInstances * 16);
-        this.colorsArray = new Float32Array(this.maxInstances * 3);
-        this.opacityArray = new Float32Array(this.maxInstances);
-        
         // Initialize instance data tracking
         for (const type of this.materials.keys()) {
             this.instanceData.set(type, {
@@ -125,97 +126,77 @@ export class VoxelRenderer {
         }
     }
     
-    updateFromVoxelsByType(voxelsByType: Map<VoxelType, Set<string>>): void {
-        console.log('VoxelRenderer.updateFromVoxelsByType called with:', voxelsByType);
+    updateFromVoxelsByType(voxelsByType: Map<VoxelType, Set<string>>, _batchMode: boolean = false): void {
+        const monitor = PerformanceMonitor.getInstance();
+        monitor.startTimer('VoxelRenderer.update');
         
-        // Separate opaque and transparent voxels
-        let opaqueCount = 0;
-        let transparentCount = 0;
-        
-        // Collect all voxel data for edge rendering (including type)
-        const allVoxelData: { x: number; y: number; z: number; type: VoxelType }[] = [];
-        
-        // First pass: count instances for each category
-        for (const [type, positions] of voxelsByType.entries()) {
-            if (type === VoxelType.AIR) continue;
+        try {
+            // Fast path: if we have pre-allocated meshes and capacity is sufficient, do incremental update
+            const totalOpaqueNeeded = this.countOpaqueVoxels(voxelsByType);
+            const totalTransparentNeeded = this.countTransparentVoxels(voxelsByType);
             
-            const typeInfo = VOXEL_TYPES[type];
-            if (typeInfo.transparent) {
-                transparentCount += positions.size;
-            } else {
-                opaqueCount += positions.size;
+            // Check if we need to rebuild meshes (capacity exceeded or first time)
+            if (!this.opaqueMesh || !this.transparentMesh ||
+                totalOpaqueNeeded > this.opaqueCapacity || 
+                totalTransparentNeeded > this.transparentCapacity) {
+                
+                // Need full rebuild with larger capacity
+                monitor.startTimer('VoxelRenderer.rebuild');
+                this.rebuildMeshesWithCapacity(totalOpaqueNeeded, totalTransparentNeeded);
+                monitor.endTimer('VoxelRenderer.rebuild');
             }
-        }
-        
-        // Allocate instance indices
-        let opaqueIndex = 0;
-        let transparentIndex = 0;
-        
-        // Second pass: fill buffers
-        for (const [type, positions] of voxelsByType.entries()) {
-            if (type === VoxelType.AIR) continue;
             
-            const typeInfo = VOXEL_TYPES[type];
-            const baseColor = typeInfo.color;
-            const opacity = typeInfo.opacity || 1.0;
-            const isTransparent = typeInfo.transparent || false;
+            // Now do incremental update
+            monitor.startTimer('VoxelRenderer.incrementalUpdate');
+            this.incrementalUpdate(voxelsByType);
+            monitor.endTimer('VoxelRenderer.incrementalUpdate');
+        } finally {
+            const elapsed = monitor.endTimer('VoxelRenderer.update');
             
-            for (const posKey of positions) {
-                const [x, y, z] = posKey.split(',').map(Number);
-                
-                // Collect voxel data for edge rendering (including type)
-                allVoxelData.push({ x, y, z, type });
-                
-                // CRITICAL FIX: Offset transparent voxels to come after opaque ones in the buffer
-                // This prevents them from overwriting each other
-                const globalIndex = isTransparent ? (opaqueCount + transparentIndex) : opaqueIndex;
-                
-                // Set transformation matrix - offset by half voxel size to center in grid cells
-                this.tempMatrix.makeTranslation(
-                    x * this.voxelSize + this.voxelSize * 0.5,
-                    y * this.voxelSize + this.voxelSize * 0.5,
-                    z * this.voxelSize + this.voxelSize * 0.5
-                );
-                
-                this.tempMatrix.toArray(this.matricesArray, globalIndex * 16);
-                
-                // Set color (handle both string and number formats)
-                if (typeof baseColor === 'string') {
-                    this.tempColor.set(baseColor);
-                } else {
-                    this.tempColor.setHex(baseColor);
-                }
-                this.tempColor.toArray(this.colorsArray, globalIndex * 3);
-                
-                // Set opacity
-                this.opacityArray[globalIndex] = opacity;
-                
-                // Debug: Log the first few transparent voxels
-                if (isTransparent && globalIndex < 3) {
-                    console.log(`Transparent voxel ${globalIndex} (${VoxelType[type]}): color=0x${baseColor.toString(16)}, opacity=${opacity}`);
-                }
-                
-                // Increment appropriate index
-                if (isTransparent) {
-                    transparentIndex++;
-                } else {
-                    opaqueIndex++;
-                }
+            // Log if update took too long
+            if (elapsed > 50) {
+                console.warn(`Slow voxel update: ${elapsed.toFixed(2)}ms for ${this.opaqueCount + this.transparentCount} voxels`);
             }
-        }
-        
-        this.updateMeshes(opaqueCount, transparentCount);
-        
-        // Store current voxel data for edge toggle
-        this.currentVoxelData = allVoxelData;
-        
-        // Update edge renderer with all voxel data if edges are visible
-        if (this.showEdges) {
-            this.edgeRenderer.updateEdges(allVoxelData);
         }
     }
     
-    updateMeshes(opaqueCount: number, transparentCount: number): void {
+    private countOpaqueVoxels(voxelsByType: Map<VoxelType, Set<string>>): number {
+        let count = 0;
+        for (const [type, positions] of voxelsByType.entries()) {
+            if (type === VoxelType.AIR) continue;
+            const typeInfo = VOXEL_TYPES[type];
+            if (!typeInfo.transparent) {
+                count += positions.size;
+            }
+        }
+        return count;
+    }
+    
+    private countTransparentVoxels(voxelsByType: Map<VoxelType, Set<string>>): number {
+        let count = 0;
+        for (const [type, positions] of voxelsByType.entries()) {
+            if (type === VoxelType.AIR) continue;
+            const typeInfo = VOXEL_TYPES[type];
+            if (typeInfo.transparent) {
+                count += positions.size;
+            }
+        }
+        return count;
+    }
+    
+    private rebuildMeshesWithCapacity(minOpaqueCapacity: number, minTransparentCapacity: number): void {
+        // Calculate new capacities with growth factor
+        this.opaqueCapacity = Math.max(
+            VoxelRenderer.INITIAL_CAPACITY,
+            Math.ceil(minOpaqueCapacity * VoxelRenderer.GROWTH_FACTOR)
+        );
+        this.transparentCapacity = Math.max(
+            VoxelRenderer.INITIAL_CAPACITY,
+            Math.ceil(minTransparentCapacity * VoxelRenderer.GROWTH_FACTOR)
+        );
+        
+        console.log(`Rebuilding meshes with capacity: opaque=${this.opaqueCapacity}, transparent=${this.transparentCapacity}`);
+        
         // Remove old meshes
         if (this.opaqueMesh) {
             this.scene.remove(this.opaqueMesh);
@@ -228,82 +209,353 @@ export class VoxelRenderer {
             this.transparentMesh = null;
         }
         
-        const tempMatrix = new THREE.Matrix4();
-        const tempColor = new THREE.Color();
+        // Create new meshes with larger capacity
+        this.createPreallocatedMeshes();
         
-        // Create opaque mesh
-        if (opaqueCount > 0) {
+        // Mark for full data rebuild
+        this.needsFullRebuild = true;
+        this.voxelPositionMap.clear();
+    }
+    
+    private createPreallocatedMeshes(): void {
+        // Create opaque mesh with pre-allocated capacity
+        if (this.opaqueCapacity > 0) {
             const opaqueMaterial = new THREE.MeshStandardMaterial({
                 roughness: 0.8,
                 metalness: 0.2
             });
             
-            this.opaqueMesh = new THREE.InstancedMesh(this.geometry, opaqueMaterial, opaqueCount);
-            this.opaqueMesh.count = opaqueCount;
+            this.opaqueMesh = new THREE.InstancedMesh(this.geometry, opaqueMaterial, this.opaqueCapacity);
+            this.opaqueMesh.count = this.opaqueCapacity;  // Set to full capacity
             this.opaqueMesh.castShadow = true;
             this.opaqueMesh.receiveShadow = true;
-            this.opaqueMesh.frustumCulled = true;
+            this.opaqueMesh.frustumCulled = false;  // Disable to prevent disappearing on zoom
             
-            // Apply transforms and colors for opaque instances
-            for (let i = 0; i < opaqueCount; i++) {
-                tempMatrix.fromArray(this.matricesArray, i * 16);
-                this.opaqueMesh.setMatrixAt(i, tempMatrix);
-                
-                tempColor.fromArray(this.colorsArray, i * 3);
-                this.opaqueMesh.setColorAt(i, tempColor);
+            // Initialize all instances as invisible
+            for (let i = 0; i < this.opaqueCapacity; i++) {
+                this.opaqueMesh.setMatrixAt(i, this.invisibleMatrix);
             }
-            
             this.opaqueMesh.instanceMatrix.needsUpdate = true;
-            if (this.opaqueMesh.instanceColor) {
-                this.opaqueMesh.instanceColor.needsUpdate = true;
-            }
             
             this.scene.add(this.opaqueMesh);
         }
         
-        // Create transparent mesh
-        if (transparentCount > 0) {
-            // Custom shader material for transparency with per-instance opacity
+        // Create transparent mesh with pre-allocated capacity
+        if (this.transparentCapacity > 0) {
             const transparentMaterial = new THREE.MeshStandardMaterial({
                 roughness: 0.8,
                 metalness: 0.2,
                 transparent: true,
-                opacity: 0.8,  // Base opacity
-                depthWrite: false,  // Important for proper transparency
-                side: THREE.DoubleSide  // Render both sides for water
+                opacity: 0.8,
+                depthWrite: false,
+                side: THREE.DoubleSide
             });
             
-            this.transparentMesh = new THREE.InstancedMesh(this.geometry, transparentMaterial, transparentCount);
-            this.transparentMesh.count = transparentCount;
+            this.transparentMesh = new THREE.InstancedMesh(this.geometry, transparentMaterial, this.transparentCapacity);
+            this.transparentMesh.count = this.transparentCapacity;  // Set to full capacity
             this.transparentMesh.castShadow = true;
             this.transparentMesh.receiveShadow = true;
-            this.transparentMesh.frustumCulled = true;
-            this.transparentMesh.renderOrder = 1;  // Render after opaque objects
+            this.transparentMesh.frustumCulled = false;  // Disable to prevent disappearing on zoom
+            this.transparentMesh.renderOrder = 1;
             
-            // Apply transforms and colors for transparent instances
-            // CRITICAL: Read from the correct offset in the buffer (after opaque voxels)
-            for (let i = 0; i < transparentCount; i++) {
-                const bufferIndex = opaqueCount + i;  // Offset by opaque count
-                tempMatrix.fromArray(this.matricesArray, bufferIndex * 16);
-                this.transparentMesh.setMatrixAt(i, tempMatrix);
-                
-                tempColor.fromArray(this.colorsArray, bufferIndex * 3);
-                // Apply opacity to color alpha channel
-                const opacity = this.opacityArray[bufferIndex];
-                tempColor.multiplyScalar(opacity);
-                this.transparentMesh.setColorAt(i, tempColor);
+            // Initialize all instances as invisible
+            for (let i = 0; i < this.transparentCapacity; i++) {
+                this.transparentMesh.setMatrixAt(i, this.invisibleMatrix);
             }
+            this.transparentMesh.instanceMatrix.needsUpdate = true;
             
+            this.scene.add(this.transparentMesh);
+        }
+    }
+    
+    private incrementalUpdate(voxelsByType: Map<VoxelType, Set<string>>): void {
+        // If we need a full rebuild (after capacity increase), rebuild everything
+        if (this.needsFullRebuild) {
+            this.fullDataRebuild(voxelsByType);
+            this.needsFullRebuild = false;
+            return;
+        }
+        
+        // Otherwise, do incremental update
+        // Build set of current voxel positions
+        const currentVoxels = new Set<string>();
+        for (const [type, positions] of voxelsByType.entries()) {
+            if (type === VoxelType.AIR) continue;
+            for (const pos of positions) {
+                currentVoxels.add(pos);
+            }
+        }
+        
+        // Find removed voxels (in map but not in current set)
+        const toRemove: string[] = [];
+        for (const [posKey, _] of this.voxelPositionMap) {
+            if (!currentVoxels.has(posKey)) {
+                toRemove.push(posKey);
+            }
+        }
+        
+        // Remove voxels that no longer exist
+        for (const posKey of toRemove) {
+            const instanceIndex = this.voxelPositionMap.get(posKey);
+            if (instanceIndex !== undefined) {
+                // Hide the instance by scaling to 0
+                const isTransparent = instanceIndex >= this.opaqueCapacity;
+                if (isTransparent && this.transparentMesh) {
+                    const localIndex = instanceIndex - this.opaqueCapacity;
+                    this.transparentMesh.setMatrixAt(localIndex, this.invisibleMatrix);
+                    // Add to free list
+                    this.freeTransparentIndices.push(localIndex);
+                } else if (!isTransparent && this.opaqueMesh) {
+                    this.opaqueMesh.setMatrixAt(instanceIndex, this.invisibleMatrix);
+                    // Add to free list
+                    this.freeOpaqueIndices.push(instanceIndex);
+                }
+                this.voxelPositionMap.delete(posKey);
+                this.usedIndices.delete(instanceIndex);
+            }
+        }
+        
+        // Process new and updated voxels
+        for (const [type, positions] of voxelsByType.entries()) {
+            if (type === VoxelType.AIR) continue;
+            
+            const typeInfo = VOXEL_TYPES[type];
+            const isTransparent = typeInfo.transparent || false;
+            const baseColor = typeInfo.color;
+            const opacity = typeInfo.opacity || 1.0;
+            
+            for (const posKey of positions) {
+                const [x, y, z] = posKey.split(',').map(Number);
+                
+                // Check if this voxel already exists
+                let instanceIndex = this.voxelPositionMap.get(posKey);
+                
+                if (instanceIndex === undefined) {
+                    // New voxel - get from free list or find new slot
+                    if (isTransparent) {
+                        // Get from free list or allocate new
+                        const localIndex = this.freeTransparentIndices.pop();
+                        if (localIndex !== undefined) {
+                            instanceIndex = this.opaqueCapacity + localIndex;
+                        } else {
+                            // Find first unused transparent slot
+                            for (let i = 0; i < this.transparentCapacity; i++) {
+                                const globalIndex = this.opaqueCapacity + i;
+                                if (!this.usedIndices.has(globalIndex)) {
+                                    instanceIndex = globalIndex;
+                                    break;
+                                }
+                            }
+                        }
+                    } else {
+                        // Get from free list or allocate new
+                        instanceIndex = this.freeOpaqueIndices.pop();
+                        if (instanceIndex === undefined) {
+                            // Find first unused opaque slot
+                            for (let i = 0; i < this.opaqueCapacity; i++) {
+                                if (!this.usedIndices.has(i)) {
+                                    instanceIndex = i;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (instanceIndex === undefined) {
+                        console.warn('No available slots for new voxel!');
+                        continue;
+                    }
+                    
+                    this.voxelPositionMap.set(posKey, instanceIndex);
+                    this.usedIndices.add(instanceIndex);
+                }
+                
+                // Update the instance
+                this.tempMatrix.makeTranslation(
+                    x * this.voxelSize + this.voxelSize * 0.5,
+                    y * this.voxelSize + this.voxelSize * 0.5,
+                    z * this.voxelSize + this.voxelSize * 0.5
+                );
+                
+                if (typeof baseColor === 'string') {
+                    this.tempColor.set(baseColor);
+                } else {
+                    this.tempColor.setHex(baseColor);
+                }
+                
+                // Apply to appropriate mesh
+                if (isTransparent && this.transparentMesh) {
+                    const localIndex = instanceIndex - this.opaqueCapacity;
+                    this.transparentMesh.setMatrixAt(localIndex, this.tempMatrix);
+                    this.tempColor.multiplyScalar(opacity);
+                    this.transparentMesh.setColorAt(localIndex, this.tempColor);
+                } else if (!isTransparent && this.opaqueMesh) {
+                    this.opaqueMesh.setMatrixAt(instanceIndex, this.tempMatrix);
+                    this.opaqueMesh.setColorAt(instanceIndex, this.tempColor);
+                }
+            }
+        }
+        
+        // Update counts for debugging
+        this.opaqueCount = 0;
+        this.transparentCount = 0;
+        for (const [_, index] of this.voxelPositionMap) {
+            if (index >= this.opaqueCapacity) {
+                this.transparentCount++;
+            } else {
+                this.opaqueCount++;
+            }
+        }
+        
+        // Mark matrices as needing update
+        if (this.opaqueMesh) {
+            this.opaqueMesh.instanceMatrix.needsUpdate = true;
+            if (this.opaqueMesh.instanceColor) {
+                this.opaqueMesh.instanceColor.needsUpdate = true;
+            }
+        }
+        if (this.transparentMesh) {
             this.transparentMesh.instanceMatrix.needsUpdate = true;
             if (this.transparentMesh.instanceColor) {
                 this.transparentMesh.instanceColor.needsUpdate = true;
             }
-            
-            this.scene.add(this.transparentMesh);
         }
         
-        console.log(`Created meshes: opaque=${opaqueCount}, transparent=${transparentCount}`);
+        // Build complete voxel data for edge rendering from ALL voxels in the scene
+        // This ensures edges are shown for all voxels, not just newly added ones
+        const allVoxelData: { x: number; y: number; z: number; type: VoxelType }[] = [];
+        for (const [type, positions] of voxelsByType.entries()) {
+            if (type === VoxelType.AIR) continue;
+            for (const posKey of positions) {
+                const [x, y, z] = posKey.split(',').map(Number);
+                allVoxelData.push({ x, y, z, type });
+            }
+        }
+        
+        // Store the complete voxel data
+        this.currentVoxelData = allVoxelData;
+        
+        // Update edges if enabled and under the performance limit
+        if (this.showEdges && allVoxelData.length > 0) {
+            if (allVoxelData.length < 5000) {
+                // Update edges with ALL current voxels in the scene
+                this.edgeRenderer.updateEdges(allVoxelData);
+            } else {
+                // Too many voxels, disable edges for performance
+                console.warn(`Disabling edges: ${allVoxelData.length} voxels exceeds 5000 limit`);
+                this.edgeRenderer.clearEdges();
+                this.showEdges = false;
+                this.edgeRenderer.setVisible(false);
+            }
+        }
     }
+    
+    private fullDataRebuild(voxelsByType: Map<VoxelType, Set<string>>): void {
+        console.log('Performing full data rebuild');
+        
+        // Clear position map and indices
+        this.voxelPositionMap.clear();
+        this.usedIndices.clear();
+        this.freeOpaqueIndices = [];
+        this.freeTransparentIndices = [];
+        
+        // Reset all instances to invisible
+        if (this.opaqueMesh) {
+            for (let i = 0; i < this.opaqueCapacity; i++) {
+                this.opaqueMesh.setMatrixAt(i, this.invisibleMatrix);
+            }
+        }
+        if (this.transparentMesh) {
+            for (let i = 0; i < this.transparentCapacity; i++) {
+                this.transparentMesh.setMatrixAt(i, this.invisibleMatrix);
+            }
+        }
+        
+        // Rebuild data
+        let opaqueIndex = 0;
+        let transparentIndex = 0;
+        
+        const allVoxelData: { x: number; y: number; z: number; type: VoxelType }[] = [];
+        
+        for (const [type, positions] of voxelsByType.entries()) {
+            if (type === VoxelType.AIR) continue;
+            
+            const typeInfo = VOXEL_TYPES[type];
+            const baseColor = typeInfo.color;
+            const opacity = typeInfo.opacity || 1.0;
+            const isTransparent = typeInfo.transparent || false;
+            
+            for (const posKey of positions) {
+                const [x, y, z] = posKey.split(',').map(Number);
+                allVoxelData.push({ x, y, z, type });
+                
+                // Determine instance index
+                const instanceIndex = isTransparent ? 
+                    (this.opaqueCapacity + transparentIndex) : opaqueIndex;
+                
+                // Store position mapping
+                this.voxelPositionMap.set(posKey, instanceIndex);
+                this.usedIndices.add(instanceIndex);
+                
+                // Set transformation matrix
+                this.tempMatrix.makeTranslation(
+                    x * this.voxelSize + this.voxelSize * 0.5,
+                    y * this.voxelSize + this.voxelSize * 0.5,
+                    z * this.voxelSize + this.voxelSize * 0.5
+                );
+                
+                // Set color
+                if (typeof baseColor === 'string') {
+                    this.tempColor.set(baseColor);
+                } else {
+                    this.tempColor.setHex(baseColor);
+                }
+                
+                // Apply to appropriate mesh
+                if (isTransparent && this.transparentMesh) {
+                    const localIndex = transparentIndex;
+                    this.transparentMesh.setMatrixAt(localIndex, this.tempMatrix);
+                    this.tempColor.multiplyScalar(opacity);
+                    this.transparentMesh.setColorAt(localIndex, this.tempColor);
+                    transparentIndex++;
+                } else if (!isTransparent && this.opaqueMesh) {
+                    this.opaqueMesh.setMatrixAt(instanceIndex, this.tempMatrix);
+                    this.opaqueMesh.setColorAt(instanceIndex, this.tempColor);
+                    opaqueIndex++;
+                }
+            }
+        }
+        
+        // Update counts
+        this.opaqueCount = opaqueIndex;
+        this.transparentCount = transparentIndex;
+        
+        // Mark matrices as needing update
+        if (this.opaqueMesh) {
+            this.opaqueMesh.instanceMatrix.needsUpdate = true;
+            if (this.opaqueMesh.instanceColor) {
+                this.opaqueMesh.instanceColor.needsUpdate = true;
+            }
+        }
+        if (this.transparentMesh) {
+            this.transparentMesh.instanceMatrix.needsUpdate = true;
+            if (this.transparentMesh.instanceColor) {
+                this.transparentMesh.instanceColor.needsUpdate = true;
+            }
+        }
+        
+        // Store current voxel data
+        this.currentVoxelData = allVoxelData;
+        
+        // Update edges if needed (with throttling)
+        if (this.showEdges && allVoxelData.length < 5000) {
+            this.edgeRenderer.updateEdges(allVoxelData);
+        } else if (this.showEdges) {
+            this.edgeRenderer.clearEdges();
+        }
+    }
+    
+    // Removed updateMeshes method as we now use pre-allocated meshes
     
     // Get instance count for a specific type
     getInstanceCount(type: VoxelType): number {
@@ -327,9 +579,27 @@ export class VoxelRenderer {
         
         // Immediately update edges based on current state
         if (this.showEdges) {
-            // Use stored voxel data to immediately show edges
-            if (this.currentVoxelData.length > 0) {
+            // Rebuild complete voxel data if needed
+            if (this.currentVoxelData.length === 0) {
+                // Rebuild from voxelPositionMap if currentVoxelData is empty
+                const allVoxelData: { x: number; y: number; z: number; type: VoxelType }[] = [];
+                for (const [posKey, _] of this.voxelPositionMap) {
+                    const [x, y, z] = posKey.split(',').map(Number);
+                    // We don't have type info in the map, use a default
+                    // This is a fallback - normally currentVoxelData should be populated
+                    allVoxelData.push({ x, y, z, type: VoxelType.GRASS });
+                }
+                this.currentVoxelData = allVoxelData;
+            }
+            
+            // Only show edges if voxel count is reasonable
+            if (this.currentVoxelData.length > 0 && this.currentVoxelData.length < 5000) {
                 this.edgeRenderer.updateEdges(this.currentVoxelData);
+            } else if (this.currentVoxelData.length >= 5000) {
+                console.warn('Too many voxels for edge rendering, disabling edges for performance');
+                this.showEdges = false;
+                this.edgeRenderer.setVisible(false);
+                this.edgeRenderer.clearEdges();
             }
         } else {
             // Clear edges when toggled off
@@ -342,18 +612,36 @@ export class VoxelRenderer {
         return this.showEdges;
     }
     
+    // Force update edges with current voxel data
+    forceUpdateEdges(): void {
+        if (this.showEdges && this.currentVoxelData.length > 0 && this.currentVoxelData.length < 5000) {
+            this.edgeRenderer.updateEdges(this.currentVoxelData);
+        }
+    }
+    
     // Clear all instances
     clear() {
+        // Don't dispose meshes, just hide all instances
         if (this.opaqueMesh) {
-            this.scene.remove(this.opaqueMesh);
-            this.opaqueMesh.geometry.dispose();
-            this.opaqueMesh = null;
+            for (let i = 0; i < this.opaqueCapacity; i++) {
+                this.opaqueMesh.setMatrixAt(i, this.invisibleMatrix);
+            }
+            this.opaqueMesh.instanceMatrix.needsUpdate = true;
         }
         if (this.transparentMesh) {
-            this.scene.remove(this.transparentMesh);
-            this.transparentMesh.geometry.dispose();
-            this.transparentMesh = null;
+            for (let i = 0; i < this.transparentCapacity; i++) {
+                this.transparentMesh.setMatrixAt(i, this.invisibleMatrix);
+            }
+            this.transparentMesh.instanceMatrix.needsUpdate = true;
         }
+        
+        // Clear position map and data
+        this.voxelPositionMap.clear();
+        this.usedIndices.clear();
+        this.freeOpaqueIndices = [];
+        this.freeTransparentIndices = [];
+        this.opaqueCount = 0;
+        this.transparentCount = 0;
         
         // Clear edges and stored data
         this.edgeRenderer.clearEdges();

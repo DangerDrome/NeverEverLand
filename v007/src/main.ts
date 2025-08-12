@@ -10,6 +10,7 @@ import { DirectionIndicator } from './ui/DirectionIndicator';
 import { VoxelPanel } from './ui/VoxelPanel';
 import { FileManager } from './io/FileManager';
 import { BoxSelectionTool } from './tools/BoxSelectionTool';
+import { attachPerformanceTest } from './utils/PerformanceTest';
 
 // =====================================
 // SETTINGS - Customize your experience
@@ -572,6 +573,11 @@ class VoxelApp {
         }
     }
     
+    // Getter for voxel engine (for testing purposes)
+    getVoxelEngine(): VoxelEngine | null {
+        return this.voxelEngine;
+    }
+    
     setupEventListeners() {
         // Window resize
         window.addEventListener('resize', () => this.onWindowResize());
@@ -699,6 +705,8 @@ class VoxelApp {
                 }
                 
                 this.drawingSystem!.applyBrush(pos.x, pos.y, pos.z);
+                // Update instances for immediate visual feedback during drag
+                this.voxelEngine!.updateInstances();
                 return;
             }
             
@@ -749,6 +757,8 @@ class VoxelApp {
             }
             
             this.drawingSystem!.applyBrush(pos.x, pos.y, pos.z);
+            // Update for immediate visual feedback
+            this.voxelEngine!.updateInstances();
         }
     }
     
@@ -1296,7 +1306,15 @@ window.addEventListener('DOMContentLoaded', () => {
         console.log('Starting VoxelApp...');
         const app = new VoxelApp();
         (window as any).app = app;
+        
+        // Attach performance testing utilities
+        const voxelEngine = app.getVoxelEngine();
+        if (voxelEngine) {
+            attachPerformanceTest(voxelEngine);
+        }
+        
         console.log('VoxelApp started successfully');
+        console.log('Performance test available via window.perfTest - type perfTest.suite() to run tests');
     } catch (error) {
         console.error('Error starting VoxelApp:', error);
     }

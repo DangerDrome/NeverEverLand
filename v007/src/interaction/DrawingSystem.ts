@@ -163,6 +163,9 @@ export class DrawingSystem {
         // If using eraser tool, always remove voxels
         this.drawMode = this.toolMode === 'eraser' ? 'remove' : mode;
         
+        // Start batch mode for continuous drawing
+        this.voxelEngine.startBatch();
+        
         // Store the surface normal to constrain drawing to this plane
         // For both brush and eraser tools to prevent unwanted voxel modifications
         if (hit.normal && (this.toolMode === 'brush' || this.toolMode === 'eraser')) {
@@ -181,6 +184,10 @@ export class DrawingSystem {
             case 'brush':
             case 'eraser':
                 this.applyBrush(pos.x, pos.y, pos.z);
+                // For single click (not drag), update immediately
+                if (!this.voxelEngine.isBatchMode()) {
+                    this.voxelEngine.updateInstances();
+                }
                 break;
             case 'box':
                 if (!this.boxStart) {
@@ -211,7 +218,13 @@ export class DrawingSystem {
         this.previewGroup.visible = true;
         this.drawingSurface = null;
         
-        // Process any pending operations
+        // End batch mode and apply all changes
+        this.voxelEngine.endBatch();
+        
+        // Force edge update after drawing completes
+        this.voxelEngine.forceUpdateEdges();
+        
+        // Process any pending operations (legacy compatibility)
         this.processPendingOperations();
         
         // Finalize undo/redo group
@@ -236,8 +249,6 @@ export class DrawingSystem {
     // Voxel size is now fixed at 0.1m, no need for this method
     
     applyBrush(centerX: number, centerY: number, centerZ: number): void {
-        let changed = false;
-        
         // Calculate the offset to center the brush
         // For even sizes, we offset by half to center on the clicked voxel
         // For odd sizes, the center is naturally at the clicked position
@@ -265,26 +276,20 @@ export class DrawingSystem {
                         continue;
                     }
                     
-                    // Apply voxel change immediately
+                    // Apply voxel change (batched internally)
                     if (this.drawMode === 'add') {
                         // When adding, replace any existing voxel with the new type
-                        if (this.voxelEngine.setVoxel(vx, vy, vz, this.currentVoxelType)) {
-                            changed = true;
-                        }
+                        this.voxelEngine.setVoxel(vx, vy, vz, this.currentVoxelType);
                     } else {
                         // When removing (eraser mode or right-click), set to AIR
-                        if (this.voxelEngine.setVoxel(vx, vy, vz, VoxelType.AIR)) {
-                            changed = true;
-                        }
+                        this.voxelEngine.setVoxel(vx, vy, vz, VoxelType.AIR);
                     }
                 }
             }
         }
         
-        // Update instances immediately if anything changed
-        if (changed) {
-            this.voxelEngine.updateInstances();
-        }
+        // DON'T update instances here - let batch mode handle it!
+        // The update will happen when stopDrawing() calls endBatch()
     }
     
     // Legacy method - no longer used but kept for compatibility
@@ -363,27 +368,23 @@ export class DrawingSystem {
         const minZ = Math.min(start.z, end.z);
         const maxZ = Math.max(start.z, end.z);
         
-        let changed = false;
+        // Start batch for box operation
+        this.voxelEngine.startBatch();
+        
         for (let x = minX; x <= maxX; x++) {
             for (let y = minY; y <= maxY; y++) {
                 for (let z = minZ; z <= maxZ; z++) {
                     if (this.drawMode === 'add') {
-                        if (this.voxelEngine.setVoxel(x, y, z, this.currentVoxelType)) {
-                            changed = true;
-                        }
+                        this.voxelEngine.setVoxel(x, y, z, this.currentVoxelType);
                     } else {
-                        if (this.voxelEngine.setVoxel(x, y, z, VoxelType.AIR)) {
-                            changed = true;
-                        }
+                        this.voxelEngine.setVoxel(x, y, z, VoxelType.AIR);
                     }
                 }
             }
         }
         
-        // Update instances immediately
-        if (changed) {
-            this.voxelEngine.updateInstances();
-        }
+        // End batch and update
+        this.voxelEngine.endBatch();
     }
     
     // Line tool implementation
@@ -393,7 +394,9 @@ export class DrawingSystem {
         const dz = Math.abs(end.z - start.z);
         
         const steps = Math.max(dx, dy, dz);
-        let changed = false;
+        
+        // Start batch for line operation
+        this.voxelEngine.startBatch();
         
         for (let i = 0; i <= steps; i++) {
             const t = steps === 0 ? 0 : i / steps;
@@ -402,20 +405,14 @@ export class DrawingSystem {
             const z = Math.round(start.z + (end.z - start.z) * t);
             
             if (this.drawMode === 'add') {
-                if (this.voxelEngine.setVoxel(x, y, z, this.currentVoxelType)) {
-                    changed = true;
-                }
+                this.voxelEngine.setVoxel(x, y, z, this.currentVoxelType);
             } else {
-                if (this.voxelEngine.setVoxel(x, y, z, VoxelType.AIR)) {
-                    changed = true;
-                }
+                this.voxelEngine.setVoxel(x, y, z, VoxelType.AIR);
             }
         }
         
-        // Update instances immediately
-        if (changed) {
-            this.voxelEngine.updateInstances();
-        }
+        // End batch and update
+        this.voxelEngine.endBatch();
     }
     
     // Fill tool implementation (flood fill)
@@ -460,18 +457,18 @@ export class DrawingSystem {
             }
         }
         
-        // Apply fill immediately
-        let changed = false;
+        // Start batch for fill operation
+        this.voxelEngine.startBatch();
+        
+        // Apply all fill operations
         for (const pos of operations) {
-            if (pos && this.voxelEngine.setVoxel(pos.x, pos.y, pos.z, this.currentVoxelType)) {
-                changed = true;
+            if (pos) {
+                this.voxelEngine.setVoxel(pos.x, pos.y, pos.z, this.currentVoxelType);
             }
         }
         
-        // Update instances immediately
-        if (changed) {
-            this.voxelEngine.updateInstances();
-        }
+        // End batch and update
+        this.voxelEngine.endBatch();
     }
     
     // Update preview for tools
