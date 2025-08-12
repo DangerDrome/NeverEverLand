@@ -56,7 +56,7 @@ const SETTINGS = {
         powerPreference: "high-performance", // GPU preference
         shadowMap: {
             enabled: true,             // Enable shadows
-            type: THREE.PCFSoftShadowMap // Shadow quality
+            type: THREE.PCFSoftShadowMap   // PCF Soft shadows for smoother gradients
         }
     },
     
@@ -106,33 +106,24 @@ const SETTINGS = {
             },
             shadow: {
                 // Shadow Map Quality
-                mapSize: 4096,         // Resolution of shadow map (higher = better quality but more GPU usage)
-                                      // Options: 512, 1024, 2048, 4096, 8192
+                mapSize: 8192,         // Maximum resolution for ultra-smooth shadows
                 
                 // Shadow Camera Configuration
                 camera: {              
                     // Orthographic shadow camera bounds (area that casts shadows)
-                    left: -100,        // Left boundary of shadow area (increased)
-                    right: 100,        // Right boundary of shadow area (increased)
-                    top: 100,          // Top boundary of shadow area (increased)
-                    bottom: -100,      // Bottom boundary of shadow area (increased)
-                    near: 0.1,         // Near clipping plane for shadow camera (closer)
-                    far: 1000          // Far clipping plane for shadow camera (further)
+                    left: -20,         // Very tight bounds for maximum precision
+                    right: 20,         // Ultra-focused on visible area
+                    top: 20,           // Minimal area = best quality
+                    bottom: -20,       // Tightly fit to scene
+                    near: 0.1,         // Very close near plane
+                    far: 300           // Optimized far plane
                 },
                 
                 // Shadow Bias Settings (fine-tune to prevent artifacts)
-                bias: 0.0001,          // Depth bias - prevents shadow acne (dark speckles on surfaces)
-                                      // Too high = shadows detach from objects (peter panning)
-                                      // Too low/negative = shadow acne artifacts
-                                      // Good range: 0.0001 to 0.001
-                
-                normalBias: 0.001,     // Normal-based bias - helps with curved surfaces
-                                      // Pushes shadows along surface normals
-                                      // Good range: 0 to 0.01
-                
-                // Shadow Appearance
-                radius: 1,             // Shadow softness (blur radius) - higher = softer shadows
-                blurSamples: 25        // Number of samples for shadow blur (affects quality)
+                bias: 0.00001,         // Minimal bias for accurate shadows
+                normalBias: 0.01,     // Minimal normal bias
+                radius: 1.0,           // Slightly softer for smooth transitions
+                blurSamples: 16        // Maximum samples for silky smooth gradients
             }
         }
     },
