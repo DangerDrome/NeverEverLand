@@ -67,10 +67,11 @@ export class DrawingSystem {
     }
     
     createPreviewMesh(): void {
+        const voxelSize = this.voxelEngine.getCurrentVoxelSize();
         const geometry = new THREE.BoxGeometry(
-            this.voxelEngine.voxelSize,
-            this.voxelEngine.voxelSize,
-            this.voxelEngine.voxelSize
+            voxelSize,
+            voxelSize,
+            voxelSize
         );
         
         // Create a group to hold both the mesh and edges
@@ -105,16 +106,30 @@ export class DrawingSystem {
         // Update tool previews
         this.updateToolPreview(hit);
         
-        // For brush, eraser, and fill tools, show single preview
+        // For brush, eraser, and fill tools, show preview
         if (this.toolMode === 'brush' || this.toolMode === 'eraser' || this.toolMode === 'fill') {
-            // Update preview group position - offset by half voxel size to center in grid cells
+            const voxelSize = this.voxelEngine.getCurrentVoxelSize();
+            
+            // Calculate the center position for the brush preview
+            // We need to offset based on brush size to align with actual painting
+            const offsetXZ = Math.floor(this.brushSize / 2);
+            
+            // Special handling for Y axis - match the placement logic
+            let offsetY = Math.floor(this.brushSize / 2);
+            if (pos.y === 0 && (this.toolMode !== 'eraser' && this.drawMode === 'add')) {
+                // When placing on ground plane, preview builds UP
+                offsetY = 0;
+            }
+            
+            // Position the preview to show the exact area that will be painted
             this.previewGroup.position.set(
-                pos.x * this.voxelEngine.voxelSize + this.voxelEngine.voxelSize * 0.5,
-                pos.y * this.voxelEngine.voxelSize + this.voxelEngine.voxelSize * 0.5,
-                pos.z * this.voxelEngine.voxelSize + this.voxelEngine.voxelSize * 0.5
+                (pos.x - offsetXZ + this.brushSize / 2) * voxelSize,
+                (pos.y - offsetY + this.brushSize / 2) * voxelSize,
+                (pos.z - offsetXZ + this.brushSize / 2) * voxelSize
             );
             
-            // Scale preview based on brush size
+            // Scale preview to exact brush size
+            // This makes the preview box exactly cover NxNxN voxels
             this.previewGroup.scale.setScalar(this.brushSize);
             
             // Update preview color based on tool
@@ -149,10 +164,11 @@ export class DrawingSystem {
         this.drawMode = this.toolMode === 'eraser' ? 'remove' : mode;
         
         // Store the surface normal to constrain drawing to this plane
-        if (mode === 'add' && hit.normal && this.toolMode !== 'eraser') {
+        // For both brush and eraser tools to prevent unwanted voxel modifications
+        if (hit.normal && (this.toolMode === 'brush' || this.toolMode === 'eraser')) {
             this.drawingSurface = {
                 normal: hit.normal.clone(),
-                basePos: { ...hit.adjacentPos }, // Store the base position for all axes
+                basePos: mode === 'add' ? { ...hit.adjacentPos } : { ...hit.voxelPos }, // Store appropriate position
                 hitPos: { ...hit.voxelPos } // Store the hit voxel position
             };
         } else {
@@ -217,22 +233,37 @@ export class DrawingSystem {
         this.previewGroup.visible = true;
     }
     
+    // Voxel size is now fixed at 0.1m, no need for this method
+    
     applyBrush(centerX: number, centerY: number, centerZ: number): void {
-        const radius = Math.floor(this.brushSize / 2);
         let changed = false;
         
-        // Apply brush in a cubic pattern
-        for (let x = -radius; x <= radius; x++) {
-            for (let y = -radius; y <= radius; y++) {
-                for (let z = -radius; z <= radius; z++) {
-                    // Optional: make it spherical
-                    if (this.brushSize > 1 && x*x + y*y + z*z > radius*radius) {
+        // Calculate the offset to center the brush
+        // For even sizes, we offset by half to center on the clicked voxel
+        // For odd sizes, the center is naturally at the clicked position
+        const offsetXZ = Math.floor(this.brushSize / 2);
+        
+        // Special handling for Y axis - never go below ground (y=0)
+        // When placing on ground, always build UP
+        let offsetY = Math.floor(this.brushSize / 2);
+        if (centerY === 0 && this.drawMode === 'add') {
+            // When placing on ground plane, don't offset Y downward
+            offsetY = 0;
+        }
+        
+        // Apply brush in an exact NxNxN cubic pattern
+        for (let x = 0; x < this.brushSize; x++) {
+            for (let y = 0; y < this.brushSize; y++) {
+                for (let z = 0; z < this.brushSize; z++) {
+                    // Calculate actual voxel position
+                    const vx = centerX + x - offsetXZ;
+                    const vy = centerY + y - offsetY;
+                    const vz = centerZ + z - offsetXZ;
+                    
+                    // Skip voxels below ground when adding
+                    if (vy < 0 && this.drawMode === 'add') {
                         continue;
                     }
-                    
-                    const vx = centerX + x;
-                    const vy = centerY + y;
-                    const vz = centerZ + z;
                     
                     // Apply voxel change immediately
                     if (this.drawMode === 'add') {
@@ -471,9 +502,10 @@ export class DrawingSystem {
         const maxZ = Math.max(start.z, end.z);
         
         // Create a single mesh for the box outline
-        const width = (maxX - minX + 1) * this.voxelEngine.voxelSize;
-        const height = (maxY - minY + 1) * this.voxelEngine.voxelSize;
-        const depth = (maxZ - minZ + 1) * this.voxelEngine.voxelSize;
+        const voxelSize = this.voxelEngine.getCurrentVoxelSize();
+        const width = (maxX - minX + 1) * voxelSize;
+        const height = (maxY - minY + 1) * voxelSize;
+        const depth = (maxZ - minZ + 1) * voxelSize;
         
         const geometry = new THREE.BoxGeometry(width, height, depth);
         
@@ -490,9 +522,9 @@ export class DrawingSystem {
         group.add(edgeLines);
         
         group.position.set(
-            (minX + maxX) * this.voxelEngine.voxelSize / 2 + this.voxelEngine.voxelSize * 0.5,
-            (minY + maxY) * this.voxelEngine.voxelSize / 2 + this.voxelEngine.voxelSize * 0.5,
-            (minZ + maxZ) * this.voxelEngine.voxelSize / 2 + this.voxelEngine.voxelSize * 0.5
+            (minX + maxX) * voxelSize / 2 + voxelSize * 0.5,
+            (minY + maxY) * voxelSize / 2 + voxelSize * 0.5,
+            (minZ + maxZ) * voxelSize / 2 + voxelSize * 0.5
         );
         
         this.voxelEngine.scene.add(group);
@@ -513,10 +545,11 @@ export class DrawingSystem {
             const y = Math.round(start.y + (end.y - start.y) * t);
             const z = Math.round(start.z + (end.z - start.z) * t);
             
+            const voxelSize = this.voxelEngine.getCurrentVoxelSize();
             const geometry = new THREE.BoxGeometry(
-                this.voxelEngine.voxelSize,
-                this.voxelEngine.voxelSize,
-                this.voxelEngine.voxelSize
+                voxelSize,
+                voxelSize,
+                voxelSize
             );
             
             // Create a group for mesh and edges
@@ -532,9 +565,9 @@ export class DrawingSystem {
             group.add(edgeLines);
             
             group.position.set(
-                x * this.voxelEngine.voxelSize + this.voxelEngine.voxelSize * 0.5,
-                y * this.voxelEngine.voxelSize + this.voxelEngine.voxelSize * 0.5,
-                z * this.voxelEngine.voxelSize + this.voxelEngine.voxelSize * 0.5
+                x * voxelSize + voxelSize * 0.5,
+                y * voxelSize + voxelSize * 0.5,
+                z * voxelSize + voxelSize * 0.5
             );
             
             this.voxelEngine.scene.add(group);

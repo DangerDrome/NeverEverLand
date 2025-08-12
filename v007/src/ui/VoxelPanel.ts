@@ -110,21 +110,42 @@ export class VoxelPanel {
         `;
         this.element.appendChild(separator2);
         
-        // Add brush size indicator
-        const brushInfo = document.createElement('div');
-        brushInfo.id = 'brush-info';
-        brushInfo.style.cssText = `
+        // Add title
+        const brushTitle = document.createElement('div');
+        brushTitle.textContent = 'Brush:';
+        brushTitle.style.cssText = `
             color: rgba(255, 255, 255, 0.7);
-            font-size: 12px;
+            font-size: 14px;
+            margin-right: 8px;
+            font-weight: 500;
+        `;
+        this.element.appendChild(brushTitle);
+        
+        // Add brush size toggle button
+        const brushButton = document.createElement('button');
+        brushButton.id = 'brush-size-toggle';
+        brushButton.style.cssText = `
+            width: 40px;
+            height: 40px;
+            border: 2px solid transparent;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 20px;
+            font-weight: bold;
             display: flex;
             align-items: center;
-            gap: 8px;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+            color: rgba(255, 255, 255, 0.8);
         `;
-        brushInfo.innerHTML = `
-            <span>Size:</span>
-            <span id="brush-size-value" style="font-weight: bold; color: #fff;">1</span>
-        `;
-        this.element.appendChild(brushInfo);
+        brushButton.title = 'Brush Size (Click to cycle or use [ ])';
+        brushButton.innerHTML = '<span id="brush-size-value">1</span>';
+        this.element.appendChild(brushButton);
+        
+        // Voxels are fixed at 0.1m size, no controls needed
         
         // Add file operations section
         const separator3 = document.createElement('div');
@@ -644,24 +665,27 @@ export class VoxelPanel {
         return button;
     }
     
-    private selectTool(toolId: string): void {
+    private selectTool(toolId: string, fromKeyboard: boolean = false): void {
         this.selectedTool = toolId;
         
-        // Map tool IDs to keyboard shortcuts
-        const toolKeys: { [key: string]: string } = {
-            'brush': 'b',
-            'eraser': 'e', 
-            'box': 'x',
-            'line': 'l',
-            'fill': 'p',
-            'selection': 's'
-        };
-        
-        // Dispatch the appropriate keyboard event
-        // This ensures selection mode is properly exited when switching tools
-        if (toolKeys[toolId]) {
-            const event = new KeyboardEvent('keydown', { key: toolKeys[toolId] });
-            window.dispatchEvent(event);
+        // Only dispatch keyboard event if NOT called from keyboard (to avoid infinite loop)
+        if (!fromKeyboard) {
+            // Map tool IDs to keyboard shortcuts
+            const toolKeys: { [key: string]: string } = {
+                'brush': 'b',
+                'eraser': 'e', 
+                'box': 'x',
+                'line': 'l',
+                'fill': 'p',
+                'selection': 's'
+            };
+            
+            // Dispatch the appropriate keyboard event
+            // This ensures selection mode is properly exited when switching tools
+            if (toolKeys[toolId]) {
+                const event = new KeyboardEvent('keydown', { key: toolKeys[toolId] });
+                window.dispatchEvent(event);
+            }
         }
         
         // Update button states
@@ -752,13 +776,50 @@ export class VoxelPanel {
     public updateBrushSize(size: number): void {
         const element = document.getElementById('brush-size-value');
         if (element) {
+            // Show just the number
             element.textContent = size.toString();
+        }
+        
+        // Update toggle button hover effect and active state
+        const toggleBtn = document.getElementById('brush-size-toggle') as HTMLButtonElement;
+        if (toggleBtn) {
+            // Update title to show full size info
+            toggleBtn.title = `Brush Size: ${size}×${size}×${size} (Click to cycle or use [ ])`;
+            
+            // Add hover listener if not already added
+            if (!toggleBtn.dataset.listenerAdded) {
+                toggleBtn.addEventListener('mouseenter', () => {
+                    if (!toggleBtn.classList.contains('active')) {
+                        toggleBtn.style.background = 'rgba(255, 255, 255, 0.15)';
+                        toggleBtn.style.transform = 'scale(1.05)';
+                    }
+                });
+                
+                toggleBtn.addEventListener('mouseleave', () => {
+                    if (!toggleBtn.classList.contains('active')) {
+                        toggleBtn.style.background = 'rgba(255, 255, 255, 0.1)';
+                        toggleBtn.style.transform = 'scale(1)';
+                    }
+                });
+                
+                toggleBtn.addEventListener('mousedown', () => {
+                    toggleBtn.style.transform = 'scale(0.95)';
+                });
+                
+                toggleBtn.addEventListener('mouseup', () => {
+                    toggleBtn.style.transform = 'scale(1.05)';
+                });
+                
+                toggleBtn.dataset.listenerAdded = 'true';
+            }
         }
     }
     
+    // Voxel size is now fixed at 0.1m, no need for this method
+    
     public updateToolMode(mode: string): void {
-        // Update the internal selection
-        this.selectTool(mode);
+        // Update the internal selection (called from keyboard, so pass true to avoid loop)
+        this.selectTool(mode, true);
     }
     
     public setFileManager(fileManager: FileManager): void {

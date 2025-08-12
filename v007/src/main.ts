@@ -201,6 +201,18 @@ const SETTINGS = {
         defaultBrushSize: 1,           // Default brush size
         defaultVoxelType: VoxelType.GRASS, // Default voxel type
         showWireframe: true            // Show wireframe/edges on startup
+    },
+    
+    // Voxel Settings
+    voxel: {
+        size: 0.1                      // Fixed voxel size at 0.1m for high detail
+    },
+    
+    // Brush Settings
+    brush: {
+        presetSizes: [1, 2, 4, 6, 8, 10], // Brush sizes (cubic: 1x1x1, 2x2x2, 4x4x4, etc.)
+        defaultSizeIndex: 0,               // Start with single voxel brush
+        defaultSize: 1                     // Default brush size
     }
 };
 
@@ -224,6 +236,8 @@ class VoxelApp {
     private axisLines: THREE.Line[] = [];
     private selectionMode: boolean = false;
     private lastMousePos: { x: number; y: number } = { x: 0, y: 0 };
+    private currentBrushSize: number = SETTINGS.brush.defaultSize;
+    private currentBrushIndex: number = SETTINGS.brush.defaultSizeIndex;
     
     constructor() {
         this.scene = new THREE.Scene();
@@ -429,7 +443,8 @@ class VoxelApp {
         this.setupPostProcessing();
         
         // Initialize systems
-        this.voxelEngine = new VoxelEngine(this.scene, SETTINGS.ui.showWireframe);
+        // Always use 0.1m voxel size for high detail
+        this.voxelEngine = new VoxelEngine(this.scene, SETTINGS.ui.showWireframe, SETTINGS.voxel.size);
         this.drawingSystem = new DrawingSystem(this.voxelEngine);
         this.performanceMonitor = new PerformanceMonitor();
         this.directionIndicator = new DirectionIndicator();
@@ -458,6 +473,9 @@ class VoxelApp {
         // Initialize button states
         this.initializeButtonStates();
         
+        // Setup voxel size button handlers
+        this.setupBrushSizeButtons();
+        
         // Start render loop
         this.animate();
         
@@ -465,6 +483,19 @@ class VoxelApp {
         console.log('Creating test scene...');
         this.createTestScene();
         console.log('Voxel count after test scene:', this.voxelEngine.getVoxelCount());
+    }
+    
+    setupBrushSizeButtons() {
+        // Setup toggle button
+        const toggleBtn = document.getElementById('brush-size-toggle');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => this.cycleBrushSize());
+        }
+        
+        // Set initial value
+        if (this.voxelPanel) {
+            this.voxelPanel.updateBrushSize(this.currentBrushSize);
+        }
     }
     
     initializeButtonStates() {
@@ -604,12 +635,60 @@ class VoxelApp {
         
         // Continue drawing if mouse is held down (brush or eraser mode)
         if (event.buttons && this.drawingSystem!.isDrawing && 
-            (this.drawingSystem!.toolMode === 'brush' || this.drawingSystem!.toolMode === 'eraser') && hit) {
+            (this.drawingSystem!.toolMode === 'brush' || this.drawingSystem!.toolMode === 'eraser')) {
+            
+            // For eraser, we need to handle the case where hit might be null (no voxel under cursor)
+            // but we still want to continue erasing along the constrained plane
+            if (!hit && this.drawingSystem!.toolMode === 'eraser' && this.drawingSystem!.drawingSurface) {
+                // Project mouse ray onto the constrained plane for continuous erasing
+                const voxelSize = this.voxelEngine!.getVoxelSize();
+                const normal = this.drawingSystem!.drawingSurface.normal;
+                const basePos = this.drawingSystem!.drawingSurface.basePos;
+                
+                // Get a point along the ray
+                const rayPoint = this.raycaster.ray.origin.clone().add(
+                    this.raycaster.ray.direction.clone().multiplyScalar(10)
+                );
+                
+                // Convert to voxel coordinates and constrain to plane
+                const absX = Math.abs(normal.x);
+                const absY = Math.abs(normal.y);
+                const absZ = Math.abs(normal.z);
+                
+                let pos;
+                if (absY > absX && absY > absZ) {
+                    // Horizontal plane - use ray's X/Z, constrained Y
+                    pos = {
+                        x: Math.floor(rayPoint.x / voxelSize),
+                        y: basePos.y,
+                        z: Math.floor(rayPoint.z / voxelSize)
+                    };
+                } else if (absX > absY && absX > absZ) {
+                    // Vertical X plane - constrained X, use ray's Y/Z
+                    pos = {
+                        x: basePos.x,
+                        y: Math.floor(rayPoint.y / voxelSize),
+                        z: Math.floor(rayPoint.z / voxelSize)
+                    };
+                } else {
+                    // Vertical Z plane - use ray's X/Y, constrained Z
+                    pos = {
+                        x: Math.floor(rayPoint.x / voxelSize),
+                        y: Math.floor(rayPoint.y / voxelSize),
+                        z: basePos.z
+                    };
+                }
+                
+                this.drawingSystem!.applyBrush(pos.x, pos.y, pos.z);
+                return;
+            }
+            
+            if (!hit) return; // No hit and not erasing with constraint
+            
             let pos;
             
-            // When adding voxels, constrain to the initial drawing surface
-            if (this.drawingSystem!.drawMode === 'add' && this.drawingSystem!.drawingSurface) {
-                const voxelSize = this.voxelEngine!.getVoxelSize();
+            // Constrain to the initial drawing surface to prevent unwanted voxel modifications
+            if (this.drawingSystem!.drawingSurface) {
                 const normal = this.drawingSystem!.drawingSurface.normal;
                 
                 // Determine which axis is dominant in the normal
@@ -617,33 +696,36 @@ class VoxelApp {
                 const absY = Math.abs(normal.y);
                 const absZ = Math.abs(normal.z);
                 
+                // Get the appropriate base position
+                const targetPos = this.drawingSystem!.toolMode === 'eraser' ? hit.voxelPos : hit.adjacentPos;
+                
                 if (absY > absX && absY > absZ) {
                     // Horizontal surface (floor/ceiling)
-                    // Use hit point for X/Z but constrain Y
+                    // Use current position for X/Z but constrain Y to the initial plane
                     pos = {
-                        x: Math.floor(hit.point.x / voxelSize + 0.5),
+                        x: targetPos.x,
                         y: this.drawingSystem!.drawingSurface.basePos.y,
-                        z: Math.floor(hit.point.z / voxelSize + 0.5)
+                        z: targetPos.z
                     };
                 } else if (absX > absY && absX > absZ) {
                     // Vertical surface facing X (east/west wall)
-                    // Constrain X, use hit point for Y/Z
+                    // Constrain X to the initial plane, use current position for Y/Z
                     pos = {
                         x: this.drawingSystem!.drawingSurface.basePos.x,
-                        y: Math.floor(hit.point.y / voxelSize + 0.5),
-                        z: Math.floor(hit.point.z / voxelSize + 0.5)
+                        y: targetPos.y,
+                        z: targetPos.z
                     };
                 } else {
                     // Vertical surface facing Z (north/south wall)
-                    // Constrain Z, use hit point for X/Y
+                    // Constrain Z to the initial plane, use current position for X/Y
                     pos = {
-                        x: Math.floor(hit.point.x / voxelSize + 0.5),
-                        y: Math.floor(hit.point.y / voxelSize + 0.5),
+                        x: targetPos.x,
+                        y: targetPos.y,
                         z: this.drawingSystem!.drawingSurface.basePos.z
                     };
                 }
             } else {
-                // For removal or if no surface stored, use normal logic
+                // If no surface stored (shouldn't happen), use normal logic
                 pos = this.drawingSystem!.drawMode === 'add' ? hit.adjacentPos : hit.voxelPos;
             }
             
@@ -690,7 +772,9 @@ class VoxelApp {
         if (event.button === 0 && !event.altKey) {
             if (this.voxelEngine && this.drawingSystem) {
                 const hit = this.voxelEngine.raycast(this.raycaster);
+                console.log('Left click hit:', hit);
                 if (hit) {
+                    console.log('Starting drawing at:', hit.adjacentPos, 'on face with normal:', hit.normal);
                     this.drawingSystem.startDrawing(hit, 'add');
                     // Disable orbit controls to prevent rotation while drawing
                     if (this.controls) this.controls.enabled = false;
@@ -981,6 +1065,14 @@ class VoxelApp {
                     console.log('Deleted selected voxels');
                 }
                 break;
+            case '[':
+                // Cycle brush size backward
+                this.cycleBrushSizeReverse();
+                break;
+            case ']':
+                // Cycle brush size forward
+                this.cycleBrushSize();
+                break;
             case 'Escape':
                 // Cancel selection or transformation
                 if (this.boxSelectionTool) {
@@ -1063,6 +1155,59 @@ class VoxelApp {
         }
     }
     
+    cycleBrushSize() {
+        const presetSizes = SETTINGS.brush.presetSizes;
+        
+        // Move to next size, wrapping around to start
+        this.currentBrushIndex = (this.currentBrushIndex + 1) % presetSizes.length;
+        const newSize = presetSizes[this.currentBrushIndex];
+        
+        // Update the size
+        this.currentBrushSize = newSize;
+        
+        // Update drawing system brush size
+        if (this.drawingSystem) {
+            this.drawingSystem.setBrushSize(newSize);
+        }
+        
+        // Update UI
+        if (this.voxelPanel) {
+            this.voxelPanel.updateBrushSize(newSize);
+        }
+        
+        // Show brush size info
+        const brushVolume = newSize * newSize * newSize;
+        console.log(`Brush size changed to: ${newSize}×${newSize}×${newSize} (${brushVolume} voxels)`);
+    }
+    
+    cycleBrushSizeReverse() {
+        const presetSizes = SETTINGS.brush.presetSizes;
+        
+        // Move to previous size, wrapping around to end
+        this.currentBrushIndex = this.currentBrushIndex - 1;
+        if (this.currentBrushIndex < 0) {
+            this.currentBrushIndex = presetSizes.length - 1;
+        }
+        const newSize = presetSizes[this.currentBrushIndex];
+        
+        // Update the size
+        this.currentBrushSize = newSize;
+        
+        // Update drawing system brush size
+        if (this.drawingSystem) {
+            this.drawingSystem.setBrushSize(newSize);
+        }
+        
+        // Update UI
+        if (this.voxelPanel) {
+            this.voxelPanel.updateBrushSize(newSize);
+        }
+        
+        // Show brush size info
+        const brushVolume = newSize * newSize * newSize;
+        console.log(`Brush size changed to: ${newSize}×${newSize}×${newSize} (${brushVolume} voxels)`);
+    }
+    
     animate() {
         requestAnimationFrame(() => this.animate());
         
@@ -1074,6 +1219,11 @@ class VoxelApp {
         // Update performance monitor
         if (this.performanceMonitor) {
             this.performanceMonitor.update();
+        }
+        
+        // Update gizmo scale to maintain constant screen size
+        if (this.boxSelectionTool && this.boxSelectionTool.getTransformGizmo()) {
+            this.boxSelectionTool.getTransformGizmo().updateScale();
         }
         
         // Update UI

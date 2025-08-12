@@ -56,10 +56,11 @@ export class TransformGizmo {
      * Create move gizmo with arrows
      */
     private createMoveGizmo(): void {
+        // Normalized sizes - will be scaled by updateScale()
         const arrowLength = 2;
-        const arrowWidth = 0.1;
-        const coneHeight = 0.5;
-        const coneRadius = 0.2;
+        const arrowWidth = 0.15;  // Slightly thicker for better visibility
+        const coneHeight = 0.4;
+        const coneRadius = 0.25;  // Slightly larger cone
         
         // Create arrow for each axis
         this.moveArrows = {
@@ -207,15 +208,22 @@ export class TransformGizmo {
     }
     
     /**
-     * Update scale based on camera distance
+     * Update scale based on camera zoom to maintain constant screen size
      */
     updateScale(): void {
         if (!this.camera) return;
         
-        // Calculate scale based on camera zoom to maintain constant screen size
-        const distance = this.camera.position.distanceTo(this.position);
-        const fov = this.camera.top - this.camera.bottom;
-        this.scale = fov * 0.05; // Adjust multiplier for desired size
+        // For orthographic camera with OrbitControls, the effective view size is:
+        // actual_view = initial_view / camera.zoom
+        // To maintain constant screen size, we need to scale inversely with zoom
+        
+        // Base size for the gizmo (when zoom = 1)
+        const baseSize = 0.5; // Reduced from 2.0 to 0.5 (4x smaller)
+        
+        // Scale inversely with camera zoom to maintain constant screen size
+        // When zoom increases (zooming in), gizmo gets smaller in world space
+        // but stays same size on screen
+        this.scale = baseSize / this.camera.zoom;
         
         this.gizmoGroup.scale.setScalar(this.scale);
     }

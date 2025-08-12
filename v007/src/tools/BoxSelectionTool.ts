@@ -641,6 +641,14 @@ export class BoxSelectionTool {
             // Store if this is a duplication (shift+drag)
             this.isDuplicating = shiftKey;
             
+            // Hide original voxels while moving (unless duplicating)
+            if (!this.isDuplicating) {
+                for (const voxel of this.selectedVoxels) {
+                    this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, VoxelType.AIR, false);
+                }
+                this.voxelEngine.updateInstances();
+            }
+            
             console.log(`Started ${hit.operation} on ${hit.axis} axis${shiftKey ? ' (duplicating)' : ''}`);
             return true;
         }
@@ -736,6 +744,14 @@ export class BoxSelectionTool {
                 Math.abs(this.transformRotation.y) > 0.01 || 
                 Math.abs(this.transformRotation.z) > 0.01)) {
                 this.applyTransformOnRelease();
+            } else {
+                // No significant transformation, restore original voxels
+                if (!this.isDuplicating && this.originalVoxels.length > 0) {
+                    for (const voxel of this.originalVoxels) {
+                        this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, voxel.type, false);
+                    }
+                    this.voxelEngine.updateInstances();
+                }
             }
             
             // Reset for next transformation
@@ -1234,6 +1250,14 @@ export class BoxSelectionTool {
      * Cancel current transformation
      */
     cancelTransform(): void {
+        // Restore original voxels if we were moving (not duplicating)
+        if (this.transformMode && !this.isDuplicating && this.originalVoxels.length > 0) {
+            for (const voxel of this.originalVoxels) {
+                this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, voxel.type, false);
+            }
+            this.voxelEngine.updateInstances();
+        }
+        
         this.transformMode = null;
         this.transformOffset.set(0, 0, 0);
         this.transformRotation.set(0, 0, 0);
@@ -1566,6 +1590,13 @@ export class BoxSelectionTool {
      */
     getTransformMode(): 'move' | 'rotate' | null {
         return this.transformMode;
+    }
+    
+    /**
+     * Get transform gizmo instance for scale updates
+     */
+    getTransformGizmo(): TransformGizmo {
+        return this.transformGizmo;
     }
     
     /**

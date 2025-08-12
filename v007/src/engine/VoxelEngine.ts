@@ -13,9 +13,9 @@ export class VoxelEngine {
     private renderer: VoxelRenderer;
     private undoRedoManager: UndoRedoManager;
     
-    constructor(scene: THREE.Scene, showWireframe = true) {
+    constructor(scene: THREE.Scene, showWireframe = true, voxelSize = 0.1) {
         this.scene = scene;
-        this.voxelSize = 1.0; // 1 meter voxels for simplicity
+        this.voxelSize = voxelSize; // Current voxel size for the world
         
         // Simple voxel storage
         this.voxels = new Map(); // key: "x,y,z" string, value: voxel type
@@ -33,6 +33,11 @@ export class VoxelEngine {
         return this.voxelSize;
     }
     
+    // Get current voxel size (alias for getVoxelSize)
+    getCurrentVoxelSize(): number {
+        return this.voxelSize;
+    }
+    
     
     // Create position key for voxel storage
     private positionKey(x: number, y: number, z: number): string {
@@ -44,6 +49,8 @@ export class VoxelEngine {
         const [x, y, z] = key.split(',').map(Number);
         return { x, y, z };
     }
+    
+    // Voxel size is fixed at 0.1m, no need for dynamic sizing
     
     // Set a voxel at the given position
     setVoxel(x: number, y: number, z: number, type: VoxelType, recordUndo: boolean = true): boolean {
@@ -114,7 +121,7 @@ export class VoxelEngine {
         const origin = raycaster.ray.origin.clone();
         const direction = raycaster.ray.direction.clone().normalize();
         
-        // Convert to voxel space
+        // Convert to voxel space - just divide by voxel size, no offset
         const voxelOrigin = {
             x: origin.x / this.voxelSize,
             y: origin.y / this.voxelSize,
@@ -122,7 +129,7 @@ export class VoxelEngine {
         };
         
         // Maximum ray distance in voxel units
-        const maxDistance = 100; // 100 voxels
+        const maxDistance = 500; // Increased to 500 voxels for better reach
         
         // Use DDA (Digital Differential Analyzer) algorithm for voxel traversal
         let currentVoxel = {
@@ -139,10 +146,11 @@ export class VoxelEngine {
         };
         
         // Calculate distances to next voxel boundaries
+        // Handle division by zero by using a large number instead of Infinity
         const tDelta = {
-            x: Math.abs(1.0 / direction.x),
-            y: Math.abs(1.0 / direction.y),
-            z: Math.abs(1.0 / direction.z)
+            x: direction.x !== 0 ? Math.abs(1.0 / direction.x) : 1e30,
+            y: direction.y !== 0 ? Math.abs(1.0 / direction.y) : 1e30,
+            z: direction.z !== 0 ? Math.abs(1.0 / direction.z) : 1e30
         };
         
         // Calculate initial distances to voxel boundaries
@@ -152,10 +160,11 @@ export class VoxelEngine {
             z: currentVoxel.z + (step.z > 0 ? 1 : 0)
         };
         
+        // Calculate tMax with proper handling of zero direction components
         const tMax = {
-            x: Math.abs((voxelBounds.x - voxelOrigin.x) / direction.x),
-            y: Math.abs((voxelBounds.y - voxelOrigin.y) / direction.y),
-            z: Math.abs((voxelBounds.z - voxelOrigin.z) / direction.z)
+            x: direction.x !== 0 ? (voxelBounds.x - voxelOrigin.x) / direction.x : 1e30,
+            y: direction.y !== 0 ? (voxelBounds.y - voxelOrigin.y) / direction.y : 1e30,
+            z: direction.z !== 0 ? (voxelBounds.z - voxelOrigin.z) / direction.z : 1e30
         };
         
         // Traverse voxels
@@ -164,30 +173,69 @@ export class VoxelEngine {
         let hitAxis = null;
         
         while (distance < maxDistance) {
+            
             // Check if current voxel contains a solid voxel
-            if (this.getVoxel(currentVoxel.x, currentVoxel.y, currentVoxel.z) !== VoxelType.AIR) {
-                // Calculate exact intersection point
-                let t = 0;
+            const voxelType = this.getVoxel(currentVoxel.x, currentVoxel.y, currentVoxel.z);
+            if (voxelType !== VoxelType.AIR) {
+                // We hit a voxel! Use the DDA traversal info to determine which face
                 const normal = { x: 0, y: 0, z: 0 };
+                let t = 0;
                 
-                // Determine which face was hit based on previous voxel
+                // The face we hit is determined by which axis we came from
+                // This is more reliable than calculating all face intersections
                 if (hitAxis === 'x') {
                     normal.x = -step.x;
-                    const planeX = currentVoxel.x + (step.x > 0 ? 0 : 1);
-                    t = (planeX * this.voxelSize - origin.x) / direction.x;
+                    const planeX = currentVoxel.x * this.voxelSize + (step.x > 0 ? 0 : this.voxelSize);
+                    t = (planeX - origin.x) / direction.x;
                 } else if (hitAxis === 'y') {
                     normal.y = -step.y;
-                    const planeY = currentVoxel.y + (step.y > 0 ? 0 : 1);
-                    t = (planeY * this.voxelSize - origin.y) / direction.y;
+                    const planeY = currentVoxel.y * this.voxelSize + (step.y > 0 ? 0 : this.voxelSize);
+                    t = (planeY - origin.y) / direction.y;
                 } else if (hitAxis === 'z') {
                     normal.z = -step.z;
-                    const planeZ = currentVoxel.z + (step.z > 0 ? 0 : 1);
-                    t = (planeZ * this.voxelSize - origin.z) / direction.z;
+                    const planeZ = currentVoxel.z * this.voxelSize + (step.z > 0 ? 0 : this.voxelSize);
+                    t = (planeZ - origin.z) / direction.z;
+                } else {
+                    // First voxel hit (we started inside or very close)
+                    // Determine face based on ray direction relative to voxel center
+                    const voxelCenter = {
+                        x: (currentVoxel.x + 0.5) * this.voxelSize,
+                        y: (currentVoxel.y + 0.5) * this.voxelSize,
+                        z: (currentVoxel.z + 0.5) * this.voxelSize
+                    };
+                    
+                    // Find the closest face by checking which boundary is nearest to ray origin
+                    const relPos = {
+                        x: origin.x - voxelCenter.x,
+                        y: origin.y - voxelCenter.y,
+                        z: origin.z - voxelCenter.z
+                    };
+                    
+                    const absX = Math.abs(relPos.x);
+                    const absY = Math.abs(relPos.y);
+                    const absZ = Math.abs(relPos.z);
+                    
+                    if (absX >= absY && absX >= absZ) {
+                        // X face is closest
+                        normal.x = relPos.x > 0 ? 1 : -1;
+                        const planeX = currentVoxel.x * this.voxelSize + (normal.x > 0 ? this.voxelSize : 0);
+                        t = (planeX - origin.x) / direction.x;
+                    } else if (absY >= absX && absY >= absZ) {
+                        // Y face is closest
+                        normal.y = relPos.y > 0 ? 1 : -1;
+                        const planeY = currentVoxel.y * this.voxelSize + (normal.y > 0 ? this.voxelSize : 0);
+                        t = (planeY - origin.y) / direction.y;
+                    } else {
+                        // Z face is closest
+                        normal.z = relPos.z > 0 ? 1 : -1;
+                        const planeZ = currentVoxel.z * this.voxelSize + (normal.z > 0 ? this.voxelSize : 0);
+                        t = (planeZ - origin.z) / direction.z;
+                    }
                 }
                 
                 const point = origin.clone().add(direction.clone().multiplyScalar(t));
                 
-                // Calculate adjacent position based on hit normal (not ray direction)
+                // Calculate adjacent position based on hit normal
                 const adjacentPos = {
                     x: currentVoxel.x + normal.x,
                     y: currentVoxel.y + normal.y,
@@ -229,17 +277,22 @@ export class VoxelEngine {
             const t = -origin.y / direction.y;
             const point = origin.clone().add(direction.clone().multiplyScalar(t));
             
+            // Calculate voxel position at ground intersection
+            // Use Math.floor to get consistent voxel grid positions
+            const voxelX = Math.floor(point.x / this.voxelSize);
+            const voxelZ = Math.floor(point.z / this.voxelSize);
+            
             // Adjust to place voxels on top of ground (y=0)
             return {
                 voxelPos: {
-                    x: Math.floor(point.x / this.voxelSize + 0.5),
+                    x: voxelX,
                     y: -1,
-                    z: Math.floor(point.z / this.voxelSize + 0.5)
+                    z: voxelZ
                 },
                 adjacentPos: {
-                    x: Math.floor(point.x / this.voxelSize + 0.5),
+                    x: voxelX,
                     y: 0,
-                    z: Math.floor(point.z / this.voxelSize + 0.5)
+                    z: voxelZ
                 },
                 point: point,
                 normal: new THREE.Vector3(0, 1, 0),
