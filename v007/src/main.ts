@@ -475,6 +475,9 @@ class VoxelApp {
         this.directionIndicator = new DirectionIndicator();
         this.voxelPanel = new VoxelPanel(this.drawingSystem);
         
+        // Connect asset manager to drawing system
+        this.drawingSystem.setAssetManager(this.voxelPanel.getAssetManager());
+        
         // Update tilt-shift button initial state after VoxelPanel creates it
         setTimeout(() => {
             const tiltShiftButton = document.getElementById('tiltshift-toggle-button') as HTMLButtonElement;
@@ -1182,6 +1185,19 @@ class VoxelApp {
                         console.log('Selection cleared');
                     }
                 }
+                // Also clear asset selection
+                if (this.drawingSystem && this.drawingSystem.selectedAsset) {
+                    this.drawingSystem.setSelectedAsset(null);
+                    this.drawingSystem.setToolMode('brush');
+                    console.log('Asset selection cleared');
+                }
+                break;
+            case 'r':
+            case 'R':
+                // Rotate asset
+                if (this.drawingSystem && this.drawingSystem.selectedAsset) {
+                    this.drawingSystem.rotateAsset();
+                }
                 break;
         }
     }
@@ -1501,6 +1517,11 @@ class VoxelApp {
         // Update gizmo scale to maintain constant screen size
         if (this.boxSelectionTool && this.boxSelectionTool.getTransformGizmo()) {
             this.boxSelectionTool.getTransformGizmo().updateScale();
+        }
+        
+        // Update drawing system for smooth preview animation
+        if (this.drawingSystem) {
+            this.drawingSystem.update();
         }
         
         // Update UI

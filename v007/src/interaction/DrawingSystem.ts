@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { VoxelType } from '../engine/VoxelEngine';
+import { AssetInfo, AssetData } from '../assets/types';
+import { StaticAssetManager } from '../assets/StaticAssetManager';
 
 export class DrawingSystem {
     // Properties
@@ -21,7 +23,7 @@ export class DrawingSystem {
     previewEdges: THREE.LineSegments | null = null;
     previewMaterial: THREE.MeshBasicMaterial;
     edgeMaterial: THREE.LineBasicMaterial;
-    toolPreviewMeshes: (THREE.Group | THREE.Mesh)[];
+    toolPreviewMeshes: (THREE.Group | THREE.Mesh | THREE.LineSegments)[];
     pendingOperations: any[];
     operationTimer: number | null;
     lastBrushPosition: { x: number; y: number; z: number } | null;
@@ -29,6 +31,12 @@ export class DrawingSystem {
     constraintPlane: THREE.Mesh | null;  // Visual representation of constraint plane
     gridShowTimer: number | null;  // Timer for showing grid after hold
     gridShown: boolean;  // Track if grid is currently shown
+    selectedAsset: AssetInfo | null;  // Currently selected asset
+    assetData: AssetData | null;  // Loaded asset data
+    assetManager: StaticAssetManager | null;  // Reference to asset manager
+    assetRotation: number;  // Rotation angle in 90-degree increments (0, 1, 2, 3)
+    previewTargetPosition: THREE.Vector3;  // Target position for smooth preview movement
+    previewLerpFactor: number;  // How fast the preview moves (0-1)
     
     constructor(voxelEngine: any) {
         this.voxelEngine = voxelEngine;
@@ -49,6 +57,16 @@ export class DrawingSystem {
         this.constraintPlane = null; // Visual plane indicator
         this.gridShowTimer = null; // Timer for delayed grid display
         this.gridShown = false; // Track grid visibility
+        
+        // Asset state
+        this.selectedAsset = null;
+        this.assetData = null;
+        this.assetManager = null;
+        this.assetRotation = 0;
+        
+        // Smooth preview animation
+        this.previewTargetPosition = new THREE.Vector3();
+        this.previewLerpFactor = 0.75; // Subtle smoothing
         
         // Preview
         this.previewMesh = null;
@@ -380,6 +398,12 @@ export class DrawingSystem {
             this.updateToolPreview(hit);
         }
         
+        // Handle asset preview
+        if (this.toolMode === 'asset' && this.assetData) {
+            this.updateAssetPreview(pos);
+            return;
+        }
+        
         // For brush, eraser, and fill tools, show preview
         if (this.toolMode === 'brush' || this.toolMode === 'eraser' || this.toolMode === 'fill') {
             const voxelSize = this.voxelEngine.getCurrentVoxelSize();
@@ -395,12 +419,17 @@ export class DrawingSystem {
                 offsetY = 0;
             }
             
-            // Position the preview to show the exact area that will be painted
-            this.previewGroup.position.set(
-                (pos.x - offsetXZ + this.brushSize / 2) * voxelSize,
-                (pos.y - offsetY + this.brushSize / 2) * voxelSize,
-                (pos.z - offsetXZ + this.brushSize / 2) * voxelSize
-            );
+            // Set target position for smooth animation
+            const targetX = (pos.x - offsetXZ + this.brushSize / 2) * voxelSize;
+            const targetY = (pos.y - offsetY + this.brushSize / 2) * voxelSize;
+            const targetZ = (pos.z - offsetXZ + this.brushSize / 2) * voxelSize;
+            
+            this.previewTargetPosition.set(targetX, targetY, targetZ);
+            
+            // If preview was just made visible, instantly set position to avoid animation from (0,0,0)
+            if (!this.previewGroup.visible) {
+                this.previewGroup.position.set(targetX, targetY, targetZ);
+            }
             
             // Scale preview to exact brush size
             // This makes the preview box exactly cover NxNxN voxels
@@ -432,6 +461,13 @@ export class DrawingSystem {
     
     startDrawing(hit: any, mode: string): void {
         if (!hit) return;
+        
+        // Handle asset placement
+        if (this.toolMode === 'asset') {
+            const pos = mode === 'add' ? hit.adjacentPos : hit.voxelPos;
+            this.placeAsset(pos);
+            return;
+        }
         
         this.isDrawing = true;
         // If using eraser tool, always remove voxels
@@ -649,6 +685,16 @@ export class DrawingSystem {
         this.previewGroup.visible = true;
     }
     
+    /**
+     * Update method for smooth preview animation (called from main animate loop)
+     */
+    update(): void {
+        // Smoothly interpolate preview position
+        if (this.previewGroup.visible) {
+            this.previewGroup.position.lerp(this.previewTargetPosition, this.previewLerpFactor);
+        }
+    }
+    
     // Voxel size is now fixed at 0.1m, no need for this method
     
     applyBrush(centerX: number, centerY: number, centerZ: number): void {
@@ -737,6 +783,49 @@ export class DrawingSystem {
         this.clearToolPreviews();
         this.boxStart = null;
         this.lineStart = null;
+        
+        // Clear asset selection when switching tools
+        if (mode !== 'asset') {
+            this.selectedAsset = null;
+            this.assetData = null;
+        }
+    }
+    
+    setAssetManager(assetManager: StaticAssetManager): void {
+        this.assetManager = assetManager;
+    }
+    
+    async setSelectedAsset(asset: AssetInfo | null): Promise<void> {
+        this.selectedAsset = asset;
+        this.assetRotation = 0; // Reset rotation
+        
+        if (asset && this.assetManager) {
+            try {
+                // Load asset data
+                this.assetData = await this.assetManager.loadAsset(asset.id);
+                // Switch to asset placement mode
+                this.toolMode = 'asset';
+                console.log(`Loaded asset: ${asset.name} with ${this.assetData.voxelData.size} voxels`);
+            } catch (error) {
+                console.error(`Failed to load asset ${asset.id}:`, error);
+                this.selectedAsset = null;
+                this.assetData = null;
+                // Fall back to brush mode
+                this.toolMode = 'brush';
+            }
+        } else {
+            this.assetData = null;
+            // No asset selected, default to brush mode
+            this.toolMode = 'brush';
+        }
+        
+        this.clearToolPreviews();
+    }
+    
+    rotateAsset(): void {
+        this.assetRotation = (this.assetRotation + 1) % 4;
+        console.log(`Asset rotation: ${this.assetRotation * 90}°`);
+        // Update preview will be called by the regular update cycle
     }
     
     // Clear tool preview meshes
@@ -973,5 +1062,128 @@ export class DrawingSystem {
             this.voxelEngine.scene.add(group);
             this.toolPreviewMeshes.push(group);
         }
+    }
+    
+    // Update preview for asset placement
+    updateAssetPreview(pos: { x: number; y: number; z: number }): void {
+        this.clearToolPreviews();
+        
+        if (!this.assetData || !this.selectedAsset) return;
+        
+        const voxelSize = this.voxelEngine.getCurrentVoxelSize();
+        
+        // Get asset bounds to calculate center offset
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+        
+        for (const [posKey, _] of this.assetData.voxelData) {
+            const [x, y, z] = posKey.split(',').map(Number);
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            minZ = Math.min(minZ, z);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+            maxZ = Math.max(maxZ, z);
+        }
+        
+        // Calculate center offset
+        const centerX = (minX + maxX) / 2;
+        const centerZ = (minZ + maxZ) / 2;
+        
+        // Create preview for each voxel in the asset
+        for (const [posKey, voxelType] of this.assetData.voxelData) {
+            const [vx, vy, vz] = posKey.split(',').map(Number);
+            
+            // Apply rotation
+            let rotatedX = vx - centerX;
+            let rotatedZ = vz - centerZ;
+            
+            for (let r = 0; r < this.assetRotation; r++) {
+                const temp = rotatedX;
+                rotatedX = -rotatedZ;
+                rotatedZ = temp;
+            }
+            
+            // Final position
+            const finalX = pos.x + Math.round(rotatedX + centerX);
+            const finalY = pos.y + vy;
+            const finalZ = pos.z + Math.round(rotatedZ + centerZ);
+            
+            // Create preview mesh
+            const geometry = new THREE.BoxGeometry(voxelSize, voxelSize, voxelSize);
+            const material = new THREE.MeshBasicMaterial({
+                color: 0x00ff00,
+                opacity: 0.5,
+                transparent: true
+            });
+            
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(
+                (finalX + 0.5) * voxelSize,
+                (finalY + 0.5) * voxelSize,
+                (finalZ + 0.5) * voxelSize
+            );
+            
+            // Add edge geometry
+            const edges = new THREE.EdgesGeometry(geometry);
+            const edgeMesh = new THREE.LineSegments(edges, this.edgeMaterial);
+            edgeMesh.position.copy(mesh.position);
+            
+            this.voxelEngine.scene.add(mesh);
+            this.voxelEngine.scene.add(edgeMesh);
+            this.toolPreviewMeshes.push(mesh);
+            this.toolPreviewMeshes.push(edgeMesh);
+        }
+    }
+    
+    // Place asset at position
+    placeAsset(pos: { x: number; y: number; z: number }): void {
+        if (!this.assetData || !this.selectedAsset) return;
+        
+        console.log(`Placing asset: ${this.selectedAsset.name} at ${pos.x}, ${pos.y}, ${pos.z}`);
+        
+        // Get asset bounds to calculate center offset
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+        
+        for (const [posKey, _] of this.assetData.voxelData) {
+            const [x, y, z] = posKey.split(',').map(Number);
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            minZ = Math.min(minZ, z);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+            maxZ = Math.max(maxZ, z);
+        }
+        
+        // Calculate center offset
+        const centerX = (minX + maxX) / 2;
+        const centerZ = (minZ + maxZ) / 2;
+        
+        // Place each voxel in the asset
+        for (const [posKey, voxelType] of this.assetData.voxelData) {
+            const [vx, vy, vz] = posKey.split(',').map(Number);
+            
+            // Apply rotation
+            let rotatedX = vx - centerX;
+            let rotatedZ = vz - centerZ;
+            
+            for (let r = 0; r < this.assetRotation; r++) {
+                const temp = rotatedX;
+                rotatedX = -rotatedZ;
+                rotatedZ = temp;
+            }
+            
+            // Final position
+            const finalX = pos.x + Math.round(rotatedX + centerX);
+            const finalY = pos.y + vy;
+            const finalZ = pos.z + Math.round(rotatedZ + centerZ);
+            
+            // Place voxel
+            this.voxelEngine.setVoxel(finalX, finalY, finalZ, voxelType);
+        }
+        
+        // Update instances
+        this.voxelEngine.updateInstances();
     }
 }

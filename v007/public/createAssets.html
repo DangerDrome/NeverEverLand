@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Sample Voxel Assets</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #eee;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        #output {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .asset-button {
+            background: #2196F3;
+        }
+        .asset-button:hover {
+            background: #0b7dda;
+        }
+    </style>
+</head>
+<body>
+    <h1>Voxel Asset Generator</h1>
+    <p>Click the buttons below to generate and download sample voxel assets:</p>
+    
+    <h2>Grass Assets</h2>
+    <button class="asset-button" onclick="createAsset('grass', 'small_tree')">Small Tree (3x5x3)</button>
+    <button class="asset-button" onclick="createAsset('grass', 'large_tree')">Large Tree (5x7x5)</button>
+    <button class="asset-button" onclick="createAsset('grass', 'flower')">Flower (1x2x1)</button>
+    
+    <h2>Stone Assets</h2>
+    <button class="asset-button" onclick="createAsset('stone', 'small_rock')">Small Rock (2x1x2)</button>
+    <button class="asset-button" onclick="createAsset('stone', 'large_rock')">Large Rock (3x2x3)</button>
+    <button class="asset-button" onclick="createAsset('stone', 'pillar')">Pillar (1x4x1)</button>
+    
+    <h2>Wood Assets</h2>
+    <button class="asset-button" onclick="createAsset('wood', 'crate')">Crate (2x2x2)</button>
+    <button class="asset-button" onclick="createAsset('wood', 'barrel')">Barrel (2x3x2)</button>
+    <button class="asset-button" onclick="createAsset('wood', 'fence')">Fence (4x2x1)</button>
+    
+    <h2>Leaves Assets</h2>
+    <button class="asset-button" onclick="createAsset('leaves', 'bush')">Bush (2x2x2)</button>
+    <button class="asset-button" onclick="createAsset('leaves', 'hedge')">Hedge (4x2x1)</button>
+    <button class="asset-button" onclick="createAsset('leaves', 'topiary')">Topiary (2x3x2)</button>
+    
+    <br><br>
+    <button onclick="createAllAssets()">Generate All Assets</button>
+    
+    <div id="output"></div>
+    
+    <script type="module">
+        // Import VoxWriter and VoxelType from the main app
+        import { VoxWriter } from './src/io/VoxWriter.js';
+        import { VoxelType } from './src/engine/VoxelEngine.js';
+        
+        const output = document.getElementById('output');
+        
+        function log(message) {
+            output.textContent += message + '\n';
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        // Asset definitions
+        const assetDefinitions = {
+            grass: {
+                small_tree: () => {
+                    const voxels = new Map();
+                    const wood = new Set();
+                    wood.add('1,0,1');
+                    wood.add('1,1,1');
+                    wood.add('1,2,1');
+                    voxels.set(VoxelType.WOOD, wood);
+                    
+                    const leaves = new Set();
+                    leaves.add('1,4,1');
+                    ['0,3,1', '1,3,0', '1,3,1', '1,3,2', '2,3,1'].forEach(v => leaves.add(v));
+                    for (let x = 0; x < 3; x++) {
+                        for (let z = 0; z < 3; z++) {
+                            if (x !== 1 || z !== 1) leaves.add(`${x},2,${z}`);
+                        }
+                    }
+                    voxels.set(VoxelType.LEAVES, leaves);
+                    return voxels;
+                },
+                large_tree: () => {
+                    const voxels = new Map();
+                    const trunk = new Set();
+                    for (let y = 0; y < 4; y++) {
+                        trunk.add(`2,${y},2`);
+                        if (y < 3) {
+                            trunk.add(`1,${y},2`);
+                            trunk.add(`2,${y},1`);
+                            trunk.add(`3,${y},2`);
+                            trunk.add(`2,${y},3`);
+                        }
+                    }
+                    voxels.set(VoxelType.WOOD, trunk);
+                    
+                    const crown = new Set();
+                    for (let y = 3; y < 7; y++) {
+                        const radius = y === 6 ? 1 : 2;
+                        for (let x = 2 - radius; x <= 2 + radius; x++) {
+                            for (let z = 2 - radius; z <= 2 + radius; z++) {
+                                if (x >= 0 && x < 5 && z >= 0 && z < 5) {
+                                    crown.add(`${x},${y},${z}`);
+                                }
+                            }
+                        }
+                    }
+                    voxels.set(VoxelType.LEAVES, crown);
+                    return voxels;
+                },
+                flower: () => {
+                    const voxels = new Map();
+                    const stem = new Set();
+                    stem.add('0,0,0');
+                    voxels.set(VoxelType.GRASS, stem);
+                    const flower = new Set();
+                    flower.add('0,1,0');
+                    voxels.set(VoxelType.LEAVES, flower);
+                    return voxels;
+                }
+            },
+            stone: {
+                small_rock: () => {
+                    const voxels = new Map();
+                    const stone = new Set();
+                    stone.add('0,0,0');
+                    stone.add('0,0,1');
+                    stone.add('1,0,0');
+                    stone.add('1,0,1');
+                    voxels.set(VoxelType.STONE, stone);
+                    return voxels;
+                },
+                large_rock: () => {
+                    const voxels = new Map();
+                    const stone = new Set();
+                    for (let x = 0; x < 3; x++) {
+                        for (let z = 0; z < 3; z++) {
+                            stone.add(`${x},0,${z}`);
+                        }
+                    }
+                    stone.add('0,1,1');
+                    stone.add('1,1,0');
+                    stone.add('1,1,1');
+                    stone.add('1,1,2');
+                    stone.add('2,1,1');
+                    voxels.set(VoxelType.STONE, stone);
+                    return voxels;
+                },
+                pillar: () => {
+                    const voxels = new Map();
+                    const stone = new Set();
+                    for (let y = 0; y < 4; y++) {
+                        stone.add(`0,${y},0`);
+                    }
+                    voxels.set(VoxelType.STONE, stone);
+                    return voxels;
+                }
+            },
+            wood: {
+                crate: () => {
+                    const voxels = new Map();
+                    const wood = new Set();
+                    for (let x = 0; x < 2; x++) {
+                        for (let y = 0; y < 2; y++) {
+                            for (let z = 0; z < 2; z++) {
+                                wood.add(`${x},${y},${z}`);
+                            }
+                        }
+                    }
+                    voxels.set(VoxelType.WOOD, wood);
+                    return voxels;
+                },
+                barrel: () => {
+                    const voxels = new Map();
+                    const wood = new Set();
+                    for (let y = 0; y < 3; y++) {
+                        for (let x = 0; x < 2; x++) {
+                            for (let z = 0; z < 2; z++) {
+                                wood.add(`${x},${y},${z}`);
+                            }
+                        }
+                    }
+                    voxels.set(VoxelType.WOOD, wood);
+                    return voxels;
+                },
+                fence: () => {
+                    const voxels = new Map();
+                    const wood = new Set();
+                    wood.add('0,0,0');
+                    wood.add('0,1,0');
+                    wood.add('3,0,0');
+                    wood.add('3,1,0');
+                    wood.add('1,1,0');
+                    wood.add('2,1,0');
+                    voxels.set(VoxelType.WOOD, wood);
+                    return voxels;
+                }
+            },
+            leaves: {
+                bush: () => {
+                    const voxels = new Map();
+                    const leaves = new Set();
+                    for (let x = 0; x < 2; x++) {
+                        for (let y = 0; y < 2; y++) {
+                            for (let z = 0; z < 2; z++) {
+                                leaves.add(`${x},${y},${z}`);
+                            }
+                        }
+                    }
+                    voxels.set(VoxelType.LEAVES, leaves);
+                    return voxels;
+                },
+                hedge: () => {
+                    const voxels = new Map();
+                    const leaves = new Set();
+                    for (let x = 0; x < 4; x++) {
+                        for (let y = 0; y < 2; y++) {
+                            leaves.add(`${x},${y},0`);
+                        }
+                    }
+                    voxels.set(VoxelType.LEAVES, leaves);
+                    return voxels;
+                },
+                topiary: () => {
+                    const voxels = new Map();
+                    const leaves = new Set();
+                    for (let y = 0; y < 3; y++) {
+                        const shrink = y === 0 || y === 2 ? 1 : 0;
+                        for (let x = shrink; x < 2 - shrink; x++) {
+                            for (let z = shrink; z < 2 - shrink; z++) {
+                                leaves.add(`${x},${y},${z}`);
+                            }
+                        }
+                    }
+                    for (let x = 0; x < 2; x++) {
+                        for (let z = 0; z < 2; z++) {
+                            leaves.add(`${x},1,${z}`);
+                        }
+                    }
+                    voxels.set(VoxelType.LEAVES, leaves);
+                    return voxels;
+                }
+            }
+        };
+        
+        window.createAsset = function(type, name) {
+            const writer = new VoxWriter();
+            
+            if (!assetDefinitions[type] || !assetDefinitions[type][name]) {
+                log(`Error: Asset ${type}/${name} not found`);
+                return;
+            }
+            
+            try {
+                const voxels = assetDefinitions[type][name]();
+                const buffer = writer.createVoxFile(voxels);
+                
+                // Create download link
+                const blob = new Blob([buffer], { type: 'application/octet-stream' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${name}.vox`;
+                a.click();
+                URL.revokeObjectURL(url);
+                
+                log(`Created and downloaded ${type}/${name}.vox`);
+            } catch (error) {
+                log(`Error creating ${type}/${name}: ${error.message}`);
+            }
+        };
+        
+        window.createAllAssets = function() {
+            log('Creating all assets...\n');
+            
+            for (const type in assetDefinitions) {
+                for (const name in assetDefinitions[type]) {
+                    window.createAsset(type, name);
+                }
+            }
+            
+            log('\nAll assets created! Place them in public/assets/{type}/ folders.');
+        };
+        
+        log('Asset generator ready. Click buttons to create voxel files.');
+    </script>
+</body>
+</html>

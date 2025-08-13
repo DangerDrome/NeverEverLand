@@ -21,7 +21,9 @@
       "Bash(ss:*)",
       "Bash(kill:*)",
       "Bash(/home/danger/Documents/GitHub/NeverEverLand/v007/devserver.sh:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)"
     ],
     "deny": []
   }

@@ -31,23 +31,36 @@ A complete TypeScript-based voxel engine with instanced rendering, supporting up
 - **X**: Box tool
 - **L**: Line tool
 - **P**: Fill tool
+- **S**: Selection tool
 - **W**: Toggle wireframe/edge display
+- **T**: Toggle tilt-shift effect
 - **Z**: Undo last action (Ctrl+Z also works)
 - **Y**: Redo (Ctrl+Y / Ctrl+Shift+Z also work)
 - **G**: Toggle grid overlay
-- **R**: Reset camera view
+- **R**: Rotate asset (when in asset placement mode)
+- **F**: Focus/Reset camera view
+- **[/]**: Decrease/Increase brush size
 - **Ctrl+S**: Save scene
 - **Ctrl+O**: Load scene
 - **Ctrl+N**: New scene (clear all)
-- **Escape**: Cancel current operation
+- **Escape**: Cancel current operation / Clear asset selection
 
 ### Drawing Tools
-- **Brush**: Single voxel or area placement (adjustable size)
+- **Brush**: Single voxel or area placement (adjustable size with [/] keys)
 - **Box**: Draw rectangular volumes (click and drag)
 - **Line**: Draw straight lines between two points
 - **Fill**: Fill connected areas of the same type
+- **Selection**: Box selection tool for copying/moving regions
 - **Eraser**: Remove voxels (E key or right-click drag)
 - **Constraint Plane**: Hold for 300ms to see grid preview during drag operations
+
+### Asset System
+- **Voxel Type Selection**: Click voxel buttons to show available premade assets
+- **Single Voxel Mode**: Shift+Click voxel buttons for traditional single voxel painting
+- **Asset Placement**: Click to place selected asset, R to rotate before placing
+- **Asset Library**: Premade structures for each voxel type (trees, rocks, crates, etc.)
+- **Asset Creation**: Use `/createAssets.html` to generate new voxel assets
+- **Asset Storage**: Assets stored as .vox files in `/public/assets/{type}/`
 
 ### File Operations
 - **Import VOX**: Load MagicaVoxel .vox files
@@ -92,6 +105,8 @@ A complete TypeScript-based voxel engine with instanced rendering, supporting up
 - Visual feedback for tool selection and operations
 - Keyboard shortcut indicators in menus
 - Modal dialogs for file operations
+- Voxel panel with type selection and asset popover
+- Tilt-shift depth of field effect (toggle with T)
 
 ## 🛠️ Development
 
@@ -142,10 +157,26 @@ v007/
 │   │   └── DrawingSystem.ts # Drawing tools and interactions
 │   ├── ui/
 │   │   ├── VoxelPanel.ts    # UI components and menus
+│   │   ├── AssetPopover.ts  # Asset selection popover
 │   │   ├── Performance.ts   # Performance monitoring
 │   │   └── DirectionIndicator.ts # 3D axis helper
+│   ├── assets/
+│   │   ├── types.ts         # Asset system type definitions
+│   │   ├── defaultAssets.ts # Default asset configurations
+│   │   └── StaticAssetManager.ts # Asset loading and management
+│   ├── io/
+│   │   ├── VoxParser.ts     # MagicaVoxel .vox file parser
+│   │   ├── VoxWriter.ts     # MagicaVoxel .vox file writer
+│   │   └── FileManager.ts   # File import/export handling
 │   └── types/
 │       └── index.ts         # TypeScript type definitions
+├── public/
+│   ├── assets/              # Voxel asset library
+│   │   ├── grass/           # Grass type assets (trees, flowers)
+│   │   ├── stone/           # Stone type assets (rocks, pillars)
+│   │   ├── wood/            # Wood type assets (crates, barrels)
+│   │   └── leaves/          # Leaves type assets (bushes, hedges)
+│   └── createAssets.html    # Asset generation tool
 ├── devserver.sh             # Development server manager
 ├── index.html               # HTML entry point
 ├── package.json             # Project dependencies
@@ -153,8 +184,9 @@ v007/
 └── vite.config.ts          # Vite build configuration
 ```
 
-## 🎨 Voxel Types
+## 🎨 Voxel Types & Assets
 
+### Voxel Types
 1. **Grass** - Green terrain blocks
 2. **Dirt** - Brown earth blocks
 3. **Stone** - Gray rock blocks
@@ -164,6 +196,29 @@ v007/
 7. **Sand** - Tan desert blocks
 8. **Snow** - White winter blocks
 9. **Ice** - Cyan frozen blocks (transparent)
+
+### Default Assets
+Each voxel type includes premade structures:
+
+**Grass Assets:**
+- Small Tree (3×5×3) - Compact tree with leaves
+- Large Tree (5×7×5) - Full-sized tree with thick trunk
+- Flower (1×2×1) - Single decorative flower
+
+**Stone Assets:**
+- Small Rock (2×1×2) - Low rock formation
+- Large Rock (3×2×3) - Boulder with irregular shape
+- Pillar (1×4×1) - Vertical stone column
+
+**Wood Assets:**
+- Crate (2×2×2) - Storage box
+- Barrel (2×3×2) - Tall storage barrel
+- Fence (4×2×1) - Horizontal fence section
+
+**Leaves Assets:**
+- Bush (2×2×2) - Dense foliage cube
+- Hedge (4×2×1) - Decorative hedge wall
+- Topiary (2×3×2) - Shaped ornamental bush
 
 ## 📊 Technical Details
 
@@ -225,6 +280,10 @@ npx tsc --noEmit
 
 ## 📝 Recent Updates
 
+- **Asset System**: Complete voxel asset system with premade structures for each type
+- **Asset Popover**: Click voxel buttons to select from available assets
+- **Asset Creation Tool**: Browser-based tool to generate .vox asset files
+- **Selection Tool**: Box selection mode for working with regions
 - **Performance Optimizations**: O(1) voxel operations, pre-allocated buffers, batch rendering
 - **Constraint Plane Visualization**: Grid preview shows drawing plane after 300ms hold
 - **Enhanced Drag Operations**: Improved drag-draw and drag-erase with proper plane constraints

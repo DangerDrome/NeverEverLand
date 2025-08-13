@@ -1,6 +1,9 @@
 import { VoxelType } from '../engine/VoxelEngine';
 import { DrawingSystem } from '../interaction/DrawingSystem';
 import { FileManager } from '../io/FileManager';
+import { StaticAssetManager } from '../assets/StaticAssetManager';
+import { AssetPopover } from './AssetPopover';
+import { AssetInfo } from '../assets/types';
 
 interface VoxelButtonInfo {
     type: VoxelType;
@@ -18,9 +21,13 @@ export class VoxelPanel {
     private toolButtons: Map<string, HTMLElement> = new Map();
     private selectedType: VoxelType = VoxelType.GRASS;
     private selectedTool: string = 'brush';
+    private assetManager: StaticAssetManager;
+    private assetPopover: AssetPopover;
     
     constructor(drawingSystem: DrawingSystem) {
         this.drawingSystem = drawingSystem;
+        this.assetManager = new StaticAssetManager();
+        this.assetPopover = new AssetPopover(this.assetManager);
         this.createPanel();
     }
     
@@ -191,7 +198,7 @@ export class VoxelPanel {
     private createVoxelButton(info: VoxelButtonInfo, number: number): HTMLElement {
         const button = document.createElement('button');
         button.className = 'voxel-button';
-        button.title = `${info.name} (${number})`;
+        button.title = `${info.name} (${number}) - Click for assets, Shift+Click for single voxel`;
         // Convert hex color to RGB for background with opacity
         const hexToRgb = (hex: string) => {
             const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -281,9 +288,45 @@ export class VoxelPanel {
             }
         });
         
-        // Click handler
-        button.addEventListener('click', () => {
+        // Simple click handler - shows asset popover unless Shift is held
+        button.addEventListener('click', async (e: MouseEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Always highlight the button first
             this.selectVoxelType(info.type);
+            
+            // If Shift is held, stay in single voxel painting mode
+            if (e.shiftKey) {
+                // Clear any asset selection
+                if (this.drawingSystem.selectedAsset) {
+                    this.drawingSystem.setSelectedAsset(null);
+                }
+                console.log(`Selected ${info.name} for voxel painting (Shift+Click)`);
+                return;
+            }
+            
+            // Otherwise show asset popover
+            try {
+                await this.assetPopover.show(button, info.type, (asset) => {
+                    // When an asset is selected
+                    this.onAssetSelected(asset);
+                });
+            } catch (error) {
+                // If no assets available or popover cancelled, stay in single voxel mode
+                // Clear any asset selection to ensure we're in voxel painting mode
+                if (this.drawingSystem.selectedAsset) {
+                    this.drawingSystem.setSelectedAsset(null);
+                }
+                console.log(`No assets for ${info.name}, using single voxel painting:`, error.message);
+            }
+        });
+        
+        // Right-click also shows popover (alternative method)
+        button.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            // Trigger same as left click
+            button.click();
         });
         
         return button;
@@ -830,10 +873,34 @@ export class VoxelPanel {
         this.voxelEngine = voxelEngine;
     }
     
+    private onAssetSelected(asset: AssetInfo): void {
+        // Set the drawing system to asset mode
+        this.drawingSystem.setSelectedAsset(asset);
+        
+        // Visual feedback - highlight the panel
+        if (this.element) {
+            this.element.style.borderColor = 'rgba(100, 200, 100, 0.5)';
+            setTimeout(() => {
+                if (this.element) {
+                    this.element.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                }
+            }, 300);
+        }
+        
+        console.log(`Selected asset: ${asset.name} (${asset.id})`);
+    }
+    
+    public getAssetManager(): StaticAssetManager {
+        return this.assetManager;
+    }
+    
     public dispose(): void {
         if (this.element && this.element.parentNode) {
             this.element.parentNode.removeChild(this.element);
         }
+        
+        // Dispose asset-related objects
+        this.assetPopover.dispose();
         
         window.removeEventListener('keydown', (e) => this.handleKeyPress(e));
     }

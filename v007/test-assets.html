@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Asset System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #eee;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        #output {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success { color: #4CAF50; }
+        .error { color: #f44336; }
+        .info { color: #2196F3; }
+    </style>
+</head>
+<body>
+    <h1>Asset System Test</h1>
+    <p>This page tests if the voxel asset system is working correctly.</p>
+    
+    <button onclick="testAssetLoading()">Test Asset Loading</button>
+    <button onclick="listAssets()">List All Assets</button>
+    <button onclick="checkAssetFiles()">Check Asset Files</button>
+    
+    <div id="output"></div>
+    
+    <script type="module">
+        import { StaticAssetManager } from './src/assets/StaticAssetManager.js';
+        import { VoxelType } from './src/engine/VoxelEngine.js';
+        
+        const output = document.getElementById('output');
+        
+        function log(message, type = '') {
+            const span = document.createElement('span');
+            span.className = type;
+            span.textContent = message + '\n';
+            output.appendChild(span);
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        window.testAssetLoading = async function() {
+            output.innerHTML = '';
+            log('Testing asset loading system...\n', 'info');
+            
+            const assetManager = new StaticAssetManager();
+            
+            // Test each voxel type
+            const types = [
+                { type: VoxelType.GRASS, name: 'GRASS' },
+                { type: VoxelType.STONE, name: 'STONE' },
+                { type: VoxelType.WOOD, name: 'WOOD' },
+                { type: VoxelType.LEAVES, name: 'LEAVES' }
+            ];
+            
+            for (const { type, name } of types) {
+                log(`\nTesting ${name} assets:`, 'info');
+                
+                try {
+                    const assets = await assetManager.loadAssetList(type);
+                    
+                    if (assets.length === 0) {
+                        log(`  No assets found for ${name}`, 'error');
+                    } else {
+                        log(`  Found ${assets.length} assets:`, 'success');
+                        
+                        for (const asset of assets) {
+                            log(`    - ${asset.name} (${asset.id}) - ${asset.size.x}×${asset.size.y}×${asset.size.z}`);
+                            
+                            // Try loading the actual asset data
+                            try {
+                                const data = await assetManager.loadAsset(asset);
+                                if (data && data.voxels) {
+                                    log(`      ✓ Loaded successfully`, 'success');
+                                } else {
+                                    log(`      ✗ Invalid data format`, 'error');
+                                }
+                            } catch (err) {
+                                log(`      ✗ Failed to load: ${err.message}`, 'error');
+                            }
+                        }
+                    }
+                } catch (error) {
+                    log(`  Error loading ${name} assets: ${error.message}`, 'error');
+                }
+            }
+            
+            log('\nAsset loading test complete!', 'info');
+        };
+        
+        window.listAssets = async function() {
+            output.innerHTML = '';
+            log('Listing all configured assets...\n', 'info');
+            
+            const assetManager = new StaticAssetManager();
+            
+            // Get the default assets from the module
+            const defaultAssetsModule = await import('./src/assets/defaultAssets.js');
+            const DEFAULT_ASSETS = defaultAssetsModule.DEFAULT_ASSETS;
+            
+            let totalAssets = 0;
+            
+            for (const [typeValue, assets] of Object.entries(DEFAULT_ASSETS)) {
+                const typeName = Object.keys(VoxelType).find(key => VoxelType[key] === parseInt(typeValue));
+                
+                if (assets.length > 0) {
+                    log(`${typeName || 'Unknown'} (${assets.length} assets):`, 'info');
+                    
+                    for (const asset of assets) {
+                        log(`  - ${asset.name}`);
+                        log(`    ID: ${asset.id}`);
+                        log(`    Path: ${asset.path}`);
+                        log(`    Size: ${asset.size.x}×${asset.size.y}×${asset.size.z}`);
+                        log(`    Tags: ${asset.tags?.join(', ') || 'none'}`);
+                        totalAssets++;
+                    }
+                    log('');
+                }
+            }
+            
+            log(`Total assets configured: ${totalAssets}`, 'success');
+        };
+        
+        window.checkAssetFiles = async function() {
+            output.innerHTML = '';
+            log('Checking asset files on server...\n', 'info');
+            
+            const assetDirs = ['grass', 'stone', 'wood', 'leaves'];
+            const expectedFiles = {
+                grass: ['small_tree.vox', 'large_tree.vox', 'flower.vox'],
+                stone: ['small_rock.vox', 'large_rock.vox', 'pillar.vox'],
+                wood: ['crate.vox', 'barrel.vox', 'fence.vox'],
+                leaves: ['bush.vox', 'hedge.vox', 'topiary.vox']
+            };
+            
+            let foundCount = 0;
+            let missingCount = 0;
+            
+            for (const dir of assetDirs) {
+                log(`\nChecking /assets/${dir}/`, 'info');
+                
+                const files = expectedFiles[dir] || [];
+                for (const file of files) {
+                    const url = `/assets/${dir}/${file}`;
+                    
+                    try {
+                        const response = await fetch(url, { method: 'HEAD' });
+                        
+                        if (response.ok) {
+                            log(`  ✓ ${file} - Found`, 'success');
+                            foundCount++;
+                        } else {
+                            log(`  ✗ ${file} - Not found (${response.status})`, 'error');
+                            missingCount++;
+                        }
+                    } catch (error) {
+                        log(`  ✗ ${file} - Error: ${error.message}`, 'error');
+                        missingCount++;
+                    }
+                }
+            }
+            
+            log(`\nSummary:`, 'info');
+            log(`  Found: ${foundCount} files`, 'success');
+            log(`  Missing: ${missingCount} files`, missingCount > 0 ? 'error' : 'success');
+            
+            if (missingCount > 0) {
+                log(`\nTo generate missing assets, open /createAssets.html and download the files.`, 'info');
+            }
+        };
+        
+        // Run initial test
+        log('Asset system test page loaded. Click a button to test.', 'info');
+    </script>
+</body>
+</html>
