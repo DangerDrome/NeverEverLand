@@ -23,6 +23,8 @@ export class DrawingSystem {
     previewEdges: THREE.LineSegments | null = null;
     previewMaterial: THREE.MeshBasicMaterial;
     edgeMaterial: THREE.LineBasicMaterial;
+    eraserGlowMesh: THREE.Mesh | null = null;
+    eraserGlowMaterial: THREE.MeshBasicMaterial;
     toolPreviewMeshes: (THREE.Group | THREE.Mesh | THREE.LineSegments)[];
     pendingOperations: any[];
     operationTimer: number | null;
@@ -37,6 +39,7 @@ export class DrawingSystem {
     assetRotation: number;  // Rotation angle in 90-degree increments (0, 1, 2, 3)
     previewTargetPosition: THREE.Vector3;  // Target position for smooth preview movement
     previewLerpFactor: number;  // How fast the preview moves (0-1)
+    lastUpdateHit: any | null;  // Store last hit for preview updates
     
     constructor(voxelEngine: any) {
         this.voxelEngine = voxelEngine;
@@ -67,6 +70,7 @@ export class DrawingSystem {
         // Smooth preview animation
         this.previewTargetPosition = new THREE.Vector3();
         this.previewLerpFactor = 0.75; // Subtle smoothing
+        this.lastUpdateHit = null;
         
         // Preview
         this.previewMesh = null;
@@ -82,6 +86,15 @@ export class DrawingSystem {
             color: 0xffffff,
             opacity: 0.4,  // Subtle edges
             transparent: true
+        });
+        
+        // Eraser glow material
+        this.eraserGlowMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff0000,
+            opacity: 0.6,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
         });
         
         // Multiple preview meshes for box/line tools
@@ -364,11 +377,26 @@ export class DrawingSystem {
         this.previewEdges = new THREE.LineSegments(edges, this.edgeMaterial);
         this.previewGroup.add(this.previewEdges);
         
+        // Create eraser glow mesh (slightly larger cube)
+        const glowGeometry = new THREE.BoxGeometry(
+            voxelSize * 1.2,
+            voxelSize * 1.2,
+            voxelSize * 1.2
+        );
+        this.eraserGlowMesh = new THREE.Mesh(glowGeometry, this.eraserGlowMaterial);
+        this.eraserGlowMesh.visible = false;
+        this.previewGroup.add(this.eraserGlowMesh);
+        
         this.previewGroup.visible = false;
         this.voxelEngine.scene.add(this.previewGroup);
     }
     
     updatePreview(hit: any, constrainedPos?: { x: number; y: number; z: number }): void {
+        // Store last hit for forced updates
+        if (hit) {
+            this.lastUpdateHit = hit;
+        }
+        
         // If we have a constrained position (during drawing), use that
         // Otherwise use the hit position or hide preview
         if (!hit && !constrainedPos) {
@@ -437,10 +465,18 @@ export class DrawingSystem {
             
             // Update preview color based on tool and voxel type
             if (this.toolMode === 'eraser') {
-                // Red preview for eraser
+                // Red glowing preview for eraser
                 this.previewMaterial.color.setHex(0xff0000);
-                this.edgeMaterial.color.setHex(0xff0000);
-                this.previewMaterial.opacity = 0.3; // Make it more transparent
+                this.edgeMaterial.color.setHex(0xffaaaa); // Brighter red edges
+                this.previewMaterial.opacity = 0.5; // More visible
+                this.edgeMaterial.opacity = 0.8; // Bright edges
+                
+                // Show and scale glow effect
+                if (this.eraserGlowMesh) {
+                    this.eraserGlowMesh.visible = true;
+                    this.eraserGlowMesh.scale.setScalar(this.brushSize);
+                    this.eraserGlowMaterial.opacity = 0.3;
+                }
             } else if (this.drawMode === 'add') {
                 // Use the actual voxel color for preview
                 const voxelColor = this.getVoxelColor(this.currentVoxelType);
@@ -461,11 +497,23 @@ export class DrawingSystem {
                 }
                 
                 this.previewMaterial.opacity = 0.5;
+                this.edgeMaterial.opacity = 0.4; // Reset to default
+                
+                // Hide eraser glow
+                if (this.eraserGlowMesh) {
+                    this.eraserGlowMesh.visible = false;
+                }
             } else {
                 // Red preview for remove
                 this.previewMaterial.color.setHex(0xff0000);
                 this.edgeMaterial.color.setHex(0xff0000);
                 this.previewMaterial.opacity = 0.3;
+                this.edgeMaterial.opacity = 0.4; // Reset to default
+                
+                // Hide eraser glow
+                if (this.eraserGlowMesh) {
+                    this.eraserGlowMesh.visible = false;
+                }
             }
             
             this.previewGroup.visible = true;
@@ -804,6 +852,10 @@ export class DrawingSystem {
             this.selectedAsset = null;
             this.assetData = null;
         }
+        
+        // Force preview update with current mouse position
+        // This ensures preview colors/styles update immediately
+        this.lastUpdateHit = null; // Force a fresh update
     }
     
     setAssetManager(assetManager: StaticAssetManager): void {

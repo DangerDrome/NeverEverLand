@@ -182,14 +182,14 @@ const SETTINGS = {
     // Performance Settings
     performance: {
         highPerformanceMode: true,     // Enable high performance optimizations
-        showStats: true,               // Show performance stats on start
+        showStats: false,              // Show performance stats on start
         targetFPS: 60                  // Target frames per second
     },
     
     // UI Settings
     ui: {
         showLoadingScreen: true,       // Show loading screen
-        showControls: true,            // Show controls panel
+        showControls: false,           // Show controls panel
         showStats: true,               // Show stats panel
         defaultBrushSize: 1,           // Default brush size
         defaultVoxelType: VoxelType.GRASS, // Default voxel type
@@ -238,6 +238,7 @@ class VoxelApp {
     private lastMousePos: { x: number; y: number } = { x: 0, y: 0 };
     private currentBrushSize: number = SETTINGS.brush.defaultSize;
     private currentBrushIndex: number = SETTINGS.brush.defaultSizeIndex;
+    private isMiddleMouseDragging: boolean = false;
     
     constructor() {
         this.scene = new THREE.Scene();
@@ -257,8 +258,8 @@ class VoxelApp {
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
         
-        // Initialize interaction time
-        this.lastInteractionTime = Date.now();
+        // Initialize interaction time to 0 so axes start faded
+        this.lastInteractionTime = 0;
         
         this.init();
     }
@@ -269,7 +270,7 @@ class VoxelApp {
             const loadingEl = document.getElementById('loading');
             if (loadingEl) loadingEl.style.display = 'none';
         }
-        if (SETTINGS.ui.showStats) {
+        if (SETTINGS.performance.showStats) {
             const statsEl = document.getElementById('stats');
             if (statsEl) statsEl.style.display = 'block';
         }
@@ -341,6 +342,29 @@ class VoxelApp {
         // The ground is at y = -0.001, so we want to prevent the camera from looking up from below
         this.controls.minPolarAngle = Math.PI * 0.05; // ~9 degrees from top, allows good top-down editing
         this.controls.maxPolarAngle = Math.PI * 0.49; // ~88 degrees, just prevents going fully below horizontal
+        
+        // Track camera state to detect rotation vs zoom/pan
+        let lastCameraRotation = this.camera.position.clone();
+        let lastTarget = this.controls.target.clone();
+        
+        // Add event listener for camera changes
+        this.controls.addEventListener('change', () => {
+            // Check if camera position or target changed (rotation/pan)
+            // Ignore if only zoom changed or if middle mouse is being used
+            const positionChanged = !this.camera.position.equals(lastCameraRotation);
+            const targetChanged = !this.controls.target.equals(lastTarget);
+            
+            if ((positionChanged || targetChanged) && !this.isMiddleMouseDragging) {
+                // This is a rotation (not pan with middle mouse or zoom)
+                this.registerInteraction();
+                lastCameraRotation = this.camera.position.clone();
+                lastTarget = this.controls.target.clone();
+            } else if (positionChanged || targetChanged) {
+                // Update last position even if middle mouse dragging
+                lastCameraRotation = this.camera.position.clone();
+                lastTarget = this.controls.target.clone();
+            }
+        });
         
         // Setup scene
         this.scene.background = new THREE.Color(SETTINGS.scene.backgroundColor);
@@ -428,8 +452,9 @@ class VoxelApp {
         const xAxisGeometry = new THREE.BoxGeometry(axisLength * 2, axisThickness, axisThickness);
         const xAxisMaterial = new THREE.MeshBasicMaterial({ 
             color: SETTINGS.grid.axisLines.xColor,
-            opacity: 0.9,
-            transparent: true
+            opacity: 0,       // Start invisible
+            transparent: true,
+            depthWrite: false
         });
         const xAxisLine = new THREE.Mesh(xAxisGeometry, xAxisMaterial);
         xAxisLine.position.set(0, axisHeight, 0);
@@ -440,8 +465,9 @@ class VoxelApp {
         const xGlowGeometry = new THREE.BoxGeometry(axisLength * 2, axisThickness * 3, axisThickness * 3);
         const xGlowMaterial = new THREE.MeshBasicMaterial({ 
             color: SETTINGS.grid.axisLines.xColor,
-            opacity: 0.2,
+            opacity: 0,       // Start invisible
             transparent: true,
+            depthWrite: false,
             blending: THREE.AdditiveBlending
         });
         const xGlow = new THREE.Mesh(xGlowGeometry, xGlowMaterial);
@@ -453,8 +479,9 @@ class VoxelApp {
         const zAxisGeometry = new THREE.BoxGeometry(axisThickness, axisThickness, axisLength * 2);
         const zAxisMaterial = new THREE.MeshBasicMaterial({ 
             color: SETTINGS.grid.axisLines.zColor,
-            opacity: 0.9,
-            transparent: true
+            opacity: 0,       // Start invisible
+            transparent: true,
+            depthWrite: false
         });
         const zAxisLine = new THREE.Mesh(zAxisGeometry, zAxisMaterial);
         zAxisLine.position.set(0, axisHeight, 0);
@@ -465,8 +492,9 @@ class VoxelApp {
         const zGlowGeometry = new THREE.BoxGeometry(axisThickness * 3, axisThickness * 3, axisLength * 2);
         const zGlowMaterial = new THREE.MeshBasicMaterial({ 
             color: SETTINGS.grid.axisLines.zColor,
-            opacity: 0.2,
+            opacity: 0,       // Start invisible
             transparent: true,
+            depthWrite: false,
             blending: THREE.AdditiveBlending
         });
         const zGlow = new THREE.Mesh(zGlowGeometry, zGlowMaterial);
@@ -658,7 +686,8 @@ class VoxelApp {
     }
     
     onMouseMove(event: MouseEvent) {
-        this.registerInteraction();
+        // Don't register interaction for simple mouse movement
+        // Only register for actual clicks, drags, or other actions
         
         // Store last mouse position for paste location
         this.lastMousePos.x = event.clientX;
@@ -851,7 +880,12 @@ class VoxelApp {
     }
     
     onMouseDown(event: MouseEvent) {
-        this.registerInteraction();
+        // Don't register interaction for simple clicks
+        
+        // Track middle mouse button
+        if (event.button === 1) {
+            this.isMiddleMouseDragging = true;
+        }
         
         // Handle selection mode
         if (this.selectionMode && this.boxSelectionTool) {
@@ -932,8 +966,13 @@ class VoxelApp {
         }
     }
     
-    onMouseUp(_event: MouseEvent) {
-        this.registerInteraction();
+    onMouseUp(event: MouseEvent) {
+        // Don't register interaction for simple mouse up
+        
+        // Stop tracking middle mouse button
+        if (event.button === 1) {
+            this.isMiddleMouseDragging = false;
+        }
         
         // Handle selection mode
         if (this.selectionMode && this.boxSelectionTool) {
@@ -955,7 +994,7 @@ class VoxelApp {
     }
     
     onWheel(event: WheelEvent) {
-        this.registerInteraction();
+        // Don't register interaction for zoom - only for tumbling
         
         // If we're drawing and controls are disabled, handle zoom manually
         if (this.drawingSystem?.isDrawing && this.controls && !this.controls.enabled) {
@@ -1127,6 +1166,7 @@ class VoxelApp {
                 if (this.drawingSystem) {
                     this.drawingSystem.setToolMode('brush');
                     this.drawingSystem.showPreview();
+                    this.updatePreviewAtCurrentMouse();
                 }
                 if (this.voxelPanel) {
                     this.voxelPanel.updateToolMode('brush');
@@ -1142,6 +1182,7 @@ class VoxelApp {
                 if (this.drawingSystem) {
                     this.drawingSystem.setToolMode('eraser');
                     this.drawingSystem.showPreview();
+                    this.updatePreviewAtCurrentMouse();
                 }
                 if (this.voxelPanel) {
                     this.voxelPanel.updateToolMode('eraser');
@@ -1157,6 +1198,7 @@ class VoxelApp {
                 if (this.drawingSystem) {
                     this.drawingSystem.setToolMode('box');
                     this.drawingSystem.showPreview();
+                    this.updatePreviewAtCurrentMouse();
                 }
                 if (this.voxelPanel) {
                     this.voxelPanel.updateToolMode('box');
@@ -1172,6 +1214,7 @@ class VoxelApp {
                 if (this.drawingSystem) {
                     this.drawingSystem.setToolMode('line');
                     this.drawingSystem.showPreview();
+                    this.updatePreviewAtCurrentMouse();
                 }
                 if (this.voxelPanel) {
                     this.voxelPanel.updateToolMode('line');
@@ -1187,6 +1230,7 @@ class VoxelApp {
                 if (this.drawingSystem) {
                     this.drawingSystem.setToolMode('fill');
                     this.drawingSystem.showPreview();
+                    this.updatePreviewAtCurrentMouse();
                 }
                 if (this.voxelPanel) {
                     this.voxelPanel.updateToolMode('fill');
@@ -1579,6 +1623,18 @@ class VoxelApp {
         console.log(`Brush size changed to: ${newSize}×${newSize}×${newSize} (${brushVolume} voxels)`);
     }
     
+    updatePreviewAtCurrentMouse(): void {
+        // Force a preview update using the current mouse position
+        if (!this.drawingSystem || !this.voxelEngine) return;
+        
+        // Update raycaster with current mouse position
+        this.raycaster.setFromCamera(this.mouse, this.camera!);
+        const hit = this.voxelEngine.raycast(this.raycaster);
+        
+        // Update preview with the hit
+        this.drawingSystem.updatePreview(hit);
+    }
+    
     animate() {
         requestAnimationFrame(() => this.animate());
         
@@ -1655,14 +1711,14 @@ class VoxelApp {
             }
             
             // Calculate base opacity from camera angle
-            let baseAxisOpacity = 0.9;
-            let baseGlowOpacity = 0.2;
+            let baseAxisOpacity = 0.5;
+            let baseGlowOpacity = 0.1;
             
             // Fade out axes when looking nearly straight down (bird's eye view)
             if (dotProduct > 0.8) {
                 // dotProduct > 0.8 means camera is within ~37 degrees of straight down
-                baseAxisOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.8, 1.0, 0.9, 0);
-                baseGlowOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.8, 1.0, 0.2, 0);
+                baseAxisOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.8, 1.0, 0.5, 0);
+                baseGlowOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.8, 1.0, 0.1, 0);
             }
             
             // Apply idle fade after camera stops moving
@@ -1673,14 +1729,24 @@ class VoxelApp {
                 idleFadeFactor = THREE.MathUtils.clamp(idleFadeFactor, 0.0, 1.0);
             }
             
-            // Final opacity is base opacity multiplied by idle fade
-            const axisOpacity = baseAxisOpacity * idleFadeFactor;
-            const glowOpacity = baseGlowOpacity * idleFadeFactor;
+            // Create color interpolation targets
+            const fadeColor = new THREE.Color(0x333333); // Faint gray instead of dark
+            const xColor = new THREE.Color(SETTINGS.grid.axisLines.xColor);
+            const zColor = new THREE.Color(SETTINGS.grid.axisLines.zColor);
             
             // Update X-axis
             if (this.xAxisLine && this.xAxisGlow) {
-                (this.xAxisLine.material as THREE.MeshBasicMaterial).opacity = axisOpacity;
-                (this.xAxisGlow.material as THREE.MeshBasicMaterial).opacity = glowOpacity;
+                const xMat = this.xAxisLine.material as THREE.MeshBasicMaterial;
+                const xGlowMat = this.xAxisGlow.material as THREE.MeshBasicMaterial;
+                
+                // Interpolate color to dark gray based on idle fade
+                xMat.color.lerpColors(fadeColor, xColor, idleFadeFactor);
+                xGlowMat.color.lerpColors(fadeColor, xColor, idleFadeFactor);
+                
+                // Apply both angle-based fade and idle fade to opacity
+                xMat.opacity = baseAxisOpacity * idleFadeFactor;
+                xGlowMat.opacity = baseGlowOpacity * idleFadeFactor;
+                
                 // Scale thickness, not length
                 this.xAxisLine.scale.set(1, scaleFactor, scaleFactor);
                 this.xAxisGlow.scale.set(1, scaleFactor, scaleFactor);
@@ -1688,8 +1754,16 @@ class VoxelApp {
             
             // Update Z-axis
             if (this.zAxisLine && this.zAxisGlow) {
-                (this.zAxisLine.material as THREE.MeshBasicMaterial).opacity = axisOpacity;
-                (this.zAxisGlow.material as THREE.MeshBasicMaterial).opacity = glowOpacity;
+                const zMat = this.zAxisLine.material as THREE.MeshBasicMaterial;
+                const zGlowMat = this.zAxisGlow.material as THREE.MeshBasicMaterial;
+                
+                // Interpolate color to dark gray based on idle fade
+                zMat.color.lerpColors(fadeColor, zColor, idleFadeFactor);
+                zGlowMat.color.lerpColors(fadeColor, zColor, idleFadeFactor);
+                
+                // Apply both angle-based fade and idle fade to opacity
+                zMat.opacity = baseAxisOpacity * idleFadeFactor;
+                zGlowMat.opacity = baseGlowOpacity * idleFadeFactor;
                 // Scale thickness, not length
                 this.zAxisLine.scale.set(scaleFactor, scaleFactor, 1);
                 this.zAxisGlow.scale.set(scaleFactor, scaleFactor, 1);

@@ -214,24 +214,32 @@ export class DynamicGrid extends THREE.Group {
                 scaleFactor = THREE.MathUtils.clamp(scaleFactor, 1.0, 3.0);
             }
             
-            // Default opacities - visible by default
-            let yAxisOpacity = 0.9;
-            let yAxisGlowOpacity = 0.2;
+            // Default opacities - visible by default but subtle
+            let yAxisOpacity = 0.5;
+            let yAxisGlowOpacity = 0.1;
             
             // Only fade in specific conditions
             if (camera && dotProduct > 0.8) {
                 // Fade out when looking nearly straight down (bird's eye view)
                 // dotProduct > 0.8 means camera is within ~37 degrees of straight down
-                yAxisOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.8, 1.0, 0.9, 0);
-                yAxisGlowOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.8, 1.0, 0.2, 0);
+                yAxisOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.8, 1.0, 0.5, 0);
+                yAxisGlowOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.8, 1.0, 0.1, 0);
             } else if (camera && dotProduct < 0.2) {
                 // Also fade out at very grazing angles for cleaner view
                 // dotProduct < 0.2 means camera is within ~11 degrees of horizontal
-                yAxisOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.2, 0.0, 0.9, 0);
-                yAxisGlowOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.2, 0.0, 0.2, 0);
+                yAxisOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.2, 0.0, 0.5, 0);
+                yAxisGlowOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.2, 0.0, 0.1, 0);
             }
             
-            // Apply opacities with idle fade factor
+            // Create color interpolation targets
+            const fadeColor = new THREE.Color(0x333333); // Faint gray instead of dark
+            const greenColor = new THREE.Color(0x66ff66);
+            
+            // Interpolate color to dark gray based on idle fade
+            this.yAxisMaterial.color.lerpColors(fadeColor, greenColor, idleFadeFactor);
+            this.yAxisGlowMaterial.color.lerpColors(fadeColor, greenColor, idleFadeFactor);
+            
+            // Apply both base opacities and idle fade
             this.yAxisMaterial.opacity = yAxisOpacity * idleFadeFactor;
             this.yAxisGlowMaterial.opacity = yAxisGlowOpacity * idleFadeFactor;
             
