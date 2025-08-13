@@ -26,6 +26,9 @@ export class DrawingSystem {
     operationTimer: number | null;
     lastBrushPosition: { x: number; y: number; z: number } | null;
     processedPositions: Set<string>;  // Track all positions processed in current drag
+    constraintPlane: THREE.Mesh | null;  // Visual representation of constraint plane
+    gridShowTimer: number | null;  // Timer for showing grid after hold
+    gridShown: boolean;  // Track if grid is currently shown
     
     constructor(voxelEngine: any) {
         this.voxelEngine = voxelEngine;
@@ -43,6 +46,9 @@ export class DrawingSystem {
         this.drawingSurface = null; // Store the surface we're drawing on
         this.lastBrushPosition = null; // Track last brush position to avoid duplicates
         this.processedPositions = new Set(); // Track all processed positions in current drag
+        this.constraintPlane = null; // Visual plane indicator
+        this.gridShowTimer = null; // Timer for delayed grid display
+        this.gridShown = false; // Track grid visibility
         
         // Preview
         this.previewMesh = null;
@@ -68,6 +74,149 @@ export class DrawingSystem {
         this.operationTimer = null;
         
         this.createPreviewMesh();
+    }
+    
+    createConstraintPlane(position: THREE.Vector3, normal: THREE.Vector3, clickPos: { x: number; y: number; z: number }, size: number = 2): void {
+        // Remove existing plane if any
+        this.hideConstraintPlane();
+        
+        // Create a group to hold the grid
+        const gridGroup = new THREE.Group();
+        
+        const voxelSize = this.voxelEngine.getCurrentVoxelSize();
+        
+        // Use axis colors based on the plane orientation
+        // X axis = Red (0xff0000), Y axis = Green (0x00ff00), Z axis = Blue (0x0000ff)
+        let gridColor: number;
+        if (Math.abs(normal.y) > 0.5) {
+            // Horizontal plane (perpendicular to Y) - use green
+            gridColor = 0x00ff00;
+        } else if (Math.abs(normal.x) > 0.5) {
+            // Vertical plane perpendicular to X - use blue
+            gridColor = 0x0000ff;
+        } else {
+            // Vertical plane perpendicular to Z - use red
+            gridColor = 0xff0000;
+        }
+        
+        const lineOpacity = 0.3;
+        
+        // Create grid lines
+        const gridMaterial = new THREE.LineBasicMaterial({
+            color: gridColor,
+            opacity: lineOpacity,
+            transparent: true,
+            depthTest: true,
+            depthWrite: false
+        });
+        
+        // Calculate grid extent based on size
+        const halfSize = size / 2;
+        const gridStep = voxelSize; // Grid spacing matches voxel size
+        
+        // Create grid lines based on plane orientation
+        const gridGeometry = new THREE.BufferGeometry();
+        const positions: number[] = [];
+        
+        if (Math.abs(normal.y) > 0.5) {
+            // Horizontal plane (XZ grid)
+            // Lines parallel to X axis
+            for (let z = -halfSize; z <= halfSize; z += gridStep) {
+                positions.push(-halfSize, 0, z);
+                positions.push(halfSize, 0, z);
+            }
+            // Lines parallel to Z axis
+            for (let x = -halfSize; x <= halfSize; x += gridStep) {
+                positions.push(x, 0, -halfSize);
+                positions.push(x, 0, halfSize);
+            }
+        } else if (Math.abs(normal.x) > 0.5) {
+            // Vertical plane facing X (YZ grid)
+            // Lines parallel to Y axis
+            for (let z = -halfSize; z <= halfSize; z += gridStep) {
+                positions.push(0, -halfSize, z);
+                positions.push(0, halfSize, z);
+            }
+            // Lines parallel to Z axis
+            for (let y = -halfSize; y <= halfSize; y += gridStep) {
+                positions.push(0, y, -halfSize);
+                positions.push(0, y, halfSize);
+            }
+        } else {
+            // Vertical plane facing Z (XY grid)
+            // Lines parallel to X axis
+            for (let y = -halfSize; y <= halfSize; y += gridStep) {
+                positions.push(-halfSize, y, 0);
+                positions.push(halfSize, y, 0);
+            }
+            // Lines parallel to Y axis
+            for (let x = -halfSize; x <= halfSize; x += gridStep) {
+                positions.push(x, -halfSize, 0);
+                positions.push(x, halfSize, 0);
+            }
+        }
+        
+        gridGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        const gridLines = new THREE.LineSegments(gridGeometry, gridMaterial);
+        gridGroup.add(gridLines);
+        
+        // Add a subtle plane behind the grid for better visibility
+        const planeGeometry = new THREE.PlaneGeometry(size, size);
+        const planeMaterial = new THREE.MeshBasicMaterial({
+            color: gridColor,
+            opacity: 0.05,
+            transparent: true,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        const planeMesh = new THREE.Mesh(planeGeometry, planeMaterial);
+        
+        // Orient the plane based on normal
+        if (Math.abs(normal.y) > 0.5) {
+            // Horizontal plane - rotate to lay flat
+            planeMesh.rotation.x = -Math.PI / 2;
+        } else if (Math.abs(normal.x) > 0.5) {
+            // Vertical plane facing X
+            planeMesh.rotation.y = Math.PI / 2;
+        } else {
+            // Vertical plane facing Z - no rotation needed
+        }
+        
+        gridGroup.add(planeMesh);
+        
+        // Position the entire grid group at the plane position
+        gridGroup.position.copy(position);
+        
+        // Store as constraint plane for cleanup
+        this.constraintPlane = gridGroup as any;
+        
+        // Set render order
+        gridGroup.renderOrder = -1;
+        
+        // Add to scene
+        this.voxelEngine.scene.add(gridGroup);
+    }
+    
+    hideConstraintPlane(): void {
+        if (this.constraintPlane) {
+            this.voxelEngine.scene.remove(this.constraintPlane);
+            
+            // Dispose of all children in the group
+            if (this.constraintPlane.traverse) {
+                this.constraintPlane.traverse((child: any) => {
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) {
+                        if (Array.isArray(child.material)) {
+                            child.material.forEach((m: THREE.Material) => m.dispose());
+                        } else {
+                            child.material.dispose();
+                        }
+                    }
+                });
+            }
+            
+            this.constraintPlane = null;
+        }
     }
     
     createPreviewMesh(): void {
@@ -212,6 +361,93 @@ export class DrawingSystem {
                 basePos: constraintPos,
                 hitPos: { ...hit.voxelPos } // Store the hit voxel position
             };
+            
+            // Set up timer to show grid after 1 second hold
+            // Don't show immediately
+            const voxelSize = this.voxelEngine.getCurrentVoxelSize();
+            
+            // Determine plane position based on the face normal and mode
+            let planeY, planeX, planeZ;
+            const absX = Math.abs(hit.normal.x);
+            const absY = Math.abs(hit.normal.y);
+            const absZ = Math.abs(hit.normal.z);
+            
+            // Store grid parameters for delayed display
+            // Set up timer to show grid after 300ms
+            this.gridShowTimer = window.setTimeout(() => {
+                if (this.isDrawing && this.drawingSurface) {
+                    let planePos: THREE.Vector3;
+                    
+                    // Position the grid at the exact face that was clicked
+                    // For add mode: grid is at the face of the clicked voxel (where new voxels will be placed)
+                    // For remove mode: grid is at the face being removed from
+                    
+                    if (absY > absX && absY > absZ) {
+                        // Horizontal plane - Y face
+                        let planeY: number;
+                        if (mode === 'remove') {
+                            // For remove, place at the clicked face
+                            planeY = hit.normal.y > 0 ? 
+                                (hit.voxelPos.y + 1) * voxelSize : // Top face of voxel
+                                hit.voxelPos.y * voxelSize;         // Bottom face of voxel
+                        } else {
+                            // For add, place at the adjacent face where voxels will be added
+                            planeY = hit.normal.y > 0 ?
+                                (hit.voxelPos.y + 1) * voxelSize : // Above the voxel
+                                hit.voxelPos.y * voxelSize;         // Below the voxel
+                        }
+                        // Center X and Z on the clicked position
+                        planePos = new THREE.Vector3(
+                            hit.point.x,
+                            planeY, 
+                            hit.point.z
+                        );
+                    } else if (absX > absY && absX > absZ) {
+                        // Vertical X plane - X face
+                        let planeX: number;
+                        if (mode === 'remove') {
+                            // For remove, place at the clicked face
+                            planeX = hit.normal.x > 0 ?
+                                (hit.voxelPos.x + 1) * voxelSize : // Right face of voxel
+                                hit.voxelPos.x * voxelSize;         // Left face of voxel
+                        } else {
+                            // For add, place at the adjacent face where voxels will be added
+                            planeX = hit.normal.x > 0 ?
+                                (hit.voxelPos.x + 1) * voxelSize : // Right of the voxel
+                                hit.voxelPos.x * voxelSize;         // Left of the voxel
+                        }
+                        // Center Y and Z on the clicked position
+                        planePos = new THREE.Vector3(
+                            planeX,
+                            hit.point.y,
+                            hit.point.z
+                        );
+                    } else {
+                        // Vertical Z plane - Z face
+                        let planeZ: number;
+                        if (mode === 'remove') {
+                            // For remove, place at the clicked face
+                            planeZ = hit.normal.z > 0 ?
+                                (hit.voxelPos.z + 1) * voxelSize : // Front face of voxel
+                                hit.voxelPos.z * voxelSize;         // Back face of voxel
+                        } else {
+                            // For add, place at the adjacent face where voxels will be added
+                            planeZ = hit.normal.z > 0 ?
+                                (hit.voxelPos.z + 1) * voxelSize : // Front of the voxel
+                                hit.voxelPos.z * voxelSize;         // Behind the voxel
+                        }
+                        // Center X and Y on the clicked position
+                        planePos = new THREE.Vector3(
+                            hit.point.x,
+                            hit.point.y,
+                            planeZ
+                        );
+                    }
+                    
+                    this.createConstraintPlane(planePos!, hit.normal, hit.voxelPos);
+                    this.gridShown = true;
+                }
+            }, 300); // time to show grid after hold
         } else {
             this.drawingSurface = null;
         }
@@ -267,6 +503,14 @@ export class DrawingSystem {
         this.isDrawing = false;
         this.previewGroup.visible = true;
         this.drawingSurface = null;
+        
+        // Clear grid timer and hide the constraint plane
+        if (this.gridShowTimer) {
+            clearTimeout(this.gridShowTimer);
+            this.gridShowTimer = null;
+        }
+        this.hideConstraintPlane();
+        this.gridShown = false;
         
         // End batch mode and apply all changes
         this.voxelEngine.endBatch();

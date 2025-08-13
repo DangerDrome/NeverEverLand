@@ -687,6 +687,11 @@ class VoxelApp {
             // where we clicked, not at the voxel center. This keeps the plane stable.
             const isRemoveMode = this.drawingSystem!.drawMode === 'remove';
             
+            // Update the visual constraint plane if it exists
+            if (this.drawingSystem!.constraintPlane) {
+                // We'll update its position after calculating the plane
+            }
+            
             if (absY > absX && absY > absZ) {
                 // Horizontal plane - constrain Y
                 // For remove: if clicking top face (normal.y > 0), plane is at top of voxel
