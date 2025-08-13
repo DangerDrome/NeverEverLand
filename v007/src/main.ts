@@ -136,7 +136,7 @@ const SETTINGS = {
         color: 0xaaaaaa,               // Ground color (medium grey)
         roughness: 0.8,                // Material roughness
         metalness: 0.2,                // Material metalness
-        yPosition: 0                  // Y position (at exactly 0 to align with voxels)
+        yPosition: -0.001             // Y position (slightly below 0 to prevent z-fighting)
     },
     
     // Grid Settings

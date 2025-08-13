@@ -318,7 +318,7 @@ export class VoxelPanel {
                 if (this.drawingSystem.selectedAsset) {
                     this.drawingSystem.setSelectedAsset(null);
                 }
-                console.log(`No assets for ${info.name}, using single voxel painting:`, error.message);
+                console.log(`No assets for ${info.name}, using single voxel painting:`, (error as Error).message);
             }
         });
         

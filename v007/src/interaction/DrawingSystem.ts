@@ -80,7 +80,7 @@ export class DrawingSystem {
         // Edge material for cube outlines
         this.edgeMaterial = new THREE.LineBasicMaterial({
             color: 0xffffff,
-            opacity: 0.8,
+            opacity: 0.4,  // Subtle edges
             transparent: true
         });
         
@@ -435,16 +435,31 @@ export class DrawingSystem {
             // This makes the preview box exactly cover NxNxN voxels
             this.previewGroup.scale.setScalar(this.brushSize);
             
-            // Update preview color based on tool
+            // Update preview color based on tool and voxel type
             if (this.toolMode === 'eraser') {
                 // Red preview for eraser
                 this.previewMaterial.color.setHex(0xff0000);
                 this.edgeMaterial.color.setHex(0xff0000);
                 this.previewMaterial.opacity = 0.3; // Make it more transparent
             } else if (this.drawMode === 'add') {
-                // Green preview for add
-                this.previewMaterial.color.setHex(0x00ff00);
-                this.edgeMaterial.color.setHex(0x00ff00);
+                // Use the actual voxel color for preview
+                const voxelColor = this.getVoxelColor(this.currentVoxelType);
+                this.previewMaterial.color.set(voxelColor);
+                
+                // For edges, use a slightly brighter version of the color
+                const brightness = voxelColor.r * 0.299 + voxelColor.g * 0.587 + voxelColor.b * 0.114;
+                if (brightness < 0.3) {
+                    // For very dark colors, lighten them up a bit
+                    const lightEdgeColor = voxelColor.clone();
+                    lightEdgeColor.r = Math.min(1, lightEdgeColor.r + 0.3);
+                    lightEdgeColor.g = Math.min(1, lightEdgeColor.g + 0.3);
+                    lightEdgeColor.b = Math.min(1, lightEdgeColor.b + 0.3);
+                    this.edgeMaterial.color.set(lightEdgeColor);
+                } else {
+                    // For other colors, use the voxel color directly
+                    this.edgeMaterial.color.set(voxelColor);
+                }
+                
                 this.previewMaterial.opacity = 0.5;
             } else {
                 // Red preview for remove
@@ -1109,10 +1124,11 @@ export class DrawingSystem {
             const finalY = pos.y + vy;
             const finalZ = pos.z + Math.round(rotatedZ + centerZ);
             
-            // Create preview mesh
+            // Create preview mesh with actual voxel color
             const geometry = new THREE.BoxGeometry(voxelSize, voxelSize, voxelSize);
+            const voxelColor = this.getVoxelColor(voxelType);
             const material = new THREE.MeshBasicMaterial({
-                color: 0x00ff00,
+                color: voxelColor,
                 opacity: 0.5,
                 transparent: true
             });
@@ -1124,9 +1140,27 @@ export class DrawingSystem {
                 (finalZ + 0.5) * voxelSize
             );
             
-            // Add edge geometry
+            // Add edge geometry with bright edges for visibility
             const edges = new THREE.EdgesGeometry(geometry);
-            const edgeMesh = new THREE.LineSegments(edges, this.edgeMaterial);
+            
+            // Create a subtle edge material for this specific voxel
+            const brightness = voxelColor.r * 0.299 + voxelColor.g * 0.587 + voxelColor.b * 0.114;
+            let edgeColor = voxelColor;
+            if (brightness < 0.3) {
+                // For very dark colors, lighten them slightly
+                edgeColor = voxelColor.clone();
+                edgeColor.r = Math.min(1, edgeColor.r + 0.3);
+                edgeColor.g = Math.min(1, edgeColor.g + 0.3);
+                edgeColor.b = Math.min(1, edgeColor.b + 0.3);
+            }
+            
+            const edgeMat = new THREE.LineBasicMaterial({
+                color: edgeColor,
+                opacity: 0.4,
+                transparent: true
+            });
+            
+            const edgeMesh = new THREE.LineSegments(edges, edgeMat);
             edgeMesh.position.copy(mesh.position);
             
             this.voxelEngine.scene.add(mesh);
@@ -1134,6 +1168,26 @@ export class DrawingSystem {
             this.toolPreviewMeshes.push(mesh);
             this.toolPreviewMeshes.push(edgeMesh);
         }
+    }
+    
+    // Get voxel color based on type
+    private getVoxelColor(type: VoxelType): THREE.Color {
+        // Match the colors from VoxelRenderer
+        const colors: Record<VoxelType, string> = {
+            [VoxelType.AIR]: 'rgb(0, 0, 0)',
+            [VoxelType.GRASS]: 'rgb(144, 238, 144)',      // Light pastel green
+            [VoxelType.DIRT]: 'rgb(139, 105, 20)',        // Dark goldenrod (brownish)
+            [VoxelType.STONE]: 'rgb(105, 105, 105)',      // Dim gray
+            [VoxelType.WOOD]: 'rgb(222, 184, 135)',       // Burlywood (light brown)
+            [VoxelType.LEAVES]: 'rgb(50, 205, 50)',       // Lime green
+            [VoxelType.WATER]: 'rgb(135, 206, 235)',      // Sky blue
+            [VoxelType.SAND]: 'rgb(255, 228, 181)',       // Moccasin (sandy color)
+            [VoxelType.SNOW]: 'rgb(240, 248, 255)',       // Alice blue
+            [VoxelType.ICE]: 'rgb(135, 206, 235)'         // Sky blue
+        };
+        
+        const colorStr = colors[type] || 'rgb(255, 255, 255)';
+        return new THREE.Color(colorStr);
     }
     
     // Place asset at position
