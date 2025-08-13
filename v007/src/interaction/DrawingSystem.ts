@@ -428,6 +428,8 @@ export class DrawingSystem {
         
         // Handle asset preview
         if (this.toolMode === 'asset' && this.assetData) {
+            // Hide the single voxel preview
+            this.previewGroup.visible = false;
             this.updateAssetPreview(pos);
             return;
         }
@@ -709,7 +711,10 @@ export class DrawingSystem {
     
     stopDrawing(): void {
         this.isDrawing = false;
-        this.previewGroup.visible = true;
+        // Only show preview for non-asset tools
+        if (this.toolMode !== 'asset') {
+            this.previewGroup.visible = true;
+        }
         this.drawingSurface = null;
         
         // Clear grid timer and hide the constraint plane
@@ -851,6 +856,13 @@ export class DrawingSystem {
         if (mode !== 'asset') {
             this.selectedAsset = null;
             this.assetData = null;
+            // Show single voxel preview for brush/eraser/fill modes
+            if (mode === 'brush' || mode === 'eraser' || mode === 'fill') {
+                this.previewGroup.visible = true;
+            }
+        } else {
+            // Hide single voxel preview when switching to asset mode
+            this.previewGroup.visible = false;
         }
         
         // Force preview update with current mouse position
@@ -872,6 +884,8 @@ export class DrawingSystem {
                 this.assetData = await this.assetManager.loadAsset(asset.id);
                 // Switch to asset placement mode
                 this.toolMode = 'asset';
+                // Hide single voxel preview
+                this.previewGroup.visible = false;
                 console.log(`Loaded asset: ${asset.name} with ${this.assetData.voxelData.size} voxels`);
             } catch (error) {
                 console.error(`Failed to load asset ${asset.id}:`, error);
@@ -1157,6 +1171,9 @@ export class DrawingSystem {
         const centerX = (minX + maxX) / 2;
         const centerZ = (minZ + maxZ) / 2;
         
+        // Create a group for the entire asset preview
+        const assetGroup = new THREE.Group();
+        
         // Create preview for each voxel in the asset
         for (const [posKey, voxelType] of this.assetData.voxelData) {
             const [vx, vy, vz] = posKey.split(',').map(Number);
@@ -1176,13 +1193,14 @@ export class DrawingSystem {
             const finalY = pos.y + vy;
             const finalZ = pos.z + Math.round(rotatedZ + centerZ);
             
-            // Create preview mesh with actual voxel color
+            // Create preview mesh with ghost effect
             const geometry = new THREE.BoxGeometry(voxelSize, voxelSize, voxelSize);
             const voxelColor = this.getVoxelColor(voxelType);
             const material = new THREE.MeshBasicMaterial({
                 color: voxelColor,
-                opacity: 0.5,
-                transparent: true
+                opacity: 0.25,  // More transparent for ghost effect
+                transparent: true,
+                depthWrite: false  // Prevent depth issues
             });
             
             const mesh = new THREE.Mesh(geometry, material);
@@ -1208,18 +1226,44 @@ export class DrawingSystem {
             
             const edgeMat = new THREE.LineBasicMaterial({
                 color: edgeColor,
-                opacity: 0.4,
-                transparent: true
+                opacity: 0.6,  // Slightly more visible edges
+                transparent: true,
+                depthWrite: false
             });
             
             const edgeMesh = new THREE.LineSegments(edges, edgeMat);
             edgeMesh.position.copy(mesh.position);
             
-            this.voxelEngine.scene.add(mesh);
-            this.voxelEngine.scene.add(edgeMesh);
-            this.toolPreviewMeshes.push(mesh);
-            this.toolPreviewMeshes.push(edgeMesh);
+            assetGroup.add(mesh);
+            assetGroup.add(edgeMesh);
         }
+        
+        // Add subtle overall glow to the entire asset
+        const boundingBox = new THREE.Box3().setFromObject(assetGroup);
+        const size = new THREE.Vector3();
+        boundingBox.getSize(size);
+        const center = new THREE.Vector3();
+        boundingBox.getCenter(center);
+        
+        // Create a slightly larger box for glow effect
+        const glowGeometry = new THREE.BoxGeometry(
+            size.x + voxelSize * 0.2,
+            size.y + voxelSize * 0.2,
+            size.z + voxelSize * 0.2
+        );
+        const glowMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            opacity: 0.1,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+        const glowMesh = new THREE.Mesh(glowGeometry, glowMaterial);
+        glowMesh.position.copy(center);
+        assetGroup.add(glowMesh);
+        
+        this.voxelEngine.scene.add(assetGroup);
+        this.toolPreviewMeshes.push(assetGroup);
     }
     
     // Get voxel color based on type
