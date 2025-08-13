@@ -114,45 +114,67 @@ export class DrawingSystem {
         const halfSize = size / 2;
         const gridStep = voxelSize; // Grid spacing matches voxel size
         
+        // Offset grid lines by half voxel size to align with voxel edges
+        // The grid should show the edges between voxels, not their centers
+        const edgeOffset = voxelSize / 2;
+        
         // Create grid lines based on plane orientation
         const gridGeometry = new THREE.BufferGeometry();
         const positions: number[] = [];
         
         if (Math.abs(normal.y) > 0.5) {
             // Horizontal plane (XZ grid)
-            // Lines parallel to X axis
-            for (let z = -halfSize; z <= halfSize; z += gridStep) {
-                positions.push(-halfSize, 0, z);
-                positions.push(halfSize, 0, z);
+            // Lines parallel to X axis - offset by half voxel to align with edges
+            for (let i = -Math.floor(size / gridStep); i <= Math.floor(size / gridStep); i++) {
+                const z = i * gridStep + edgeOffset;
+                if (Math.abs(z) <= halfSize) {
+                    positions.push(-halfSize, 0, z);
+                    positions.push(halfSize, 0, z);
+                }
             }
-            // Lines parallel to Z axis
-            for (let x = -halfSize; x <= halfSize; x += gridStep) {
-                positions.push(x, 0, -halfSize);
-                positions.push(x, 0, halfSize);
+            // Lines parallel to Z axis - offset by half voxel to align with edges
+            for (let i = -Math.floor(size / gridStep); i <= Math.floor(size / gridStep); i++) {
+                const x = i * gridStep + edgeOffset;
+                if (Math.abs(x) <= halfSize) {
+                    positions.push(x, 0, -halfSize);
+                    positions.push(x, 0, halfSize);
+                }
             }
         } else if (Math.abs(normal.x) > 0.5) {
             // Vertical plane facing X (YZ grid)
-            // Lines parallel to Y axis
-            for (let z = -halfSize; z <= halfSize; z += gridStep) {
-                positions.push(0, -halfSize, z);
-                positions.push(0, halfSize, z);
+            // Lines parallel to Y axis - offset by half voxel to align with edges
+            for (let i = -Math.floor(size / gridStep); i <= Math.floor(size / gridStep); i++) {
+                const z = i * gridStep + edgeOffset;
+                if (Math.abs(z) <= halfSize) {
+                    positions.push(0, -halfSize, z);
+                    positions.push(0, halfSize, z);
+                }
             }
-            // Lines parallel to Z axis
-            for (let y = -halfSize; y <= halfSize; y += gridStep) {
-                positions.push(0, y, -halfSize);
-                positions.push(0, y, halfSize);
+            // Lines parallel to Z axis - offset by half voxel to align with edges
+            for (let i = -Math.floor(size / gridStep); i <= Math.floor(size / gridStep); i++) {
+                const y = i * gridStep + edgeOffset;
+                if (Math.abs(y) <= halfSize) {
+                    positions.push(0, y, -halfSize);
+                    positions.push(0, y, halfSize);
+                }
             }
         } else {
             // Vertical plane facing Z (XY grid)
-            // Lines parallel to X axis
-            for (let y = -halfSize; y <= halfSize; y += gridStep) {
-                positions.push(-halfSize, y, 0);
-                positions.push(halfSize, y, 0);
+            // Lines parallel to X axis - offset by half voxel to align with edges
+            for (let i = -Math.floor(size / gridStep); i <= Math.floor(size / gridStep); i++) {
+                const y = i * gridStep + edgeOffset;
+                if (Math.abs(y) <= halfSize) {
+                    positions.push(-halfSize, y, 0);
+                    positions.push(halfSize, y, 0);
+                }
             }
-            // Lines parallel to Y axis
-            for (let x = -halfSize; x <= halfSize; x += gridStep) {
-                positions.push(x, -halfSize, 0);
-                positions.push(x, halfSize, 0);
+            // Lines parallel to Y axis - offset by half voxel to align with edges
+            for (let i = -Math.floor(size / gridStep); i <= Math.floor(size / gridStep); i++) {
+                const x = i * gridStep + edgeOffset;
+                if (Math.abs(x) <= halfSize) {
+                    positions.push(x, -halfSize, 0);
+                    positions.push(x, halfSize, 0);
+                }
             }
         }
         
@@ -366,21 +388,23 @@ export class DrawingSystem {
             // Don't show immediately
             const voxelSize = this.voxelEngine.getCurrentVoxelSize();
             
-            // Determine plane position based on the face normal and mode
-            let planeY, planeX, planeZ;
-            const absX = Math.abs(hit.normal.x);
-            const absY = Math.abs(hit.normal.y);
-            const absZ = Math.abs(hit.normal.z);
-            
             // Store grid parameters for delayed display
             // Set up timer to show grid after 300ms
             this.gridShowTimer = window.setTimeout(() => {
                 if (this.isDrawing && this.drawingSurface) {
                     let planePos: THREE.Vector3;
+                    const absX = Math.abs(hit.normal.x);
+                    const absY = Math.abs(hit.normal.y);
+                    const absZ = Math.abs(hit.normal.z);
                     
-                    // Position the grid at the exact face that was clicked
+                    // Position the grid at the exact face that was clicked, aligned to voxel grid
                     // For add mode: grid is at the face of the clicked voxel (where new voxels will be placed)
                     // For remove mode: grid is at the face being removed from
+                    
+                    // Snap to voxel grid centers for the non-constrained axes
+                    const voxelCenterX = (hit.voxelPos.x + 0.5) * voxelSize;
+                    const voxelCenterY = (hit.voxelPos.y + 0.5) * voxelSize;
+                    const voxelCenterZ = (hit.voxelPos.z + 0.5) * voxelSize;
                     
                     if (absY > absX && absY > absZ) {
                         // Horizontal plane - Y face
@@ -396,11 +420,11 @@ export class DrawingSystem {
                                 (hit.voxelPos.y + 1) * voxelSize : // Above the voxel
                                 hit.voxelPos.y * voxelSize;         // Below the voxel
                         }
-                        // Center X and Z on the clicked position
+                        // Align X and Z to voxel grid centers
                         planePos = new THREE.Vector3(
-                            hit.point.x,
+                            voxelCenterX,
                             planeY, 
-                            hit.point.z
+                            voxelCenterZ
                         );
                     } else if (absX > absY && absX > absZ) {
                         // Vertical X plane - X face
@@ -416,11 +440,11 @@ export class DrawingSystem {
                                 (hit.voxelPos.x + 1) * voxelSize : // Right of the voxel
                                 hit.voxelPos.x * voxelSize;         // Left of the voxel
                         }
-                        // Center Y and Z on the clicked position
+                        // Align Y and Z to voxel grid centers
                         planePos = new THREE.Vector3(
                             planeX,
-                            hit.point.y,
-                            hit.point.z
+                            voxelCenterY,
+                            voxelCenterZ
                         );
                     } else {
                         // Vertical Z plane - Z face
@@ -436,10 +460,10 @@ export class DrawingSystem {
                                 (hit.voxelPos.z + 1) * voxelSize : // Front of the voxel
                                 hit.voxelPos.z * voxelSize;         // Behind the voxel
                         }
-                        // Center X and Y on the clicked position
+                        // Align X and Y to voxel grid centers
                         planePos = new THREE.Vector3(
-                            hit.point.x,
-                            hit.point.y,
+                            voxelCenterX,
+                            voxelCenterY,
                             planeZ
                         );
                     }
