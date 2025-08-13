@@ -228,6 +228,12 @@ class VoxelApp {
     private gridHelper: THREE.GridHelper | null = null;
     private dynamicGrid: DynamicGrid | null = null;
     private axisLines: (THREE.Mesh | THREE.Line)[] = [];
+    private xAxisLine: THREE.Mesh | null = null;
+    private xAxisGlow: THREE.Mesh | null = null;
+    private zAxisLine: THREE.Mesh | null = null;
+    private zAxisGlow: THREE.Mesh | null = null;
+    private lastInteractionTime: number = 0;
+    private axisIdleFadeTimer: number = 0;
     private selectionMode: boolean = false;
     private lastMousePos: { x: number; y: number } = { x: 0, y: 0 };
     private currentBrushSize: number = SETTINGS.brush.defaultSize;
@@ -250,6 +256,9 @@ class VoxelApp {
         
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
+        
+        // Initialize interaction time
+        this.lastInteractionTime = Date.now();
         
         this.init();
     }
@@ -467,6 +476,11 @@ class VoxelApp {
         
         // Store references for toggling
         this.axisLines = [xAxisLine, xGlow, zAxisLine, zGlow];
+        // Store axis references separately for bird's eye fade
+        this.xAxisLine = xAxisLine;
+        this.xAxisGlow = xGlow;
+        this.zAxisLine = zAxisLine;
+        this.zAxisGlow = zGlow;
         
         // Setup post-processing
         this.setupPostProcessing();
@@ -593,6 +607,12 @@ class VoxelApp {
         return this.voxelEngine;
     }
     
+    private registerInteraction(): void {
+        // Reset timers on any interaction
+        this.lastInteractionTime = Date.now();
+        this.axisIdleFadeTimer = 0;
+    }
+    
     setupEventListeners() {
         // Window resize
         window.addEventListener('resize', () => this.onWindowResize());
@@ -638,6 +658,8 @@ class VoxelApp {
     }
     
     onMouseMove(event: MouseEvent) {
+        this.registerInteraction();
+        
         // Store last mouse position for paste location
         this.lastMousePos.x = event.clientX;
         this.lastMousePos.y = event.clientY;
@@ -829,6 +851,8 @@ class VoxelApp {
     }
     
     onMouseDown(event: MouseEvent) {
+        this.registerInteraction();
+        
         // Handle selection mode
         if (this.selectionMode && this.boxSelectionTool) {
             // If Alt is held, let orbit controls handle camera tumbling
@@ -909,6 +933,8 @@ class VoxelApp {
     }
     
     onMouseUp(_event: MouseEvent) {
+        this.registerInteraction();
+        
         // Handle selection mode
         if (this.selectionMode && this.boxSelectionTool) {
             if (this.boxSelectionTool.isInSelectionMode()) {
@@ -929,6 +955,8 @@ class VoxelApp {
     }
     
     onWheel(event: WheelEvent) {
+        this.registerInteraction();
+        
         // If we're drawing and controls are disabled, handle zoom manually
         if (this.drawingSystem?.isDrawing && this.controls && !this.controls.enabled) {
             event.preventDefault();
@@ -954,7 +982,7 @@ class VoxelApp {
                 
                 // Update dynamic grid if it exists
                 if (this.dynamicGrid) {
-                    this.dynamicGrid.update(this.camera.zoom, this.camera);
+                    this.dynamicGrid.update(this.camera.zoom, this.camera, 1.0); // Full opacity during zoom
                 }
             }
         }
@@ -962,6 +990,8 @@ class VoxelApp {
     }
     
     onKeyDown(event: KeyboardEvent) {
+        this.registerInteraction();
+        
         // Check for Ctrl+Z (undo) and Ctrl+Y (redo)
         if (event.ctrlKey || event.metaKey) {
             if (event.key === 'z' || event.key === 'Z') {
@@ -1583,7 +1613,87 @@ class VoxelApp {
         
         // Update dynamic grid based on zoom and camera angle
         if (this.dynamicGrid && this.camera) {
-            this.dynamicGrid.update(this.camera.zoom, this.camera);
+            // Calculate idle fade factor for grid
+            let idleFadeFactor = 1.0;
+            if (this.axisIdleFadeTimer > 0) {
+                idleFadeFactor = THREE.MathUtils.mapLinear(this.axisIdleFadeTimer, 0, 1000, 1.0, 0.0);
+                idleFadeFactor = THREE.MathUtils.clamp(idleFadeFactor, 0.0, 1.0);
+            }
+            this.dynamicGrid.update(this.camera.zoom, this.camera, idleFadeFactor);
+        }
+        
+        // Check for idle time since last interaction
+        const currentTime = Date.now();
+        const timeSinceLastInteraction = currentTime - this.lastInteractionTime;
+        
+        // Start fade after 0.5 seconds of no interaction
+        if (timeSinceLastInteraction > 500) {
+            this.axisIdleFadeTimer = timeSinceLastInteraction - 500;
+        } else {
+            this.axisIdleFadeTimer = 0;
+        }
+        
+        // Update X and Z axes visibility and scale based on zoom and camera angle
+        if (this.camera && (this.xAxisLine || this.zAxisLine)) {
+            // Get camera direction
+            const cameraDir = new THREE.Vector3();
+            this.camera.getWorldDirection(cameraDir);
+            
+            // Calculate angle between camera direction and ground plane normal (Y-up)
+            const groundNormal = new THREE.Vector3(0, 1, 0);
+            const dotProduct = Math.abs(cameraDir.dot(groundNormal));
+            
+            // Calculate scale factor based on zoom
+            // When zoomed out (zoom < 1), scale up the axes
+            // When zoomed in (zoom > 1), keep normal size
+            let scaleFactor = 1;
+            if (this.camera.zoom < 1) {
+                // Inverse relationship - as zoom decreases, scale increases
+                // At zoom 0.1, scale is 3x; at zoom 1, scale is 1x
+                scaleFactor = THREE.MathUtils.mapLinear(this.camera.zoom, 0.1, 1.0, 3.0, 1.0);
+                scaleFactor = THREE.MathUtils.clamp(scaleFactor, 1.0, 3.0);
+            }
+            
+            // Calculate base opacity from camera angle
+            let baseAxisOpacity = 0.9;
+            let baseGlowOpacity = 0.2;
+            
+            // Fade out axes when looking nearly straight down (bird's eye view)
+            if (dotProduct > 0.8) {
+                // dotProduct > 0.8 means camera is within ~37 degrees of straight down
+                baseAxisOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.8, 1.0, 0.9, 0);
+                baseGlowOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.8, 1.0, 0.2, 0);
+            }
+            
+            // Apply idle fade after camera stops moving
+            let idleFadeFactor = 1.0;
+            if (this.axisIdleFadeTimer > 0) {
+                // Fade out over 1 second after idle starts
+                idleFadeFactor = THREE.MathUtils.mapLinear(this.axisIdleFadeTimer, 0, 1000, 1.0, 0.0);
+                idleFadeFactor = THREE.MathUtils.clamp(idleFadeFactor, 0.0, 1.0);
+            }
+            
+            // Final opacity is base opacity multiplied by idle fade
+            const axisOpacity = baseAxisOpacity * idleFadeFactor;
+            const glowOpacity = baseGlowOpacity * idleFadeFactor;
+            
+            // Update X-axis
+            if (this.xAxisLine && this.xAxisGlow) {
+                (this.xAxisLine.material as THREE.MeshBasicMaterial).opacity = axisOpacity;
+                (this.xAxisGlow.material as THREE.MeshBasicMaterial).opacity = glowOpacity;
+                // Scale thickness, not length
+                this.xAxisLine.scale.set(1, scaleFactor, scaleFactor);
+                this.xAxisGlow.scale.set(1, scaleFactor, scaleFactor);
+            }
+            
+            // Update Z-axis
+            if (this.zAxisLine && this.zAxisGlow) {
+                (this.zAxisLine.material as THREE.MeshBasicMaterial).opacity = axisOpacity;
+                (this.zAxisGlow.material as THREE.MeshBasicMaterial).opacity = glowOpacity;
+                // Scale thickness, not length
+                this.zAxisLine.scale.set(scaleFactor, scaleFactor, 1);
+                this.zAxisGlow.scale.set(scaleFactor, scaleFactor, 1);
+            }
         }
         
         // Update UI

@@ -146,7 +146,7 @@ export class DynamicGrid extends THREE.Group {
         this.add(this.yAxisGlow);
     }
     
-    update(zoom: number, camera?: THREE.Camera): void {
+    update(zoom: number, camera?: THREE.Camera, idleFadeFactor: number = 1.0): void {
         // Smooth zoom transitions
         this.currentZoom = THREE.MathUtils.lerp(this.currentZoom, zoom, 0.1);
         
@@ -204,30 +204,44 @@ export class DynamicGrid extends THREE.Group {
             }
         }
         
-        // Y-axis visibility - inverse of grid visibility
+        // Y-axis visibility and scaling - same rules as X and Z axes
         if (this.yAxisLine && this.yAxisMaterial && this.yAxisGlow && this.yAxisGlowMaterial) {
-            // Y-axis fades in as grid fades out at grazing angles
-            // Peak visibility around 20-30 degrees, then fades out again at very shallow angles
-            let yAxisOpacity = 0;
-            let yAxisGlowOpacity = 0;
-            
-            if (dotProduct < 0.5 && dotProduct > 0.1) {
-                // Between 60 degrees and ~6 degrees from horizontal
-                if (dotProduct > 0.3) {
-                    // Fade in from 60 to ~45 degrees
-                    yAxisOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.5, 0.3, 0, 0.9);
-                    yAxisGlowOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.5, 0.3, 0, 0.2);
-                } else {
-                    // Fade out from ~45 to ~6 degrees
-                    yAxisOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.3, 0.1, 0.9, 0);
-                    yAxisGlowOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.3, 0.1, 0.2, 0);
-                }
+            // Calculate scale factor based on zoom
+            let scaleFactor = 1;
+            if (zoom < 1) {
+                // Same scaling as X/Z axes - up to 3x when zoomed out
+                scaleFactor = THREE.MathUtils.mapLinear(zoom, 0.1, 1.0, 3.0, 1.0);
+                scaleFactor = THREE.MathUtils.clamp(scaleFactor, 1.0, 3.0);
             }
             
-            this.yAxisMaterial.opacity = yAxisOpacity;
-            this.yAxisGlowMaterial.opacity = yAxisGlowOpacity;
-            this.yAxisLine.visible = yAxisOpacity > 0.01;
-            this.yAxisGlow.visible = yAxisGlowOpacity > 0.01;
+            // Default opacities - visible by default
+            let yAxisOpacity = 0.9;
+            let yAxisGlowOpacity = 0.2;
+            
+            // Only fade in specific conditions
+            if (camera && dotProduct > 0.8) {
+                // Fade out when looking nearly straight down (bird's eye view)
+                // dotProduct > 0.8 means camera is within ~37 degrees of straight down
+                yAxisOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.8, 1.0, 0.9, 0);
+                yAxisGlowOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.8, 1.0, 0.2, 0);
+            } else if (camera && dotProduct < 0.2) {
+                // Also fade out at very grazing angles for cleaner view
+                // dotProduct < 0.2 means camera is within ~11 degrees of horizontal
+                yAxisOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.2, 0.0, 0.9, 0);
+                yAxisGlowOpacity = THREE.MathUtils.mapLinear(dotProduct, 0.2, 0.0, 0.2, 0);
+            }
+            
+            // Apply opacities with idle fade factor
+            this.yAxisMaterial.opacity = yAxisOpacity * idleFadeFactor;
+            this.yAxisGlowMaterial.opacity = yAxisGlowOpacity * idleFadeFactor;
+            
+            // Always visible unless opacity is near zero
+            this.yAxisLine.visible = true;
+            this.yAxisGlow.visible = true;
+            
+            // Apply scale - scale thickness (X and Z), not height (Y)
+            this.yAxisLine.scale.set(scaleFactor, 1, scaleFactor);
+            this.yAxisGlow.scale.set(scaleFactor, 1, scaleFactor);
         }
     }
     
