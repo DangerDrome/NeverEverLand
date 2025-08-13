@@ -147,8 +147,8 @@ const SETTINGS = {
         colorGrid: 0x222222,           // Grid line color
         opacity: 0.4,                  // Grid opacity
         axisLines: {
-            xColor: 0x884444,          // X-axis color (subtle red)
-            zColor: 0x444488,          // Z-axis color (subtle blue)
+            xColor: 0xff6666,          // X-axis color (bright red)
+            zColor: 0x6666ff,          // Z-axis color (bright blue)
             opacity: 0.5,              // Axis line opacity
             length: 50                 // Axis line length (extends from -length to +length)
         }
@@ -327,6 +327,12 @@ class VoxelApp {
             RIGHT: SETTINGS.controls.mouseButtons.right
         };
         
+        // Set minimum polar angle to prevent camera from going below ground
+        // Small buffer for cinematic feel without interfering with voxel editing
+        // The ground is at y = -0.001, so we want to prevent the camera from looking up from below
+        this.controls.minPolarAngle = Math.PI * 0.05; // ~9 degrees from top, allows good top-down editing
+        this.controls.maxPolarAngle = Math.PI * 0.49; // ~88 degrees, just prevents going fully below horizontal
+        
         // Setup scene
         this.scene.background = new THREE.Color(SETTINGS.scene.backgroundColor);
         if (SETTINGS.scene.fog.enabled) {
@@ -406,7 +412,7 @@ class VoxelApp {
         
         // Add thick glowing main axis lines for X and Z
         const axisLength = SETTINGS.grid.axisLines.length;
-        const axisThickness = 0.005; // Thickness of the axis lines (0.5cm - reduced from 1.5cm)
+        const axisThickness = 0.002; // Thinner axis lines (0.2cm)
         const axisHeight = 0.001; // Slightly above ground to avoid z-fighting
         
         // X-axis line (glowing red)
@@ -948,7 +954,7 @@ class VoxelApp {
                 
                 // Update dynamic grid if it exists
                 if (this.dynamicGrid) {
-                    this.dynamicGrid.update(this.camera.zoom);
+                    this.dynamicGrid.update(this.camera.zoom, this.camera);
                 }
             }
         }
@@ -1549,6 +1555,15 @@ class VoxelApp {
         // Update controls
         if (this.controls) {
             this.controls.update();
+            
+            // Ensure camera target doesn't go below ground with minimal buffer
+            // The ground is at y = -0.001, add small buffer to prevent clipping
+            const minY = 0.0; // Keep target at ground level (voxels start at y=0)
+            if (this.controls.target.y < minY) {
+                // Smoothly adjust instead of hard clamping for cinematic motion
+                const diff = minY - this.controls.target.y;
+                this.controls.target.y += diff * 0.2; // Faster interpolation for responsiveness
+            }
         }
         
         // Update performance monitor
@@ -1566,9 +1581,9 @@ class VoxelApp {
             this.drawingSystem.update();
         }
         
-        // Update dynamic grid based on zoom
+        // Update dynamic grid based on zoom and camera angle
         if (this.dynamicGrid && this.camera) {
-            this.dynamicGrid.update(this.camera.zoom);
+            this.dynamicGrid.update(this.camera.zoom, this.camera);
         }
         
         // Update UI
