@@ -65,6 +65,9 @@ export class VoxelEngine {
         y = Math.floor(y);
         z = Math.floor(z);
         
+        // Prevent placing voxels below the ground plane
+        if (y < 0) return false;
+        
         const key = this.positionKey(x, y, z);
         const oldType = this.voxels.get(key) || VoxelType.AIR;
         
@@ -319,7 +322,7 @@ export class VoxelEngine {
                 // Calculate adjacent position based on hit normal
                 const adjacentPos = {
                     x: currentVoxel.x + normal.x,
-                    y: currentVoxel.y + normal.y,
+                    y: Math.max(0, currentVoxel.y + normal.y), // Prevent going below ground
                     z: currentVoxel.z + normal.z
                 };
                 
@@ -388,7 +391,7 @@ export class VoxelEngine {
                     },
                     adjacentPos: {
                         x: voxelX,
-                        y: direction.y < 0 ? 0 : -1,
+                        y: 0, // Always place on the ground (y=0), never below
                         z: voxelZ
                     },
                     point: point,

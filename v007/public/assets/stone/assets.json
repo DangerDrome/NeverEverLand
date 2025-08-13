@@ -1,0 +1,40 @@
+{
+  "stone": [
+    {
+      "id": "stone_block",
+      "name": "Stone Block",
+      "description": "Placeholder stone asset",
+      "file": "stone_block.vox",
+      "size": {
+        "x": 2,
+        "y": 2,
+        "z": 2
+      },
+      "preview": "stone_block.png"
+    },
+    {
+      "id": "stone_wall",
+      "name": "Stone Wall",
+      "description": "Placeholder stone asset",
+      "file": "stone_wall.vox",
+      "size": {
+        "x": 4,
+        "y": 3,
+        "z": 1
+      },
+      "preview": "stone_wall.png"
+    },
+    {
+      "id": "stone_pillar",
+      "name": "Stone Pillar",
+      "description": "Placeholder stone asset",
+      "file": "stone_pillar.vox",
+      "size": {
+        "x": 1,
+        "y": 4,
+        "z": 1
+      },
+      "preview": "stone_pillar.png"
+    }
+  ]
+}

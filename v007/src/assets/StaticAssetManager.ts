@@ -87,7 +87,16 @@ export class StaticAssetManager implements IAssetManager {
             const assetData = await new Promise<AssetData>((resolve, reject) => {
                 request.onsuccess = () => {
                     if (request.result) {
-                        resolve(request.result as AssetData);
+                        const data = request.result as AssetData;
+                        // Ensure user assets also have correct voxel types
+                        if (data.voxelData && data.type) {
+                            const correctedVoxelData = new Map<string, VoxelType>();
+                            for (const [key, _] of data.voxelData) {
+                                correctedVoxelData.set(key, data.type);
+                            }
+                            data.voxelData = correctedVoxelData;
+                        }
+                        resolve(data);
                     } else {
                         reject(new Error(`Asset not found: ${id}`));
                     }
@@ -179,9 +188,15 @@ export class StaticAssetManager implements IAssetManager {
             const voxData = await this.voxParser.parseVoxFile(buffer);
             const voxelData = this.voxParser.convertToVoxelData(voxData);
             
+            // Override all voxel types with the asset's declared type
+            const correctedVoxelData = new Map<string, VoxelType>();
+            for (const [key, _] of voxelData) {
+                correctedVoxelData.set(key, info.type);
+            }
+            
             return {
                 ...info,
-                voxelData
+                voxelData: correctedVoxelData
             };
         } catch (error) {
             console.error(`Failed to load default asset ${info.id}:`, error);

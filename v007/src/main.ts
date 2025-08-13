@@ -875,14 +875,24 @@ class VoxelApp {
                 }
             }
         } 
-        // Right click - remove voxels (unless Alt is held)
+        // Right click - remove voxels (unless Alt is held, in single voxel mode, or asset is selected)
         else if (event.button === 2 && !event.altKey) {
-            if (this.voxelEngine && this.drawingSystem) {
-                const hit = this.voxelEngine.raycast(this.raycaster);
-                if (hit) {
-                    this.drawingSystem.startDrawing(hit, 'remove');
-                    // Disable orbit controls to prevent rotation while drawing
-                    if (this.controls) this.controls.enabled = false;
+            // Check if we're in single voxel mode or have an asset selected
+            const isAssetMode = this.drawingSystem && this.drawingSystem.selectedAsset !== null;
+            const isSingleVoxelMode = this.voxelPanel && this.voxelPanel.isInSingleVoxelMode();
+            
+            if (isSingleVoxelMode || isAssetMode) {
+                // In single voxel mode or asset mode, right-click enables tumble
+                if (this.controls) this.controls.enabled = true;
+            } else {
+                // In other modes, right-click removes voxels
+                if (this.voxelEngine && this.drawingSystem) {
+                    const hit = this.voxelEngine.raycast(this.raycaster);
+                    if (hit) {
+                        this.drawingSystem.startDrawing(hit, 'remove');
+                        // Disable orbit controls to prevent rotation while drawing
+                        if (this.controls) this.controls.enabled = false;
+                    }
                 }
             }
         }

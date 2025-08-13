@@ -1,0 +1,40 @@
+{
+  "dirt": [
+    {
+      "id": "dirt_mound",
+      "name": "Dirt Mound",
+      "description": "Placeholder dirt asset",
+      "file": "dirt_mound.vox",
+      "size": {
+        "x": 3,
+        "y": 2,
+        "z": 3
+      },
+      "preview": "dirt_mound.png"
+    },
+    {
+      "id": "dirt_path",
+      "name": "Dirt Path",
+      "description": "Placeholder dirt asset",
+      "file": "dirt_path.vox",
+      "size": {
+        "x": 5,
+        "y": 1,
+        "z": 2
+      },
+      "preview": "dirt_path.png"
+    },
+    {
+      "id": "dirt_pile",
+      "name": "Dirt Pile",
+      "description": "Placeholder dirt asset",
+      "file": "dirt_pile.vox",
+      "size": {
+        "x": 2,
+        "y": 2,
+        "z": 2
+      },
+      "preview": "dirt_pile.png"
+    }
+  ]
+}

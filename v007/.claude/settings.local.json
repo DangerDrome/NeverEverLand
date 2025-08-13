@@ -23,7 +23,8 @@
       "Bash(/home/danger/Documents/GitHub/NeverEverLand/v007/devserver.sh:*)",
       "Bash(cat:*)",
       "Bash(ls:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(node:*)"
     ],
     "deny": []
   }

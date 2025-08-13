@@ -1,0 +1,40 @@
+{
+  "grass": [
+    {
+      "id": "grass_patch",
+      "name": "Grass Patch",
+      "description": "A simple 3x3 grass patch",
+      "file": "grass_patch.vox",
+      "size": {
+        "x": 3,
+        "y": 1,
+        "z": 3
+      },
+      "preview": "grass_patch.png"
+    },
+    {
+      "id": "grass_hill",
+      "name": "Small Hill",
+      "description": "A small grassy hill",
+      "file": "grass_hill.vox",
+      "size": {
+        "x": 5,
+        "y": 3,
+        "z": 5
+      },
+      "preview": "grass_hill.png"
+    },
+    {
+      "id": "grass_steps",
+      "name": "Grass Steps",
+      "description": "Stepped grass formation",
+      "file": "grass_steps.vox",
+      "size": {
+        "x": 4,
+        "y": 3,
+        "z": 4
+      },
+      "preview": "grass_steps.png"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "snow": [
+    {
+      "id": "snow_pile",
+      "name": "Snow Pile",
+      "description": "Placeholder snow asset",
+      "file": "snow_pile.vox",
+      "size": {
+        "x": 3,
+        "y": 2,
+        "z": 3
+      },
+      "preview": "snow_pile.png"
+    },
+    {
+      "id": "snowman",
+      "name": "Snowman",
+      "description": "Placeholder snow asset",
+      "file": "snowman.vox",
+      "size": {
+        "x": 2,
+        "y": 3,
+        "z": 2
+      },
+      "preview": "snowman.png"
+    },
+    {
+      "id": "snow_wall",
+      "name": "Snow Wall",
+      "description": "Placeholder snow asset",
+      "file": "snow_wall.vox",
+      "size": {
+        "x": 4,
+        "y": 2,
+        "z": 1
+      },
+      "preview": "snow_wall.png"
+    }
+  ]
+}

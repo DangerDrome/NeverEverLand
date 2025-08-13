@@ -1,0 +1,40 @@
+{
+  "sand": [
+    {
+      "id": "sand_dune",
+      "name": "Sand Dune",
+      "description": "Placeholder sand asset",
+      "file": "sand_dune.vox",
+      "size": {
+        "x": 4,
+        "y": 2,
+        "z": 3
+      },
+      "preview": "sand_dune.png"
+    },
+    {
+      "id": "sand_castle",
+      "name": "Sand Castle",
+      "description": "Placeholder sand asset",
+      "file": "sand_castle.vox",
+      "size": {
+        "x": 3,
+        "y": 3,
+        "z": 3
+      },
+      "preview": "sand_castle.png"
+    },
+    {
+      "id": "sand_path",
+      "name": "Sand Path",
+      "description": "Placeholder sand asset",
+      "file": "sand_path.vox",
+      "size": {
+        "x": 3,
+        "y": 1,
+        "z": 3
+      },
+      "preview": "sand_path.png"
+    }
+  ]
+}

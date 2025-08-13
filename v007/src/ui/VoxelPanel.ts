@@ -63,6 +63,20 @@ export class VoxelPanel {
         `;
         this.element.appendChild(title);
         
+        // Add default voxel brush button (single voxel mode)
+        const voxelBrushButton = this.createVoxelBrushButton();
+        this.element.appendChild(voxelBrushButton);
+        
+        // Add separator after voxel brush button
+        const voxelBrushSeparator = document.createElement('div');
+        voxelBrushSeparator.style.cssText = `
+            width: 1px;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.2);
+            margin: 0 8px;
+        `;
+        this.element.appendChild(voxelBrushSeparator);
+        
         // Define voxel types with Lucide icons and colors
         const voxelTypes: VoxelButtonInfo[] = [
             { type: VoxelType.GRASS, name: 'Grass', icon: 'trees', color: '#90EE90' },
@@ -188,8 +202,7 @@ export class VoxelPanel {
             (window as any).lucide.createIcons();
         }
         
-        // Select initial voxel type
-        this.selectVoxelType(VoxelType.GRASS);
+        // Don't select any voxel type initially - voxel brush button is selected by default
         
         // Listen for keyboard shortcuts
         window.addEventListener('keydown', (e) => this.handleKeyPress(e));
@@ -328,6 +341,118 @@ export class VoxelPanel {
             // Trigger same as left click
             button.click();
         });
+        
+        return button;
+    }
+    
+    private createVoxelBrushButton(): HTMLElement {
+        const button = document.createElement('button');
+        button.id = 'voxel-brush-button';
+        button.className = 'voxel-brush-button selected'; // Start selected
+        button.title = 'Single Voxel Brush (V)';
+        
+        button.style.cssText = `
+            width: 40px;
+            height: 40px;
+            border: 2px solid rgba(100, 200, 255, 0.8);
+            border-radius: 6px;
+            background: rgba(100, 200, 255, 0.2);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+            margin-right: 4px;
+        `;
+        
+        // Add Lucide cube icon
+        const iconSpan = document.createElement('span');
+        iconSpan.style.cssText = `
+            color: rgba(100, 200, 255, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+        iconSpan.innerHTML = `<i data-lucide="box" style="width: 20px; height: 20px; stroke-width: 2;"></i>`;
+        button.appendChild(iconSpan);
+        
+        // Add subtle glow effect
+        const glowEffect = document.createElement('div');
+        glowEffect.style.cssText = `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            background: radial-gradient(circle, rgba(100, 200, 255, 0.4) 0%, transparent 70%);
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        `;
+        button.appendChild(glowEffect);
+        
+        // Hover effect
+        button.addEventListener('mouseenter', () => {
+            if (!button.classList.contains('selected')) {
+                button.style.background = 'rgba(100, 200, 255, 0.3)';
+                button.style.transform = 'scale(1.05)';
+            }
+        });
+        
+        button.addEventListener('mouseleave', () => {
+            if (!button.classList.contains('selected')) {
+                button.style.background = 'rgba(100, 200, 255, 0.2)';
+                button.style.transform = 'scale(1)';
+            }
+        });
+        
+        // Click handler - enter single voxel mode
+        button.addEventListener('click', () => {
+            // Clear any asset selection and ensure we're in brush mode
+            this.drawingSystem.setSelectedAsset(null);
+            this.drawingSystem.setToolMode('brush');
+            
+            // Update tool buttons to show brush is selected
+            const brushToolButton = this.toolButtons.get('brush');
+            if (brushToolButton) {
+                this.selectTool('brush', true);
+            }
+            
+            // Remove selected class from all voxel type buttons and restore their original colors
+            this.voxelButtons.forEach((btn, type) => {
+                btn.classList.remove('selected');
+                btn.style.borderColor = 'transparent';
+                btn.style.transform = 'scale(1)';
+                btn.style.boxShadow = 'none';
+                // Restore original background color
+                btn.style.background = btn.dataset.bgColor || 'rgba(255, 255, 255, 0.1)';
+            });
+            
+            // Mark this button as selected
+            button.classList.add('selected');
+            button.style.borderColor = 'rgba(100, 200, 255, 0.8)';
+            button.style.background = 'rgba(100, 200, 255, 0.3)';
+            button.style.transform = 'scale(1.1)';
+            button.style.boxShadow = '0 0 10px rgba(100, 200, 255, 0.5)';
+            
+            // Visual feedback
+            button.style.animation = 'pulse 0.3s ease-out';
+            
+            console.log('Single voxel brush mode activated');
+        });
+        
+        // Add pulse animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes pulse {
+                0% { box-shadow: 0 0 10px rgba(100, 200, 255, 0.5); }
+                50% { box-shadow: 0 0 20px rgba(100, 200, 255, 0.8); }
+                100% { box-shadow: 0 0 10px rgba(100, 200, 255, 0.5); }
+            }
+        `;
+        document.head.appendChild(style);
         
         return button;
     }
@@ -770,6 +895,16 @@ export class VoxelPanel {
         this.selectedType = type;
         this.drawingSystem.setVoxelType(type);
         
+        // Deselect voxel brush button when selecting a voxel type
+        const voxelBrushButton = document.getElementById('voxel-brush-button');
+        if (voxelBrushButton) {
+            voxelBrushButton.classList.remove('selected');
+            voxelBrushButton.style.borderColor = 'transparent';
+            voxelBrushButton.style.background = 'rgba(100, 200, 255, 0.2)';
+            voxelBrushButton.style.transform = 'scale(1)';
+            voxelBrushButton.style.boxShadow = 'none';
+        }
+        
         // Helper to convert hex to RGB
         const hexToRgb = (hex: string) => {
             const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -806,6 +941,15 @@ export class VoxelPanel {
     }
     
     private handleKeyPress(event: KeyboardEvent): void {
+        // V key for voxel brush mode
+        if (event.key === 'v' || event.key === 'V') {
+            const voxelBrushButton = document.getElementById('voxel-brush-button');
+            if (voxelBrushButton) {
+                voxelBrushButton.click();
+            }
+            return;
+        }
+        
         // Number keys 1-9 for voxel selection
         const key = parseInt(event.key);
         if (!isNaN(key) && key >= 1 && key <= 9) {
@@ -874,6 +1018,16 @@ export class VoxelPanel {
     }
     
     private onAssetSelected(asset: AssetInfo): void {
+        // Deselect voxel brush button when an asset is selected
+        const voxelBrushButton = document.getElementById('voxel-brush-button');
+        if (voxelBrushButton) {
+            voxelBrushButton.classList.remove('selected');
+            voxelBrushButton.style.borderColor = 'transparent';
+            voxelBrushButton.style.background = 'rgba(100, 200, 255, 0.2)';
+            voxelBrushButton.style.transform = 'scale(1)';
+            voxelBrushButton.style.boxShadow = 'none';
+        }
+        
         // Set the drawing system to asset mode
         this.drawingSystem.setSelectedAsset(asset);
         
@@ -892,6 +1046,12 @@ export class VoxelPanel {
     
     public getAssetManager(): StaticAssetManager {
         return this.assetManager;
+    }
+    
+    public isInSingleVoxelMode(): boolean {
+        // Check if the voxel brush button is selected
+        const voxelBrushButton = document.getElementById('voxel-brush-button');
+        return voxelBrushButton ? voxelBrushButton.classList.contains('selected') : false;
     }
     
     public dispose(): void {

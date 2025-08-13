@@ -1,0 +1,40 @@
+{
+  "leaves": [
+    {
+      "id": "leaves_bush",
+      "name": "Leaves Bush",
+      "description": "Placeholder leaves asset",
+      "file": "leaves_bush.vox",
+      "size": {
+        "x": 2,
+        "y": 2,
+        "z": 2
+      },
+      "preview": "leaves_bush.png"
+    },
+    {
+      "id": "leaves_hedge",
+      "name": "Leaves Hedge",
+      "description": "Placeholder leaves asset",
+      "file": "leaves_hedge.vox",
+      "size": {
+        "x": 4,
+        "y": 2,
+        "z": 1
+      },
+      "preview": "leaves_hedge.png"
+    },
+    {
+      "id": "leaves_sphere",
+      "name": "Leaves Sphere",
+      "description": "Placeholder leaves asset",
+      "file": "leaves_sphere.vox",
+      "size": {
+        "x": 3,
+        "y": 3,
+        "z": 3
+      },
+      "preview": "leaves_sphere.png"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "ice": [
+    {
+      "id": "ice_block",
+      "name": "Ice Block",
+      "description": "Placeholder ice asset",
+      "file": "ice_block.vox",
+      "size": {
+        "x": 2,
+        "y": 2,
+        "z": 2
+      },
+      "preview": "ice_block.png"
+    },
+    {
+      "id": "ice_spike",
+      "name": "Ice Spike",
+      "description": "Placeholder ice asset",
+      "file": "ice_spike.vox",
+      "size": {
+        "x": 2,
+        "y": 4,
+        "z": 2
+      },
+      "preview": "ice_spike.png"
+    },
+    {
+      "id": "ice_platform",
+      "name": "Ice Platform",
+      "description": "Placeholder ice asset",
+      "file": "ice_platform.vox",
+      "size": {
+        "x": 3,
+        "y": 1,
+        "z": 3
+      },
+      "preview": "ice_platform.png"
+    }
+  ]
+}

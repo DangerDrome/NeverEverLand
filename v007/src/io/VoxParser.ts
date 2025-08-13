@@ -273,9 +273,11 @@ export class VoxParser {
         for (const model of voxData.models) {
             for (const voxel of model.voxels) {
                 // Convert from VOX coordinate system (Z-up) to Three.js (Y-up)
+                // In VOX: X=right, Y=forward, Z=up
+                // In Three.js: X=right, Y=up, Z=forward
                 const x = voxel.x - Math.floor(model.size.x / 2);
-                const y = voxel.z; // Z becomes Y
-                const z = voxel.y - Math.floor(model.size.y / 2);
+                const y = voxel.z; // VOX Z (up) becomes Three.js Y (up)
+                const z = model.size.y - 1 - voxel.y - Math.floor(model.size.y / 2); // VOX Y (forward) becomes Three.js -Z (forward)
                 
                 // Map color to voxel type
                 const color = voxData.palette[voxel.colorIndex - 1]; // -1 because index 0 is reserved

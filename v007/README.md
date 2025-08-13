@@ -17,14 +17,16 @@ A complete TypeScript-based voxel engine with instanced rendering, supporting up
 ## 🎮 Controls
 
 ### Mouse Controls
-- **Left Click**: Place voxel
+- **Left Click**: Place voxel/asset
 - **Right Click**: Remove voxel  
 - **Middle Mouse**: Pan camera
 - **Scroll Wheel**: Zoom in/out (enhanced zoom range: 0.1x - 20x)
 - **Left Drag**: Rotate camera
+- **Shift+Scroll**: Zoom while drawing (drag operations)
 
 ### Keyboard Shortcuts
 - **H**: Show/hide help menu
+- **V**: Single voxel brush (default mode)
 - **1-9**: Select voxel type (Grass, Dirt, Stone, Wood, Leaves, Water, Sand, Snow, Ice)
 - **B**: Brush tool
 - **E**: Eraser tool
@@ -36,7 +38,7 @@ A complete TypeScript-based voxel engine with instanced rendering, supporting up
 - **T**: Toggle tilt-shift effect
 - **Z**: Undo last action (Ctrl+Z also works)
 - **Y**: Redo (Ctrl+Y / Ctrl+Shift+Z also work)
-- **G**: Toggle grid overlay
+- **G**: Toggle grid overlay (dynamic zoom-based visibility)
 - **R**: Rotate asset (when in asset placement mode)
 - **F**: Focus/Reset camera view
 - **[/]**: Decrease/Increase brush size
@@ -55,10 +57,12 @@ A complete TypeScript-based voxel engine with instanced rendering, supporting up
 - **Constraint Plane**: Hold for 300ms to see grid preview during drag operations
 
 ### Asset System
-- **Voxel Type Selection**: Click voxel buttons to show available premade assets
+- **Voxel Brush Button**: First button (V key) for single voxel painting mode
+- **Asset Selection**: Click voxel type buttons (1-9) to show asset popover
 - **Single Voxel Mode**: Shift+Click voxel buttons for traditional single voxel painting
 - **Asset Placement**: Click to place selected asset, R to rotate before placing
-- **Asset Library**: Premade structures for each voxel type (trees, rocks, crates, etc.)
+- **Asset Library**: Premade structures for each voxel type
+- **Asset Thumbnails**: Isometric preview rendering for all assets
 - **Asset Creation**: Use `/createAssets.html` to generate new voxel assets
 - **Asset Storage**: Assets stored as .vox files in `/public/assets/{type}/`
 
@@ -158,6 +162,7 @@ v007/
 │   ├── ui/
 │   │   ├── VoxelPanel.ts    # UI components and menus
 │   │   ├── AssetPopover.ts  # Asset selection popover
+│   │   ├── AssetPreviewScene.ts # Isometric asset preview renderer
 │   │   ├── Performance.ts   # Performance monitoring
 │   │   └── DirectionIndicator.ts # 3D axis helper
 │   ├── assets/
@@ -201,24 +206,49 @@ v007/
 Each voxel type includes premade structures:
 
 **Grass Assets:**
-- Small Tree (3×5×3) - Compact tree with leaves
-- Large Tree (5×7×5) - Full-sized tree with thick trunk
-- Flower (1×2×1) - Single decorative flower
+- Grass Patch (3×1×3) - Flat grass terrain piece
+- Small Hill (5×3×5) - Raised grass mound
+- Grass Steps (4×3×4) - Terraced grass formation
+
+**Dirt Assets:**
+- Dirt Mound (3×2×3) - Small pile of dirt
+- Dirt Path (5×1×2) - Long dirt trail
+- Dirt Pile (2×2×2) - Compact dirt heap
 
 **Stone Assets:**
-- Small Rock (2×1×2) - Low rock formation
-- Large Rock (3×2×3) - Boulder with irregular shape
-- Pillar (1×4×1) - Vertical stone column
+- Stone Block (2×2×2) - Solid stone cube
+- Stone Wall (4×3×1) - Vertical stone barrier
+- Stone Pillar (1×4×1) - Tall stone column
 
 **Wood Assets:**
-- Crate (2×2×2) - Storage box
-- Barrel (2×3×2) - Tall storage barrel
-- Fence (4×2×1) - Horizontal fence section
+- Wood Plank (3×1×1) - Horizontal wood beam
+- Wood Post (1×3×1) - Vertical wood support
+- Wood Floor (3×1×3) - Wooden platform
 
 **Leaves Assets:**
-- Bush (2×2×2) - Dense foliage cube
-- Hedge (4×2×1) - Decorative hedge wall
-- Topiary (2×3×2) - Shaped ornamental bush
+- Leaves Bush (2×2×2) - Dense foliage
+- Leaves Hedge (4×2×1) - Horizontal hedge
+- Leaves Sphere (3×3×3) - Round topiary
+
+**Water Assets:**
+- Water Pool (3×1×3) - Small water basin
+- Water Stream (5×1×1) - Flowing water channel
+- Water Fall (1×4×1) - Vertical water cascade
+
+**Sand Assets:**
+- Sand Dune (4×2×3) - Desert hill formation
+- Sand Castle (3×3×3) - Beach castle structure
+- Sand Path (3×1×3) - Sandy walkway
+
+**Snow Assets:**
+- Snow Pile (3×2×3) - Mound of snow
+- Snowman (2×3×2) - Classic snowman figure
+- Snow Wall (4×2×1) - Snow barrier
+
+**Ice Assets:**
+- Ice Block (2×2×2) - Frozen cube
+- Ice Spike (2×4×2) - Pointed ice formation
+- Ice Platform (3×1×3) - Frozen surface
 
 ## 📊 Technical Details
 
@@ -280,19 +310,36 @@ npx tsc --noEmit
 
 ## 📝 Recent Updates
 
-- **Asset System**: Complete voxel asset system with premade structures for each type
-- **Asset Popover**: Click voxel buttons to select from available assets
-- **Asset Creation Tool**: Browser-based tool to generate .vox asset files
+### Asset System & UI
+- **Complete Asset System**: 27 premade structures across all 9 voxel types
+- **Asset Preview Thumbnails**: Isometric 3D previews rendered in real-time
+- **Voxel Brush Button**: Dedicated button (V key) for single voxel mode
+- **Minimalist Asset Cards**: Clean 40×40px cards matching button dimensions
+- **Asset Popover**: Click voxel buttons to show available assets
+- **Dynamic Asset Loading**: Lazy-loaded assets with caching
+- **VOX Format Support**: All assets stored as MagicaVoxel .vox files
+
+### Drawing & Interaction
+- **Zoom While Drawing**: Scroll wheel works during drag operations
+- **Dynamic Grid System**: Grid visibility scales with zoom level
+- **Ground Plane Protection**: Prevents placing voxels below y=0
+- **Preview Color Matching**: Draw preview matches actual voxel colors
+- **Smart Edge Brightness**: Darker voxels get brighter edges for visibility
+- **Constraint Plane**: Visual grid appears after 300ms hold
+
+### Performance & Technical
+- **Asset Preview Scene**: Dedicated rendering system for thumbnails
+- **Coordinate System Fix**: Proper VOX to Three.js axis conversion
+- **Color Preservation**: Assets maintain declared type colors
+- **Memory Efficient**: Preview cache system for thumbnails
+- **Batch Operations**: Grouped voxel updates for performance
+
+### Previous Updates
 - **Selection Tool**: Box selection mode for working with regions
-- **Performance Optimizations**: O(1) voxel operations, pre-allocated buffers, batch rendering
-- **Constraint Plane Visualization**: Grid preview shows drawing plane after 300ms hold
-- **Enhanced Drag Operations**: Improved drag-draw and drag-erase with proper plane constraints
+- **Performance Optimizations**: O(1) voxel operations, pre-allocated buffers
 - **Edge Rendering**: Optimized wireframe display supporting up to 50k voxels
-- **UI Improvements**: Disabled tilt-shift by default, increased initial zoom (2x)
-- **Grid Alignment**: Constraint plane grid properly aligned with voxel boundaries
-- **Enhanced Zoom**: Increased zoom out range from 0.5x to 0.1x (5x more zoom out)
-- **Improved DevServer**: Specialized script for v007 with better error handling
-- **TypeScript**: Full migration from JavaScript with strict type checking
+- **Enhanced Zoom**: Increased zoom out range from 0.5x to 0.1x
+- **TypeScript Migration**: Full type safety with strict checking
 - **UI Overhaul**: Professional menu system with keyboard shortcuts
 - **Drawing Tools**: Multiple tools for different building scenarios
 

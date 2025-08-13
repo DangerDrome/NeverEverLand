@@ -1,0 +1,40 @@
+{
+  "wood": [
+    {
+      "id": "wood_plank",
+      "name": "Wood Plank",
+      "description": "Placeholder wood asset",
+      "file": "wood_plank.vox",
+      "size": {
+        "x": 3,
+        "y": 1,
+        "z": 1
+      },
+      "preview": "wood_plank.png"
+    },
+    {
+      "id": "wood_post",
+      "name": "Wood Post",
+      "description": "Placeholder wood asset",
+      "file": "wood_post.vox",
+      "size": {
+        "x": 1,
+        "y": 3,
+        "z": 1
+      },
+      "preview": "wood_post.png"
+    },
+    {
+      "id": "wood_floor",
+      "name": "Wood Floor",
+      "description": "Placeholder wood asset",
+      "file": "wood_floor.vox",
+      "size": {
+        "x": 3,
+        "y": 1,
+        "z": 3
+      },
+      "preview": "wood_floor.png"
+    }
+  ]
+}

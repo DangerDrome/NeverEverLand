@@ -2,25 +2,20 @@ import * as THREE from 'three';
 import { VoxelType } from '../engine/VoxelEngine';
 import { AssetInfo, AssetData } from '../assets/types';
 import { StaticAssetManager } from '../assets/StaticAssetManager';
+import { AssetPreviewScene } from './AssetPreviewScene';
 
 export class AssetPopover {
     private element: HTMLElement | null = null;
     private assetManager: StaticAssetManager;
     private onSelectCallback: ((asset: AssetInfo) => void) | null = null;
-    private renderer: THREE.WebGLRenderer;
+    private previewScene: AssetPreviewScene;
     private previewCache: Map<string, string> = new Map(); // asset id -> base64 image
     
     constructor(assetManager: StaticAssetManager) {
         this.assetManager = assetManager;
         
-        // Create a small renderer for generating previews
-        this.renderer = new THREE.WebGLRenderer({ 
-            antialias: true, 
-            alpha: true,
-            preserveDrawingBuffer: true 
-        });
-        this.renderer.setSize(128, 128);
-        this.renderer.setClearColor(0x000000, 0);
+        // Create asset preview scene for generating thumbnails
+        this.previewScene = new AssetPreviewScene(128);
     }
     
     async show(anchorElement: HTMLElement, type: VoxelType, onSelect: (asset: AssetInfo) => void): Promise<void> {
@@ -62,8 +57,8 @@ export class AssetPopover {
         grid.style.cssText = `
             display: flex;
             flex-direction: row;
-            gap: 24px;
-            padding: 8px;
+            gap: 12px;
+            padding: 0;
             align-items: center;
             justify-content: center;
         `;
@@ -114,8 +109,8 @@ export class AssetPopover {
         
         // Now we can get the actual height
         const popoverHeight = this.element!.offsetHeight;
-        // Dynamic width based on number of assets (each item is ~96px + 24px gap)
-        const popoverWidth = Math.min(assets.length * 120 + 32, window.innerWidth - 40); // Leave margin on sides
+        // Dynamic width based on number of assets (each item is 80px + 12px gap)
+        const popoverWidth = Math.min(assets.length * 92 + 20, window.innerWidth - 40); // Leave margin on sides
         
         // Position popover above the anchor element
         const rect = anchorElement.getBoundingClientRect();
@@ -188,7 +183,7 @@ export class AssetPopover {
             border: 1px solid rgba(255, 255, 255, 0.15);
             border-radius: 8px;
             padding: 16px;
-            min-width: 200px;
+            min-width: 150px;
             max-width: 90vw;
             z-index: 1000;
             display: none;
@@ -203,13 +198,14 @@ export class AssetPopover {
         const item = document.createElement('div');
         item.style.cssText = `
             background: rgba(50, 50, 50, 0.5);
-            border: 2px solid transparent;
+            border: none;
             border-radius: 6px;
-            padding: 8px;
+            padding: 2px;
             cursor: pointer;
             transition: all 0.2s ease;
             text-align: center;
-            aspect-ratio: 1;
+            width: 80px;
+            height: 80px;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -220,9 +216,8 @@ export class AssetPopover {
         // Add preview image
         const preview = document.createElement('div');
         preview.style.cssText = `
-            width: 64px;
-            height: 64px;
-            margin-bottom: 4px;
+            width: 76px;
+            height: 76px;
             background: rgba(0, 0, 0, 0.3);
             border-radius: 4px;
             display: flex;
@@ -244,33 +239,10 @@ export class AssetPopover {
             preview.appendChild(img);
         } else {
             // Fallback icon
-            preview.innerHTML = `<span style="color: rgba(255, 255, 255, 0.5); font-size: 24px;">📦</span>`;
+            preview.innerHTML = `<span style="color: rgba(255, 255, 255, 0.5); font-size: 16px;">📦</span>`;
         }
         
         item.appendChild(preview);
-        
-        // Add name
-        const name = document.createElement('div');
-        name.style.cssText = `
-            color: rgba(255, 255, 255, 0.8);
-            font-size: 12px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            width: 100%;
-        `;
-        name.textContent = asset.name;
-        item.appendChild(name);
-        
-        // Add size info
-        const size = document.createElement('div');
-        size.style.cssText = `
-            color: rgba(255, 255, 255, 0.4);
-            font-size: 10px;
-            margin-top: 2px;
-        `;
-        size.textContent = `${asset.size.x}×${asset.size.y}×${asset.size.z}`;
-        item.appendChild(size);
         
         // Add user asset indicator
         if (asset.isUserAsset) {
@@ -292,13 +264,11 @@ export class AssetPopover {
         // Hover effect
         item.addEventListener('mouseenter', () => {
             item.style.background = 'rgba(70, 70, 70, 0.7)';
-            item.style.borderColor = 'rgba(100, 200, 100, 0.5)';
             item.style.transform = 'scale(1.05)';
         });
         
         item.addEventListener('mouseleave', () => {
             item.style.background = 'rgba(50, 50, 50, 0.5)';
-            item.style.borderColor = 'transparent';
             item.style.transform = 'scale(1)';
         });
         
@@ -321,9 +291,20 @@ export class AssetPopover {
         }
         
         try {
-            // For now, return null to use fallback icon
-            // TODO: Generate actual 3D preview using THREE.js
-            return null;
+            // Load asset data
+            const assetData = await this.assetManager.loadAsset(asset.id);
+            if (!assetData || !assetData.voxelData || assetData.voxelData.size === 0) {
+                return null;
+            }
+            
+            // Generate preview using the preview scene
+            this.previewScene.loadAsset(assetData.voxelData);
+            const dataURL = this.previewScene.screenshot(76, 76);
+            
+            // Cache the result
+            this.previewCache.set(asset.id, dataURL);
+            
+            return dataURL;
         } catch (error) {
             console.error(`Failed to generate preview for ${asset.id}:`, error);
             return null;
@@ -360,7 +341,7 @@ export class AssetPopover {
         if (this.element && this.element.parentNode) {
             this.element.parentNode.removeChild(this.element);
         }
-        this.renderer.dispose();
+        this.previewScene.dispose();
         document.removeEventListener('click', this.handleClickOutside);
     }
 }
