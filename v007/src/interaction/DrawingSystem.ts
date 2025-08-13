@@ -110,9 +110,11 @@ export class DrawingSystem {
             depthWrite: false
         });
         
-        // Calculate grid extent based on size
-        const halfSize = size / 2;
+        // Calculate grid extent - round to complete grid squares
         const gridStep = voxelSize; // Grid spacing matches voxel size
+        const gridCount = Math.ceil(size / gridStep); // Number of grid cells per side
+        const actualSize = gridCount * gridStep; // Actual size to show complete grid squares
+        const halfSize = actualSize / 2;
         
         // Offset grid lines by half voxel size to align with voxel edges
         // The grid should show the edges between voxels, not their centers
@@ -122,58 +124,68 @@ export class DrawingSystem {
         const gridGeometry = new THREE.BufferGeometry();
         const positions: number[] = [];
         
+        // Define the grid boundaries - these are the exact border positions
+        const gridMin = -halfSize + edgeOffset;
+        const gridMax = halfSize + edgeOffset;
+        
         if (Math.abs(normal.y) > 0.5) {
             // Horizontal plane (XZ grid)
-            // Lines parallel to X axis - offset by half voxel to align with edges
-            for (let i = -Math.floor(size / gridStep); i <= Math.floor(size / gridStep); i++) {
+            // Lines parallel to X axis - only draw lines within the grid area
+            for (let i = -gridCount + 1; i < gridCount; i++) {
                 const z = i * gridStep + edgeOffset;
-                if (Math.abs(z) <= halfSize) {
-                    positions.push(-halfSize, 0, z);
-                    positions.push(halfSize, 0, z);
+                // Only add line if it's within the grid boundaries
+                if (z > gridMin && z < gridMax) {
+                    positions.push(gridMin, 0, z);
+                    positions.push(gridMax, 0, z);
                 }
             }
-            // Lines parallel to Z axis - offset by half voxel to align with edges
-            for (let i = -Math.floor(size / gridStep); i <= Math.floor(size / gridStep); i++) {
+            // Lines parallel to Z axis - only draw lines within the grid area
+            for (let i = -gridCount + 1; i < gridCount; i++) {
                 const x = i * gridStep + edgeOffset;
-                if (Math.abs(x) <= halfSize) {
-                    positions.push(x, 0, -halfSize);
-                    positions.push(x, 0, halfSize);
+                // Only add line if it's within the grid boundaries
+                if (x > gridMin && x < gridMax) {
+                    positions.push(x, 0, gridMin);
+                    positions.push(x, 0, gridMax);
                 }
             }
         } else if (Math.abs(normal.x) > 0.5) {
             // Vertical plane facing X (YZ grid)
-            // Lines parallel to Y axis - offset by half voxel to align with edges
-            for (let i = -Math.floor(size / gridStep); i <= Math.floor(size / gridStep); i++) {
+            // Lines parallel to Y axis - only draw lines within the grid area
+            for (let i = -gridCount + 1; i < gridCount; i++) {
                 const z = i * gridStep + edgeOffset;
-                if (Math.abs(z) <= halfSize) {
-                    positions.push(0, -halfSize, z);
-                    positions.push(0, halfSize, z);
+                // Only add line if it's within the grid boundaries
+                if (z > gridMin && z < gridMax) {
+                    positions.push(0, gridMin, z);
+                    positions.push(0, gridMax, z);
                 }
             }
-            // Lines parallel to Z axis - offset by half voxel to align with edges
-            for (let i = -Math.floor(size / gridStep); i <= Math.floor(size / gridStep); i++) {
+            // Lines parallel to Z axis - only draw lines within the grid area
+            for (let i = -gridCount + 1; i < gridCount; i++) {
                 const y = i * gridStep + edgeOffset;
-                if (Math.abs(y) <= halfSize) {
-                    positions.push(0, y, -halfSize);
-                    positions.push(0, y, halfSize);
+                // Only add line if it's within the grid boundaries
+                if (y > gridMin && y < gridMax) {
+                    positions.push(0, y, gridMin);
+                    positions.push(0, y, gridMax);
                 }
             }
         } else {
             // Vertical plane facing Z (XY grid)
-            // Lines parallel to X axis - offset by half voxel to align with edges
-            for (let i = -Math.floor(size / gridStep); i <= Math.floor(size / gridStep); i++) {
+            // Lines parallel to X axis - only draw lines within the grid area
+            for (let i = -gridCount + 1; i < gridCount; i++) {
                 const y = i * gridStep + edgeOffset;
-                if (Math.abs(y) <= halfSize) {
-                    positions.push(-halfSize, y, 0);
-                    positions.push(halfSize, y, 0);
+                // Only add line if it's within the grid boundaries
+                if (y > gridMin && y < gridMax) {
+                    positions.push(gridMin, y, 0);
+                    positions.push(gridMax, y, 0);
                 }
             }
-            // Lines parallel to Y axis - offset by half voxel to align with edges
-            for (let i = -Math.floor(size / gridStep); i <= Math.floor(size / gridStep); i++) {
+            // Lines parallel to Y axis - only draw lines within the grid area
+            for (let i = -gridCount + 1; i < gridCount; i++) {
                 const x = i * gridStep + edgeOffset;
-                if (Math.abs(x) <= halfSize) {
-                    positions.push(x, -halfSize, 0);
-                    positions.push(x, halfSize, 0);
+                // Only add line if it's within the grid boundaries
+                if (x > gridMin && x < gridMax) {
+                    positions.push(x, gridMin, 0);
+                    positions.push(x, gridMax, 0);
                 }
             }
         }
@@ -182,8 +194,75 @@ export class DrawingSystem {
         const gridLines = new THREE.LineSegments(gridGeometry, gridMaterial);
         gridGroup.add(gridLines);
         
+        // Add border around the grid
+        const borderMaterial = new THREE.LineBasicMaterial({
+            color: gridColor,
+            opacity: lineOpacity * 2, // Make border slightly more visible
+            transparent: true,
+            depthTest: true,
+            depthWrite: false,
+            linewidth: 2
+        });
+        
+        const borderGeometry = new THREE.BufferGeometry();
+        const borderPositions: number[] = [];
+        
+        // Create border based on plane orientation - align with grid boundaries
+        if (Math.abs(normal.y) > 0.5) {
+            // Horizontal plane border (rectangle in XZ)
+            borderPositions.push(
+                gridMin, 0, gridMin,
+                gridMax, 0, gridMin,
+                
+                gridMax, 0, gridMin,
+                gridMax, 0, gridMax,
+                
+                gridMax, 0, gridMax,
+                gridMin, 0, gridMax,
+                
+                gridMin, 0, gridMax,
+                gridMin, 0, gridMin
+            );
+        } else if (Math.abs(normal.x) > 0.5) {
+            // Vertical X plane border (rectangle in YZ)
+            borderPositions.push(
+                0, gridMin, gridMin,
+                0, gridMax, gridMin,
+                
+                0, gridMax, gridMin,
+                0, gridMax, gridMax,
+                
+                0, gridMax, gridMax,
+                0, gridMin, gridMax,
+                
+                0, gridMin, gridMax,
+                0, gridMin, gridMin
+            );
+        } else {
+            // Vertical Z plane border (rectangle in XY)
+            borderPositions.push(
+                gridMin, gridMin, 0,
+                gridMax, gridMin, 0,
+                
+                gridMax, gridMin, 0,
+                gridMax, gridMax, 0,
+                
+                gridMax, gridMax, 0,
+                gridMin, gridMax, 0,
+                
+                gridMin, gridMax, 0,
+                gridMin, gridMin, 0
+            );
+        }
+        
+        borderGeometry.setAttribute('position', new THREE.Float32BufferAttribute(borderPositions, 3));
+        const borderLines = new THREE.LineSegments(borderGeometry, borderMaterial);
+        gridGroup.add(borderLines);
+        
         // Add a subtle plane behind the grid for better visibility
-        const planeGeometry = new THREE.PlaneGeometry(size, size);
+        // The plane should match the exact border size
+        const planeSize = (gridMax - gridMin); // Exact size between grid boundaries
+        const planeGeometry = new THREE.PlaneGeometry(planeSize, planeSize);
         const planeMaterial = new THREE.MeshBasicMaterial({
             color: gridColor,
             opacity: 0.05,
@@ -193,15 +272,21 @@ export class DrawingSystem {
         });
         const planeMesh = new THREE.Mesh(planeGeometry, planeMaterial);
         
-        // Orient the plane based on normal
+        // Position the plane to align with the grid center (accounting for the offset)
+        const planeOffset = edgeOffset;
+        
+        // Orient and position the plane based on normal
         if (Math.abs(normal.y) > 0.5) {
             // Horizontal plane - rotate to lay flat
             planeMesh.rotation.x = -Math.PI / 2;
+            planeMesh.position.set(planeOffset, 0, planeOffset);
         } else if (Math.abs(normal.x) > 0.5) {
             // Vertical plane facing X
             planeMesh.rotation.y = Math.PI / 2;
+            planeMesh.position.set(0, planeOffset, planeOffset);
         } else {
             // Vertical plane facing Z - no rotation needed
+            planeMesh.position.set(planeOffset, planeOffset, 0);
         }
         
         gridGroup.add(planeMesh);
