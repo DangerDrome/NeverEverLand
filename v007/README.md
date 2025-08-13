@@ -42,11 +42,12 @@ A complete TypeScript-based voxel engine with instanced rendering, supporting up
 - **Escape**: Cancel current operation
 
 ### Drawing Tools
-- **Brush**: Single voxel or area placement
+- **Brush**: Single voxel or area placement (adjustable size)
 - **Box**: Draw rectangular volumes (click and drag)
 - **Line**: Draw straight lines between two points
 - **Fill**: Fill connected areas of the same type
-- **Eraser**: Remove voxels (E key)
+- **Eraser**: Remove voxels (E key or right-click drag)
+- **Constraint Plane**: Hold for 300ms to see grid preview during drag operations
 
 ### File Operations
 - **Import VOX**: Load MagicaVoxel .vox files
@@ -81,6 +82,9 @@ A complete TypeScript-based voxel engine with instanced rendering, supporting up
 - ✅ **< 100MB Memory**: Efficient memory usage with sparse storage
 - ✅ **< 16ms Frame Time**: Smooth interactions and updates
 - ✅ **Zero GC Pressure**: Pre-allocated arrays and efficient data structures
+- ✅ **O(1) Operations**: Constant-time voxel lookups and modifications
+- ✅ **Batch Rendering**: Single draw call per material type
+- ✅ **Dynamic Edge Display**: Wireframe rendering up to 50k voxels
 
 ### User Interface
 - Professional menu bar with File, Edit, View, and Help menus
@@ -221,6 +225,12 @@ npx tsc --noEmit
 
 ## 📝 Recent Updates
 
+- **Performance Optimizations**: O(1) voxel operations, pre-allocated buffers, batch rendering
+- **Constraint Plane Visualization**: Grid preview shows drawing plane after 300ms hold
+- **Enhanced Drag Operations**: Improved drag-draw and drag-erase with proper plane constraints
+- **Edge Rendering**: Optimized wireframe display supporting up to 50k voxels
+- **UI Improvements**: Disabled tilt-shift by default, increased initial zoom (2x)
+- **Grid Alignment**: Constraint plane grid properly aligned with voxel boundaries
 - **Enhanced Zoom**: Increased zoom out range from 0.5x to 0.1x (5x more zoom out)
 - **Improved DevServer**: Specialized script for v007 with better error handling
 - **TypeScript**: Full migration from JavaScript with strict type checking
