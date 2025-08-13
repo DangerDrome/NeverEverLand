@@ -239,6 +239,7 @@ class VoxelApp {
     private currentBrushSize: number = SETTINGS.brush.defaultSize;
     private currentBrushIndex: number = SETTINGS.brush.defaultSizeIndex;
     private isMiddleMouseDragging: boolean = false;
+    private isRotating: boolean = false;
     
     constructor() {
         this.scene = new THREE.Scene();
@@ -349,20 +350,9 @@ class VoxelApp {
         
         // Add event listener for camera changes
         this.controls.addEventListener('change', () => {
-            // Check if camera position or target changed (rotation/pan)
-            // Ignore if only zoom changed or if middle mouse is being used
-            const positionChanged = !this.camera.position.equals(lastCameraRotation);
-            const targetChanged = !this.controls.target.equals(lastTarget);
-            
-            if ((positionChanged || targetChanged) && !this.isMiddleMouseDragging) {
-                // This is a rotation (not pan with middle mouse or zoom)
+            // Only register interaction if we're actively rotating
+            if (this.isRotating) {
                 this.registerInteraction();
-                lastCameraRotation = this.camera.position.clone();
-                lastTarget = this.controls.target.clone();
-            } else if (positionChanged || targetChanged) {
-                // Update last position even if middle mouse dragging
-                lastCameraRotation = this.camera.position.clone();
-                lastTarget = this.controls.target.clone();
             }
         });
         
@@ -887,6 +877,14 @@ class VoxelApp {
             this.isMiddleMouseDragging = true;
         }
         
+        // Track if we're starting a rotation
+        // Left or right button with alt key, or right button in single voxel/asset mode
+        if ((event.button === 0 && event.altKey) || 
+            (event.button === 2 && (this.voxelPanel?.isInSingleVoxelMode() || 
+                                   this.drawingSystem?.selectedAsset !== null))) {
+            this.isRotating = true;
+        }
+        
         // Handle selection mode
         if (this.selectionMode && this.boxSelectionTool) {
             // If Alt is held, let orbit controls handle camera tumbling
@@ -973,6 +971,9 @@ class VoxelApp {
         if (event.button === 1) {
             this.isMiddleMouseDragging = false;
         }
+        
+        // Stop tracking rotation
+        this.isRotating = false;
         
         // Handle selection mode
         if (this.selectionMode && this.boxSelectionTool) {

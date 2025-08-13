@@ -23,6 +23,7 @@ export class VoxelPanel {
     private selectedTool: string = 'brush';
     private assetManager: StaticAssetManager;
     private assetPopover: AssetPopover;
+    private voxelTypes: VoxelButtonInfo[] = [];
     
     constructor(drawingSystem: DrawingSystem) {
         this.drawingSystem = drawingSystem;
@@ -78,7 +79,7 @@ export class VoxelPanel {
         this.element.appendChild(voxelBrushSeparator);
         
         // Define voxel types with Lucide icons and colors
-        const voxelTypes: VoxelButtonInfo[] = [
+        this.voxelTypes = [
             { type: VoxelType.GRASS, name: 'Grass', icon: 'trees', color: '#90EE90' },
             { type: VoxelType.DIRT, name: 'Dirt', icon: 'mountain', color: '#8B6914' },
             { type: VoxelType.STONE, name: 'Stone', icon: 'gem', color: '#696969' },
@@ -91,7 +92,7 @@ export class VoxelPanel {
         ];
         
         // Create buttons for each voxel type
-        voxelTypes.forEach((voxelInfo, index) => {
+        this.voxelTypes.forEach((voxelInfo, index) => {
             const button = this.createVoxelButton(voxelInfo, index + 1);
             this.voxelButtons.set(voxelInfo.type, button);
             this.element!.appendChild(button);
@@ -371,10 +372,11 @@ export class VoxelPanel {
         // Add Lucide cube icon
         const iconSpan = document.createElement('span');
         iconSpan.style.cssText = `
-            color: rgba(100, 200, 255, 1);
+            color: #90EE90; // Default to grass color
             display: flex;
             align-items: center;
             justify-content: center;
+            transition: color 0.2s ease;
         `;
         iconSpan.innerHTML = `<i data-lucide="box" style="width: 20px; height: 20px; stroke-width: 2;"></i>`;
         button.appendChild(iconSpan);
@@ -895,6 +897,9 @@ export class VoxelPanel {
         this.selectedType = type;
         this.drawingSystem.setVoxelType(type);
         
+        // Update voxel brush button color
+        this.updateVoxelBrushButtonColor();
+        
         // Deselect voxel brush button when selecting a voxel type
         const voxelBrushButton = document.getElementById('voxel-brush-button');
         if (voxelBrushButton) {
@@ -1052,6 +1057,19 @@ export class VoxelPanel {
         // Check if the voxel brush button is selected
         const voxelBrushButton = document.getElementById('voxel-brush-button');
         return voxelBrushButton ? voxelBrushButton.classList.contains('selected') : false;
+    }
+    
+    private updateVoxelBrushButtonColor(): void {
+        const voxelBrushButton = document.getElementById('voxel-brush-button');
+        if (voxelBrushButton) {
+            const iconSpan = voxelBrushButton.querySelector('span');
+            if (iconSpan) {
+                const typeInfo = this.voxelTypes.find(t => t.type === this.selectedType);
+                if (typeInfo) {
+                    iconSpan.style.color = typeInfo.color;
+                }
+            }
+        }
     }
     
     public dispose(): void {
