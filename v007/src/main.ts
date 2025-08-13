@@ -306,7 +306,7 @@ class VoxelApp {
         );
         
         // Set initial zoom level (more zoomed in)
-        this.camera.zoom = 2.0;  // Start at 2x zoom for better initial view
+        this.camera.zoom = 8.0;  // Start at 8x zoom for much closer initial view
         this.camera.updateProjectionMatrix();
         
         console.log('Camera position:', this.camera.position);
@@ -596,6 +596,7 @@ class VoxelApp {
             this.renderer.domElement.addEventListener('mousemove', (e) => this.onMouseMove(e));
             this.renderer.domElement.addEventListener('mousedown', (e) => this.onMouseDown(e));
             this.renderer.domElement.addEventListener('mouseup', (e) => this.onMouseUp(e));
+            this.renderer.domElement.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
             this.renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
         }
         
@@ -909,6 +910,39 @@ class VoxelApp {
         }
         // Re-enable controls after drawing
         if (this.controls) this.controls.enabled = true;
+    }
+    
+    onWheel(event: WheelEvent) {
+        // If we're drawing and controls are disabled, handle zoom manually
+        if (this.drawingSystem?.isDrawing && this.controls && !this.controls.enabled) {
+            event.preventDefault();
+            
+            // Apply zoom with same logic as OrbitControls
+            const delta = event.deltaY;
+            const zoomSpeed = 0.95;
+            
+            if (this.camera) {
+                if (delta > 0) {
+                    // Zoom out
+                    this.camera.zoom *= zoomSpeed;
+                } else {
+                    // Zoom in
+                    this.camera.zoom /= zoomSpeed;
+                }
+                
+                // Clamp zoom to min/max values from settings
+                this.camera.zoom = Math.max(SETTINGS.controls.minZoom, 
+                    Math.min(SETTINGS.controls.maxZoom, this.camera.zoom));
+                
+                this.camera.updateProjectionMatrix();
+                
+                // Update dynamic grid if it exists
+                if (this.dynamicGrid) {
+                    this.dynamicGrid.update(this.camera.zoom);
+                }
+            }
+        }
+        // Otherwise, let OrbitControls handle it normally
     }
     
     onKeyDown(event: KeyboardEvent) {
