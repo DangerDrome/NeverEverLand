@@ -1002,7 +1002,7 @@
                                             }
                                         },
                                         settings: {
-                                            gridVisible: app.gridHelper.visible,
+                                            gridVisible: app.dynamicGrid ? app.dynamicGrid.visible : true,
                                             currentVoxelType: app.drawingSystem.currentVoxelType,
                                             brushSize: app.drawingSystem.brushSize,
                                             toolMode: app.drawingSystem.toolMode
@@ -1166,8 +1166,8 @@
                     
                     // Restore settings
                     if (sceneData.settings) {
-                        if (sceneData.settings.gridVisible !== undefined) {
-                            app.gridHelper.visible = sceneData.settings.gridVisible;
+                        if (sceneData.settings.gridVisible !== undefined && app.dynamicGrid) {
+                            app.dynamicGrid.visible = sceneData.settings.gridVisible;
                             app.axisLines.forEach(line => {
                                 line.visible = sceneData.settings.gridVisible;
                             });

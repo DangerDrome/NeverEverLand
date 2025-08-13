@@ -9,6 +9,7 @@ import { PerformanceMonitor } from './ui/Performance';
 import { DirectionIndicator } from './ui/DirectionIndicator';
 import { VoxelPanel } from './ui/VoxelPanel';
 import { FileManager } from './io/FileManager';
+import { DynamicGrid } from './ui/DynamicGrid';
 import { BoxSelectionTool } from './tools/BoxSelectionTool';
 import { attachPerformanceTest } from './utils/PerformanceTest';
 
@@ -225,6 +226,7 @@ class VoxelApp {
     private raycaster: THREE.Raycaster;
     private mouse: THREE.Vector2;
     private gridHelper: THREE.GridHelper | null = null;
+    private dynamicGrid: DynamicGrid | null = null;
     private axisLines: (THREE.Mesh | THREE.Line)[] = [];
     private selectionMode: boolean = false;
     private lastMousePos: { x: number; y: number } = { x: 0, y: 0 };
@@ -395,16 +397,12 @@ class VoxelApp {
         ground.receiveShadow = true;
         this.scene.add(ground);
         
-        // Enhanced grid with balanced visibility
-        this.gridHelper = new THREE.GridHelper(
-            SETTINGS.grid.size,
-            SETTINGS.grid.divisions,
-            SETTINGS.grid.colorCenterLine,
-            SETTINGS.grid.colorGrid
-        );
-        this.gridHelper.material.opacity = SETTINGS.grid.opacity;
-        this.gridHelper.material.transparent = true;
-        this.scene.add(this.gridHelper);
+        // Create dynamic grid instead of static GridHelper
+        this.dynamicGrid = new DynamicGrid(SETTINGS.grid.size);
+        this.scene.add(this.dynamicGrid);
+        
+        // Keep old gridHelper reference for compatibility
+        this.gridHelper = null;
         
         // Add thick glowing main axis lines for X and Z
         const axisLength = SETTINGS.grid.axisLines.length;
@@ -1439,11 +1437,11 @@ class VoxelApp {
     }
     
     toggleGrid() {
-        if (this.gridHelper) {
-            this.gridHelper.visible = !this.gridHelper.visible;
+        if (this.dynamicGrid) {
+            this.dynamicGrid.visible = !this.dynamicGrid.visible;
             // Toggle axis lines as well
             this.axisLines.forEach(line => {
-                line.visible = this.gridHelper!.visible;
+                line.visible = this.dynamicGrid!.visible;
             });
         }
     }
@@ -1522,6 +1520,11 @@ class VoxelApp {
         // Update drawing system for smooth preview animation
         if (this.drawingSystem) {
             this.drawingSystem.update();
+        }
+        
+        // Update dynamic grid based on zoom
+        if (this.dynamicGrid && this.camera) {
+            this.dynamicGrid.update(this.camera.zoom);
         }
         
         // Update UI
