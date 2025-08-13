@@ -475,6 +475,17 @@ class VoxelApp {
         this.directionIndicator = new DirectionIndicator();
         this.voxelPanel = new VoxelPanel(this.drawingSystem);
         
+        // Update tilt-shift button initial state after VoxelPanel creates it
+        setTimeout(() => {
+            const tiltShiftButton = document.getElementById('tiltshift-toggle-button') as HTMLButtonElement;
+            if (tiltShiftButton && !SETTINGS.postProcessing.tiltShift.enabled) {
+                const tiltShiftIcon = tiltShiftButton.querySelector('span');
+                tiltShiftButton.style.background = 'rgba(100, 100, 100, 0.2)';
+                tiltShiftButton.style.borderColor = 'transparent';
+                if (tiltShiftIcon) tiltShiftIcon.style.color = 'rgba(255, 255, 255, 0.8)';
+            }
+        }, 0);
+        
         // Initialize file manager and connect to panel
         this.fileManager = new FileManager(this.voxelEngine);
         this.voxelPanel.setFileManager(this.fileManager);
@@ -533,14 +544,6 @@ class VoxelApp {
             if (edgeIcon) edgeIcon.style.color = 'rgba(100, 255, 100, 1)';
         }
         
-        // Initialize tilt-shift button (ON by default)
-        const tiltShiftButton = document.getElementById('tiltshift-toggle-button') as HTMLButtonElement;
-        if (tiltShiftButton) {
-            const tiltShiftIcon = tiltShiftButton.querySelector('span');
-            tiltShiftButton.style.background = 'rgba(100, 200, 100, 0.3)';
-            tiltShiftButton.style.borderColor = 'rgba(100, 200, 100, 0.8)';
-            if (tiltShiftIcon) tiltShiftIcon.style.color = 'rgba(100, 255, 100, 1)';
-        }
     }
     
     setupPostProcessing() {
@@ -1295,8 +1298,10 @@ class VoxelApp {
                 const t = Math.min(elapsed / duration, 1);
                 const eased = 1 - Math.pow(1 - t, 3);
                 
-                this.camera.zoom = startZoom + (targetZoom - startZoom) * eased;
-                this.camera.updateProjectionMatrix();
+                if (this.camera) {
+                    this.camera.zoom = startZoom + (targetZoom - startZoom) * eased;
+                    this.camera.updateProjectionMatrix();
+                }
                 
                 if (t < 1) {
                     requestAnimationFrame(animateZoom);
@@ -1328,17 +1333,25 @@ class VoxelApp {
             const eased = 1 - Math.pow(1 - t, 3); // Cubic ease-out
             
             // Interpolate camera position
-            this.camera.position.lerpVectors(startPos, newCameraPos, eased);
+            if (this.camera) {
+                this.camera.position.lerpVectors(startPos, newCameraPos, eased);
+            }
             
             // Interpolate control target
-            this.controls.target.lerpVectors(startTarget, center, eased);
+            if (this.controls) {
+                this.controls.target.lerpVectors(startTarget, center, eased);
+            }
             
             // Interpolate zoom
-            this.camera.zoom = startZoom + (targetZoom - startZoom) * eased;
-            this.camera.updateProjectionMatrix();
+            if (this.camera) {
+                this.camera.zoom = startZoom + (targetZoom - startZoom) * eased;
+                this.camera.updateProjectionMatrix();
+            }
             
             // Update controls
-            this.controls.update();
+            if (this.controls) {
+                this.controls.update();
+            }
             
             if (t < 1) {
                 requestAnimationFrame(animate);

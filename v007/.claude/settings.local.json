@@ -19,7 +19,9 @@
       "Bash(mkdir:*)",
       "Bash(lsof:*)",
       "Bash(ss:*)",
-      "Bash(kill:*)"
+      "Bash(kill:*)",
+      "Bash(/home/danger/Documents/GitHub/NeverEverLand/v007/devserver.sh:*)",
+      "Bash(cat:*)"
     ],
     "deny": []
   }
