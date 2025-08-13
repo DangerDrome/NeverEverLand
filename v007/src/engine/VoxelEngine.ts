@@ -353,32 +353,49 @@ export class VoxelEngine {
             }
         }
         
-        // If no voxel hit, check ground plane at y=0
-        if (origin.y > 0 && direction.y < 0) {
+        // If no voxel hit, check infinite ground plane at y=0
+        // Calculate ray-plane intersection for y=0 plane
+        // Plane equation: y = 0, normal = (0, 1, 0)
+        // Ray: P = origin + t * direction
+        // Intersection: origin.y + t * direction.y = 0
+        // Therefore: t = -origin.y / direction.y
+        
+        // Only proceed if ray is not parallel to ground plane (direction.y != 0)
+        // and intersection is in front of ray origin (t > 0)
+        if (Math.abs(direction.y) > 0.0001) {
             const t = -origin.y / direction.y;
-            const point = origin.clone().add(direction.clone().multiplyScalar(t));
             
-            // Calculate voxel position at ground intersection
-            // Use Math.floor to get consistent voxel grid positions
-            const voxelX = Math.floor(point.x / this.voxelSize);
-            const voxelZ = Math.floor(point.z / this.voxelSize);
-            
-            // Adjust to place voxels on top of ground (y=0)
-            return {
-                voxelPos: {
-                    x: voxelX,
-                    y: -1,
-                    z: voxelZ
-                },
-                adjacentPos: {
-                    x: voxelX,
-                    y: 0,
-                    z: voxelZ
-                },
-                point: point,
-                normal: new THREE.Vector3(0, 1, 0),
-                distance: t
-            };
+            // Only return intersection if it's in front of the ray origin
+            if (t > 0) {
+                const point = origin.clone().add(direction.clone().multiplyScalar(t));
+                
+                // Calculate voxel position at ground intersection
+                // Use Math.floor to get consistent voxel grid positions
+                const voxelX = Math.floor(point.x / this.voxelSize);
+                const voxelZ = Math.floor(point.z / this.voxelSize);
+                
+                // Determine normal based on ray direction
+                // If ray comes from above, normal points up; if from below, normal points down
+                const normal = direction.y < 0 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, -1, 0);
+                
+                // Adjust to place voxels on top of ground (y=0) when coming from above
+                // or below ground when coming from below
+                return {
+                    voxelPos: {
+                        x: voxelX,
+                        y: direction.y < 0 ? -1 : 0,
+                        z: voxelZ
+                    },
+                    adjacentPos: {
+                        x: voxelX,
+                        y: direction.y < 0 ? 0 : -1,
+                        z: voxelZ
+                    },
+                    point: point,
+                    normal: normal,
+                    distance: t
+                };
+            }
         }
         
         return null;

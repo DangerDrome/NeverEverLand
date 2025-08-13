@@ -169,7 +169,7 @@ const SETTINGS = {
         
         // Tilt-Shift Depth of Field (v006 style)
         tiltShift: {
-            enabled: true,            // Start disabled like v006
+            enabled: false,           // Start disabled (off by default)
             focusPosition: 0.5,        // Y position of focus band (0-1, 0.5 = center)
             focusBandwidth: 0.3,       // Width of sharp focus band
             blurStrength: 10.0,         // Maximum blur amount
@@ -302,6 +302,11 @@ class VoxelApp {
             SETTINGS.camera.lookAt.y,
             SETTINGS.camera.lookAt.z
         );
+        
+        // Set initial zoom level (more zoomed in)
+        this.camera.zoom = 2.0;  // Start at 2x zoom for better initial view
+        this.camera.updateProjectionMatrix();
+        
         console.log('Camera position:', this.camera.position);
         console.log('Camera looking at:', new THREE.Vector3(0, 0, 0));
         
@@ -658,9 +663,12 @@ class VoxelApp {
         // Calculate constrained position if we're actively drawing
         let constrainedPos = null;
         
-        if (this.drawingSystem!.isDrawing && 
-            (this.drawingSystem!.toolMode === 'brush' || this.drawingSystem!.toolMode === 'eraser') &&
-            this.drawingSystem!.drawingSurface) {
+        // Check if we should calculate constraints for dragging
+        // This should work for brush, eraser, or when doing remove with right-click
+        if (this.drawingSystem!.isDrawing && this.drawingSystem!.drawingSurface &&
+            (this.drawingSystem!.toolMode === 'brush' || 
+             this.drawingSystem!.toolMode === 'eraser' ||
+             this.drawingSystem!.drawMode === 'remove')) {
             
             const voxelSize = this.voxelEngine!.getVoxelSize();
             const normal = this.drawingSystem!.drawingSurface.normal;
@@ -669,80 +677,137 @@ class VoxelApp {
             const absY = Math.abs(normal.y);
             const absZ = Math.abs(normal.z);
             
-            if (!hit) {
-                // No hit - project ray onto the constrained plane
-                const rayPoint = this.raycaster.ray.origin.clone().add(
-                    this.raycaster.ray.direction.clone().multiplyScalar(10)
-                );
+            // Project the ray to get mouse position in world space
+            // We need to find where the ray intersects the constraint plane
+            let planePoint: THREE.Vector3;
+            const plane = new THREE.Plane();
+            
+            // Create a plane at the constraint position based on the surface normal
+            // The key insight: for both add and remove modes, we want the plane at the FACE
+            // where we clicked, not at the voxel center. This keeps the plane stable.
+            const isRemoveMode = this.drawingSystem!.drawMode === 'remove';
+            
+            if (absY > absX && absY > absZ) {
+                // Horizontal plane - constrain Y
+                // For remove: if clicking top face (normal.y > 0), plane is at top of voxel
+                // For add: plane is at the adjacent position (already handled by basePos)
+                let yPos;
+                if (isRemoveMode) {
+                    // Place plane at the face we clicked (top or bottom of voxel)
+                    if (normal.y > 0) {
+                        // Clicked top face - plane at top of voxel
+                        yPos = (basePos.y + 1) * voxelSize;
+                    } else {
+                        // Clicked bottom face - plane at bottom of voxel
+                        yPos = basePos.y * voxelSize;
+                    }
+                } else {
+                    // Add mode - plane at adjacent position
+                    yPos = basePos.y * voxelSize + voxelSize * 0.5;
+                }
+                planePoint = new THREE.Vector3(0, yPos, 0);
+                plane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), planePoint);
+            } else if (absX > absY && absX > absZ) {
+                // Vertical X plane - constrain X
+                let xPos;
+                if (isRemoveMode) {
+                    // Place plane at the face we clicked
+                    if (normal.x > 0) {
+                        xPos = (basePos.x + 1) * voxelSize;
+                    } else {
+                        xPos = basePos.x * voxelSize;
+                    }
+                } else {
+                    xPos = basePos.x * voxelSize + voxelSize * 0.5;
+                }
+                planePoint = new THREE.Vector3(xPos, 0, 0);
+                plane.setFromNormalAndCoplanarPoint(new THREE.Vector3(1, 0, 0), planePoint);
+            } else {
+                // Vertical Z plane - constrain Z
+                let zPos;
+                if (isRemoveMode) {
+                    // Place plane at the face we clicked
+                    if (normal.z > 0) {
+                        zPos = (basePos.z + 1) * voxelSize;
+                    } else {
+                        zPos = basePos.z * voxelSize;
+                    }
+                } else {
+                    zPos = basePos.z * voxelSize + voxelSize * 0.5;
+                }
+                planePoint = new THREE.Vector3(0, 0, zPos);
+                plane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 0, 1), planePoint);
+            }
+            
+            // Find ray-plane intersection
+            const intersection = new THREE.Vector3();
+            const intersectionResult = this.raycaster.ray.intersectPlane(plane, intersection);
+            
+            if (intersectionResult) {
+                // Convert intersection to voxel coordinates
+                const voxelX = Math.floor(intersection.x / voxelSize);
+                const voxelY = Math.floor(intersection.y / voxelSize);
+                const voxelZ = Math.floor(intersection.z / voxelSize);
                 
+                // Apply constraint based on plane orientation
                 if (absY > absX && absY > absZ) {
-                    // Horizontal plane - use ray's X/Z, constrained Y
+                    // Horizontal plane - use intersection X/Z, constrained Y
                     constrainedPos = {
-                        x: Math.floor(rayPoint.x / voxelSize),
+                        x: voxelX,
                         y: basePos.y,
-                        z: Math.floor(rayPoint.z / voxelSize)
+                        z: voxelZ
                     };
                 } else if (absX > absY && absX > absZ) {
-                    // Vertical X plane - constrained X, use ray's Y/Z
+                    // Vertical X plane - constrained X, use intersection Y/Z
                     constrainedPos = {
                         x: basePos.x,
-                        y: Math.floor(rayPoint.y / voxelSize),
-                        z: Math.floor(rayPoint.z / voxelSize)
+                        y: voxelY,
+                        z: voxelZ
                     };
                 } else {
-                    // Vertical Z plane - use ray's X/Y, constrained Z
+                    // Vertical Z plane - use intersection X/Y, constrained Z
                     constrainedPos = {
-                        x: Math.floor(rayPoint.x / voxelSize),
-                        y: Math.floor(rayPoint.y / voxelSize),
+                        x: voxelX,
+                        y: voxelY,
                         z: basePos.z
                     };
                 }
             } else {
-                // We have a hit - constrain to the original surface
-                // Always use voxelPos to prevent climbing
-                const targetPos = hit.voxelPos;
-                
-                if (absY > absX && absY > absZ) {
-                    // Horizontal surface - keep Y constant
-                    constrainedPos = {
-                        x: targetPos.x,
-                        y: basePos.y,
-                        z: targetPos.z
-                    };
-                } else if (absX > absY && absX > absZ) {
-                    // Vertical X surface - keep X constant
-                    constrainedPos = {
-                        x: basePos.x,
-                        y: targetPos.y,
-                        z: targetPos.z
-                    };
-                } else {
-                    // Vertical Z surface - keep Z constant
-                    constrainedPos = {
-                        x: targetPos.x,
-                        y: targetPos.y,
-                        z: basePos.z
-                    };
-                }
+                // Fallback: if plane intersection fails, use the base position
+                // This can happen when ray is parallel to the plane
+                console.log('Plane intersection failed, using base position');
+                constrainedPos = basePos;
             }
         }
         
         // Update preview with constrained position during drawing
         this.drawingSystem!.updatePreview(hit, constrainedPos || undefined);
         
-        // Continue drawing if mouse is held down (brush or eraser mode)
+        // Continue drawing if mouse is held down
+        // event.buttons: 1 = left, 2 = right, 4 = middle
+        // This should work for brush, eraser, or when doing remove with right-click
         if (event.buttons && this.drawingSystem!.isDrawing && 
-            (this.drawingSystem!.toolMode === 'brush' || this.drawingSystem!.toolMode === 'eraser')) {
+            (this.drawingSystem!.toolMode === 'brush' || 
+             this.drawingSystem!.toolMode === 'eraser' ||
+             this.drawingSystem!.drawMode === 'remove')) {
             
+            // Check if we should continue based on button
+            // For dragging, we just check if we're in drawing mode regardless of button
+            // The mode (add/remove) was already set in onMouseDown
             if (constrainedPos) {
-                // Use the constrained position for drawing
+                // Apply brush at the constrained position
+                // The VoxelEngine will handle whether a voxel exists there or not
                 this.drawingSystem!.applyBrush(constrainedPos.x, constrainedPos.y, constrainedPos.z);
                 this.voxelEngine!.updateInstances();
             } else if (hit) {
                 // Fallback if no drawing surface (shouldn't happen normally)
+                console.warn('Fallback to hit position - constraint failed!');
                 const pos = this.drawingSystem!.drawMode === 'add' ? hit.adjacentPos : hit.voxelPos;
                 this.drawingSystem!.applyBrush(pos.x, pos.y, pos.z);
                 this.voxelEngine!.updateInstances();
+            } else {
+                // No constraint and no hit - can't continue drawing
+                console.warn('No constraint position and no hit - drawing interrupted');
             }
         }
     }
@@ -782,14 +847,19 @@ class VoxelApp {
             return;
         }
         
-        // Left click - add voxels (unless Alt is held for rotation)
+        // Left click - add or remove based on tool (unless Alt is held for rotation)
         if (event.button === 0 && !event.altKey) {
             if (this.voxelEngine && this.drawingSystem) {
                 const hit = this.voxelEngine.raycast(this.raycaster);
                 console.log('Left click hit:', hit);
                 if (hit) {
-                    console.log('Starting drawing at:', hit.adjacentPos, 'on face with normal:', hit.normal);
-                    this.drawingSystem.startDrawing(hit, 'add');
+                    // Check if eraser tool is selected
+                    const mode = this.drawingSystem.toolMode === 'eraser' ? 'remove' : 'add';
+                    console.log('Starting drawing at:', 
+                        mode === 'add' ? hit.adjacentPos : hit.voxelPos, 
+                        'on face with normal:', hit.normal,
+                        'mode:', mode);
+                    this.drawingSystem.startDrawing(hit, mode);
                     // Disable orbit controls to prevent rotation while drawing
                     if (this.controls) this.controls.enabled = false;
                 }
@@ -923,6 +993,12 @@ class VoxelApp {
                 break;
             case 'f':
             case 'F':
+                // Focus camera on selection or scene contents (like Blender/Houdini)
+                this.focusCameraOnTarget();
+                break;
+            case 'p':
+            case 'P':
+                // Toggle performance monitor (moved from 'f' key)
                 if (this.performanceMonitor) {
                     this.performanceMonitor.toggle();
                 }
@@ -1100,6 +1176,175 @@ class VoxelApp {
                 }
                 break;
         }
+    }
+    
+    focusCameraOnTarget(): void {
+        if (!this.camera || !this.controls) return;
+        
+        let bounds: { min: THREE.Vector3; max: THREE.Vector3 } | null = null;
+        
+        // First check if we have a selection to focus on
+        const selection = this.selectionMode && this.boxSelectionTool && this.boxSelectionTool.hasSelection() 
+            ? this.boxSelectionTool.getSelection() 
+            : [];
+        const hasSelection = selection.length > 0;
+        
+        if (hasSelection) {
+            // Calculate bounds of selection
+            const voxelSize = this.voxelEngine?.getVoxelSize() || 0.1;
+            const min = new THREE.Vector3(Infinity, Infinity, Infinity);
+            const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+            
+            for (const voxel of selection) {
+                const worldPos = new THREE.Vector3(
+                    voxel.x * voxelSize,
+                    voxel.y * voxelSize,
+                    voxel.z * voxelSize
+                );
+                min.min(worldPos);
+                max.max(worldPos);
+            }
+            
+            // Add voxel size to max to account for voxel dimensions
+            max.add(new THREE.Vector3(voxelSize, voxelSize, voxelSize));
+            bounds = { min, max };
+        }
+        
+        // If no selection, focus on all voxels in the scene
+        if (!hasSelection && this.voxelEngine) {
+            const voxelBounds = this.voxelEngine.getBounds();
+            const voxelSize = this.voxelEngine.getVoxelSize();
+            
+            if (voxelBounds.min.x !== Infinity) {
+                // Convert voxel bounds to world coordinates
+                bounds = {
+                    min: new THREE.Vector3(
+                        voxelBounds.min.x * voxelSize,
+                        voxelBounds.min.y * voxelSize,
+                        voxelBounds.min.z * voxelSize
+                    ),
+                    max: new THREE.Vector3(
+                        (voxelBounds.max.x + 1) * voxelSize,
+                        (voxelBounds.max.y + 1) * voxelSize,
+                        (voxelBounds.max.z + 1) * voxelSize
+                    )
+                };
+            } else {
+                // No voxels in scene, focus on origin area
+                bounds = {
+                    min: new THREE.Vector3(-5, 0, -5),
+                    max: new THREE.Vector3(5, 5, 5)
+                };
+            }
+        }
+        
+        if (!bounds) return;
+        
+        // Calculate center and size of bounding box
+        const center = new THREE.Vector3();
+        center.addVectors(bounds.min, bounds.max).multiplyScalar(0.5);
+        
+        const size = new THREE.Vector3();
+        size.subVectors(bounds.max, bounds.min);
+        
+        // Calculate the distance needed to fit the bounds in view
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const fitDistance = maxDim * 2.5; // Adjust multiplier for better framing
+        
+        // Calculate new camera position maintaining CURRENT viewing angle
+        // Get current camera direction relative to current target
+        const currentDirection = new THREE.Vector3();
+        currentDirection.subVectors(this.camera.position, this.controls.target).normalize();
+        
+        // Use current direction to position camera at the right distance from new center
+        const newCameraPos = center.clone().add(currentDirection.multiplyScalar(fitDistance));
+        
+        // Check if we need to move at all (already focused on target)
+        const currentTargetDist = this.controls.target.distanceTo(center);
+        const currentCameraDist = this.camera.position.distanceTo(center);
+        
+        // Calculate appropriate zoom to fit the bounds
+        const frustumSize = SETTINGS.camera.frustumSize;
+        const aspect = window.innerWidth / window.innerHeight;
+        
+        // Calculate zoom based on current view direction to properly frame the bounds
+        // Consider both horizontal and vertical fit
+        const horizontalFit = (frustumSize * aspect) / (size.x + size.z * 0.5);
+        const verticalFit = frustumSize / (size.y + size.z * 0.5);
+        
+        const targetZoom = Math.min(
+            horizontalFit,
+            verticalFit,
+            4.0 // Max zoom
+        ) * 0.8; // Scale down slightly for padding
+        
+        // If we're already close to the target, just adjust zoom
+        if (currentTargetDist < maxDim * 0.1 && Math.abs(currentCameraDist - fitDistance) < maxDim * 0.5) {
+            // Just animate zoom
+            const startZoom = this.camera.zoom;
+            const duration = 300;
+            const startTime = Date.now();
+            
+            const animateZoom = () => {
+                const elapsed = Date.now() - startTime;
+                const t = Math.min(elapsed / duration, 1);
+                const eased = 1 - Math.pow(1 - t, 3);
+                
+                this.camera.zoom = startZoom + (targetZoom - startZoom) * eased;
+                this.camera.updateProjectionMatrix();
+                
+                if (t < 1) {
+                    requestAnimationFrame(animateZoom);
+                } else {
+                    console.log(hasSelection ? 
+                        `Focused on ${selection.length} selected voxels (zoom only)` : 
+                        `Focused on scene (${this.voxelEngine?.getVoxelCount() || 0} voxels, zoom only)`);
+                }
+            };
+            
+            animateZoom();
+            return;
+        }
+        
+        // Smoothly animate camera to new position
+        const startPos = this.camera.position.clone();
+        const startTarget = this.controls.target.clone();
+        const startZoom = this.camera.zoom;
+        
+        // Animate over 500ms
+        const duration = 500;
+        const startTime = Date.now();
+        
+        const animate = () => {
+            const elapsed = Date.now() - startTime;
+            const t = Math.min(elapsed / duration, 1);
+            
+            // Use easing function for smooth animation
+            const eased = 1 - Math.pow(1 - t, 3); // Cubic ease-out
+            
+            // Interpolate camera position
+            this.camera.position.lerpVectors(startPos, newCameraPos, eased);
+            
+            // Interpolate control target
+            this.controls.target.lerpVectors(startTarget, center, eased);
+            
+            // Interpolate zoom
+            this.camera.zoom = startZoom + (targetZoom - startZoom) * eased;
+            this.camera.updateProjectionMatrix();
+            
+            // Update controls
+            this.controls.update();
+            
+            if (t < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                console.log(hasSelection ? 
+                    `Focused on ${selection.length} selected voxels` : 
+                    `Focused on scene (${this.voxelEngine?.getVoxelCount() || 0} voxels)`);
+            }
+        };
+        
+        animate();
     }
     
     createTestScene() {

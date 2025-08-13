@@ -1603,6 +1603,13 @@ export class BoxSelectionTool {
     }
     
     /**
+     * Get the current selection
+     */
+    getSelection(): SelectedVoxel[] {
+        return [...this.selectedVoxels];
+    }
+    
+    /**
      * Get current transform mode
      */
     getTransformMode(): 'move' | 'rotate' | null {

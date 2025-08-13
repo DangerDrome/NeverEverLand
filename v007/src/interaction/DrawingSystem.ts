@@ -24,6 +24,8 @@ export class DrawingSystem {
     toolPreviewMeshes: (THREE.Group | THREE.Mesh)[];
     pendingOperations: any[];
     operationTimer: number | null;
+    lastBrushPosition: { x: number; y: number; z: number } | null;
+    processedPositions: Set<string>;  // Track all positions processed in current drag
     
     constructor(voxelEngine: any) {
         this.voxelEngine = voxelEngine;
@@ -39,6 +41,8 @@ export class DrawingSystem {
         this.boxStart = null;
         this.lineStart = null;
         this.drawingSurface = null; // Store the surface we're drawing on
+        this.lastBrushPosition = null; // Track last brush position to avoid duplicates
+        this.processedPositions = new Set(); // Track all processed positions in current drag
         
         // Preview
         this.previewMesh = null;
@@ -177,15 +181,35 @@ export class DrawingSystem {
         // If using eraser tool, always remove voxels
         this.drawMode = this.toolMode === 'eraser' ? 'remove' : mode;
         
+        // Clear processed positions for new drag operation
+        this.processedPositions.clear();
+        
         // Start batch mode for continuous drawing
         this.voxelEngine.startBatch();
         
         // Store the surface normal to constrain drawing to this plane
         // For both brush and eraser tools to prevent unwanted voxel modifications
-        if (hit.normal && (this.toolMode === 'brush' || this.toolMode === 'eraser')) {
+        if (hit.normal && (this.toolMode === 'brush' || this.toolMode === 'eraser' || mode === 'remove')) {
+            // Standard voxel editor approach: 
+            // - For adding: constrain to the adjacent position (where new voxels go)
+            // - For removing: constrain to the voxel layer we're removing from
+            let constraintPos;
+            
+            if (mode === 'remove') {
+                // For remove mode, we need to establish the working plane
+                // at the clicked face, similar to add mode but on the voxel side
+                // This keeps the plane stable even after voxels are removed
+                
+                // Use the voxel position for now (we'll adjust plane in main.ts)
+                constraintPos = { ...hit.voxelPos };
+            } else {
+                // For add mode, use adjacent position (standard behavior)
+                constraintPos = { ...hit.adjacentPos };
+            }
+            
             this.drawingSurface = {
                 normal: hit.normal.clone(),
-                basePos: mode === 'add' ? { ...hit.adjacentPos } : { ...hit.voxelPos }, // Store appropriate position
+                basePos: constraintPos,
                 hitPos: { ...hit.voxelPos } // Store the hit voxel position
             };
         } else {
@@ -194,6 +218,18 @@ export class DrawingSystem {
         
         const pos = this.drawMode === 'add' ? hit.adjacentPos : hit.voxelPos;
         
+        // If we're in remove mode (right-click), always apply brush regardless of tool
+        // This allows right-click drag to work with any tool selected
+        if (this.drawMode === 'remove') {
+            this.applyBrush(pos.x, pos.y, pos.z);
+            // For single click (not drag), update immediately
+            if (!this.voxelEngine.isBatchMode()) {
+                this.voxelEngine.updateInstances();
+            }
+            return;  // Don't process tool-specific logic for remove mode
+        }
+        
+        // Handle tool-specific logic for add mode
         switch (this.toolMode) {
             case 'brush':
             case 'eraser':
