@@ -11,6 +11,7 @@ export interface ModalOptions {
     confirmButtonStyle?: 'primary' | 'danger';
     onConfirm?: () => void;
     onCancel?: () => void;
+    html?: boolean; // Whether message contains HTML
 }
 
 export class ModalDialog {
@@ -54,7 +55,11 @@ export class ModalDialog {
             content.className = 'modal-content';
             content.style.padding = '20px';
             content.style.fontSize = '16px';
-            content.textContent = options.message;
+            if (options.html) {
+                content.innerHTML = options.message;
+            } else {
+                content.textContent = options.message;
+            }
             
             // Buttons
             const buttons = document.createElement('div');
@@ -142,7 +147,11 @@ export class ModalDialog {
             content.className = 'modal-content';
             content.style.padding = '20px';
             content.style.fontSize = '16px';
-            content.textContent = opts.message;
+            if (opts.html) {
+                content.innerHTML = opts.message;
+            } else {
+                content.textContent = opts.message;
+            }
             if (opts.type === 'error') {
                 content.style.color = 'rgba(255, 150, 150, 0.9)';
             }

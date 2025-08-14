@@ -81,6 +81,12 @@ export class FileManager {
             this.voxelEngine.updateInstances();
             
             console.log(`Imported ${voxels.size} voxels from VOX file`);
+            
+            // Log the import
+            import('../ui/ActionLogger').then(({ ActionLogger }) => {
+                const logger = ActionLogger.getInstance();
+                logger.log(ActionLogger.actions.importVoxels(file.name));
+            });
         } catch (error) {
             console.error('Error importing VOX file:', error);
             throw new Error(`Failed to import VOX file: ${error}`);
@@ -109,6 +115,12 @@ export class FileManager {
             this.downloadFile(buffer, `${filename}.vox`, 'application/octet-stream');
             
             console.log(`Exported ${this.voxelEngine.getVoxelCount()} voxels to VOX file`);
+            
+            // Log the export
+            import('../ui/ActionLogger').then(({ ActionLogger }) => {
+                const logger = ActionLogger.getInstance();
+                logger.log(ActionLogger.actions.exportVoxels('VOX'));
+            });
         } catch (error) {
             console.error('Error exporting VOX file:', error);
             throw new Error(`Failed to export VOX file: ${error}`);
@@ -135,6 +147,12 @@ export class FileManager {
             this.voxelEngine.updateInstances();
             
             console.log(`Imported voxels from JSON file`);
+            
+            // Log the import
+            import('../ui/ActionLogger').then(({ ActionLogger }) => {
+                const logger = ActionLogger.getInstance();
+                logger.log(ActionLogger.actions.importVoxels(file.name));
+            });
         } catch (error) {
             console.error('Error importing JSON file:', error);
             throw new Error(`Failed to import JSON file: ${error}`);
@@ -173,6 +191,12 @@ export class FileManager {
             this.downloadFile(blob, `${filename}.json`, 'application/json');
             
             console.log(`Exported ${this.voxelEngine.getVoxelCount()} voxels to JSON file`);
+            
+            // Log the export
+            import('../ui/ActionLogger').then(({ ActionLogger }) => {
+                const logger = ActionLogger.getInstance();
+                logger.log(ActionLogger.actions.exportVoxels('JSON'));
+            });
         } catch (error) {
             console.error('Error exporting JSON file:', error);
             throw new Error(`Failed to export JSON file: ${error}`);

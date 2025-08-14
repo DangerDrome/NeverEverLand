@@ -189,6 +189,12 @@ export class UndoRedoManager {
         // Add to redo stack
         this.redoStack.push(group);
         
+        // Log the undo operation
+        import('../ui/ActionLogger').then(({ ActionLogger }) => {
+            const logger = ActionLogger.getInstance();
+            logger.log(ActionLogger.actions.undo());
+        });
+        
         return true;
     }
     
@@ -223,6 +229,12 @@ export class UndoRedoManager {
         
         // Add back to undo stack
         this.undoStack.push(group);
+        
+        // Log the redo operation
+        import('../ui/ActionLogger').then(({ ActionLogger }) => {
+            const logger = ActionLogger.getInstance();
+            logger.log(ActionLogger.actions.redo());
+        });
         
         return true;
     }

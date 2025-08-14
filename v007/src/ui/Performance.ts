@@ -7,8 +7,9 @@ export class PerformanceMonitor {
     private fpsHistory: number[];
     private frameTimeHistory: number[];
     private historyIndex: number = 0;
-    private statsElement: HTMLElement | null;
-    private visible: boolean = true;
+    private fpsElement: HTMLElement | null;
+    private voxelsElement: HTMLElement | null;
+    private memoryElement: HTMLElement | null;
     
     constructor() {
         this.fps = 0;
@@ -22,9 +23,10 @@ export class PerformanceMonitor {
         this.frameTimeHistory = new Array(60).fill(0);
         this.historyIndex = 0;
         
-        // Stats element
-        this.statsElement = document.getElementById('stats');
-        this.visible = true;
+        // Info bar elements
+        this.fpsElement = document.getElementById('stats-fps');
+        this.voxelsElement = document.getElementById('stats-voxels');
+        this.memoryElement = document.getElementById('stats-memory');
     }
     
     update() {
@@ -66,24 +68,21 @@ export class PerformanceMonitor {
         return sum / this.frameTimeHistory.length;
     }
     
-    toggle() {
-        this.visible = !this.visible;
-        if (this.statsElement) {
-            this.statsElement.style.display = this.visible ? 'block' : 'none';
+    render(voxelCount: number = 0, instanceCount: number = 0) {
+        // Calculate memory usage estimate (rough approximation)
+        const memoryMB = ((voxelCount * 16) / (1024 * 1024)).toFixed(1);
+        
+        // Update info bar elements
+        if (this.fpsElement) {
+            this.fpsElement.textContent = `FPS: ${this.fps} / ${Math.round(this.getAverageFPS())}`;
         }
-    }
-    
-    show() {
-        this.visible = true;
-        if (this.statsElement) {
-            this.statsElement.style.display = 'block';
+        
+        if (this.voxelsElement) {
+            this.voxelsElement.textContent = `Voxels: ${voxelCount.toLocaleString()}`;
         }
-    }
-    
-    hide() {
-        this.visible = false;
-        if (this.statsElement) {
-            this.statsElement.style.display = 'none';
+        
+        if (this.memoryElement) {
+            this.memoryElement.textContent = `Memory: ~${memoryMB}MB`;
         }
     }
 }

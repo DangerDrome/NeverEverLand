@@ -133,8 +133,26 @@ export class AssetPreviewScene {
             if (voxelType === VoxelType.AIR) continue;
             
             const [x, y, z] = posKey.split(',').map(Number);
-            const material = this.materials.get(voxelType);
-            if (!material) continue;
+            
+            // Get or create material for this voxel type
+            let material = this.materials.get(voxelType);
+            if (!material) {
+                // Create material for unknown voxel type
+                const colorDef = VOXEL_COLORS[voxelType];
+                if (!colorDef) {
+                    console.warn(`No color definition for VoxelType ${voxelType}`);
+                    continue;
+                }
+                
+                material = new THREE.MeshStandardMaterial({
+                    color: colorDef.color,
+                    transparent: colorDef.opacity !== undefined,
+                    opacity: colorDef.opacity || 1.0,
+                    roughness: 0.8,
+                    metalness: 0.1
+                });
+                this.materials.set(voxelType, material);
+            }
             
             const mesh = new THREE.Mesh(this.voxelGeometry, material);
             mesh.position.set(

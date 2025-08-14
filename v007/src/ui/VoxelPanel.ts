@@ -7,6 +7,7 @@ import { AssetInfo } from '../assets/types';
 import { ModalDialog } from './ModalDialog';
 import { ColorPickerPopover, ColorInfo } from './ColorPickerPopover';
 import { ColorRegistry } from '../engine/ColorRegistry';
+import { settings } from '../main';
 
 interface VoxelButtonInfo {
     type: VoxelType;
@@ -34,7 +35,7 @@ export class VoxelPanel {
         this.drawingSystem = drawingSystem;
         this.assetManager = new StaticAssetManager();
         this.assetPopover = new AssetPopover(this.assetManager);
-        this.colorPickerPopover = new ColorPickerPopover(colorPalette);
+        this.colorPickerPopover = new ColorPickerPopover(settings.colorPalettes);
         
         // Register this panel with the drawing system
         this.drawingSystem.setVoxelPanel(this);
@@ -48,7 +49,7 @@ export class VoxelPanel {
         this.element.className = 'voxel-panel';
         this.element.style.cssText = `
             position: fixed;
-            bottom: 20px;
+            bottom: 40px;
             left: 50%;
             transform: translateX(-50%);
             background: rgba(30, 30, 30, 0.95);
@@ -207,6 +208,11 @@ export class VoxelPanel {
         
         // Add to page
         document.body.appendChild(this.element);
+        
+        // Initialize with the first voxel type and update header color
+        if (this.voxelTypes.length > 0) {
+            this.selectVoxelType(this.voxelTypes[0].type);
+        }
         
         // Initialize Lucide icons
         if ((window as any).lucide) {
@@ -379,7 +385,7 @@ export class VoxelPanel {
             height: 40px;
             border: 2px solid transparent;
             border-radius: 6px;
-            background: rgba(100, 200, 255, 0.2);
+            background: transparent;
             cursor: pointer;
             transition: all 0.2s ease;
             font-size: 20px;
@@ -413,14 +419,14 @@ export class VoxelPanel {
         // Hover effect
         button.addEventListener('mouseenter', () => {
             if (!button.classList.contains('selected')) {
-                button.style.background = 'rgba(100, 200, 255, 0.3)';
+                button.style.background = 'rgba(255, 255, 255, 0.1)';
                 button.style.transform = 'scale(1.05)';
             }
         });
         
         button.addEventListener('mouseleave', () => {
             if (!button.classList.contains('selected')) {
-                button.style.background = 'rgba(100, 200, 255, 0.2)';
+                button.style.background = 'transparent';
                 button.style.transform = 'scale(1)';
             }
         });
@@ -432,6 +438,7 @@ export class VoxelPanel {
                 await this.colorPickerPopover.show(button, (color) => {
                     this.selectedColor = color;
                     this.updateVoxelBrushButtonWithColor(color);
+                    this.updateHeaderIconColor();
                     
                     // Get or create a VoxelType for this color
                     const colorRegistry = ColorRegistry.getInstance();
@@ -470,10 +477,10 @@ export class VoxelPanel {
             
             // Mark this button as selected
             button.classList.add('selected');
-            button.style.borderColor = 'rgba(100, 200, 255, 0.8)';
-            button.style.background = 'rgba(100, 200, 255, 0.3)';
+            button.style.borderColor = 'rgba(255, 255, 255, 0.4)';
+            button.style.background = 'rgba(255, 255, 255, 0.1)';
             button.style.transform = 'scale(1.1)';
-            button.style.boxShadow = '0 0 10px rgba(100, 200, 255, 0.5)';
+            button.style.boxShadow = 'none';
             
             // Visual feedback
             button.style.animation = 'pulse 0.3s ease-out';
@@ -489,6 +496,7 @@ export class VoxelPanel {
             await this.colorPickerPopover.show(button, (color) => {
                 this.selectedColor = color;
                 this.updateVoxelBrushButtonWithColor(color);
+                this.updateHeaderIconColor();
                 
                 // Get or create a VoxelType for this color
                 const colorRegistry = ColorRegistry.getInstance();
@@ -510,9 +518,9 @@ export class VoxelPanel {
         const style = document.createElement('style');
         style.textContent = `
             @keyframes pulse {
-                0% { box-shadow: 0 0 10px rgba(100, 200, 255, 0.5); }
-                50% { box-shadow: 0 0 20px rgba(100, 200, 255, 0.8); }
-                100% { box-shadow: 0 0 10px rgba(100, 200, 255, 0.5); }
+                0% { transform: scale(1.1); }
+                50% { transform: scale(1.15); }
+                100% { transform: scale(1.1); }
             }
         `;
         document.head.appendChild(style);
@@ -966,7 +974,7 @@ export class VoxelPanel {
         if (voxelBrushButton) {
             voxelBrushButton.classList.remove('selected');
             voxelBrushButton.style.borderColor = 'transparent';
-            voxelBrushButton.style.background = 'rgba(100, 200, 255, 0.2)';
+            voxelBrushButton.style.background = 'transparent';
             voxelBrushButton.style.transform = 'scale(1)';
             voxelBrushButton.style.boxShadow = 'none';
         }
@@ -1089,7 +1097,7 @@ export class VoxelPanel {
         if (voxelBrushButton) {
             voxelBrushButton.classList.remove('selected');
             voxelBrushButton.style.borderColor = 'transparent';
-            voxelBrushButton.style.background = 'rgba(100, 200, 255, 0.2)';
+            voxelBrushButton.style.background = 'transparent';
             voxelBrushButton.style.transform = 'scale(1)';
             voxelBrushButton.style.boxShadow = 'none';
         }
@@ -1263,6 +1271,24 @@ export class VoxelPanel {
                     if (typeInfo) {
                         iconSpan.style.color = typeInfo.color;
                     }
+                }
+            }
+        }
+        
+        // Also update the header swords icon
+        this.updateHeaderIconColor();
+    }
+    
+    private updateHeaderIconColor(): void {
+        const menuLogo = document.querySelector('.menu-logo svg') as SVGElement;
+        if (menuLogo) {
+            // If we have a selected color, use that; otherwise use voxel type color
+            if (this.selectedColor) {
+                menuLogo.style.color = this.selectedColor.hex;
+            } else {
+                const typeInfo = this.voxelTypes.find(t => t.type === this.selectedType);
+                if (typeInfo) {
+                    menuLogo.style.color = typeInfo.color;
                 }
             }
         }

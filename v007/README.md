@@ -57,7 +57,8 @@ A complete TypeScript-based voxel engine with instanced rendering, supporting up
 - **Constraint Plane**: Hold for 300ms to see grid preview during drag operations
 
 ### Asset System
-- **Voxel Brush Button**: First button (V key) for single voxel painting mode
+- **Voxel Brush Button**: First button (V key) for single voxel painting mode with color picker
+- **Color Picker**: Click V button to select from multiple color palettes (Default, Pastel, Neon)
 - **Asset Selection**: Click voxel type buttons (1-9) to show asset popover
 - **Single Voxel Mode**: Shift+Click voxel buttons for traditional single voxel painting
 - **Asset Placement**: Click to place selected asset, R to rotate before placing
@@ -65,6 +66,8 @@ A complete TypeScript-based voxel engine with instanced rendering, supporting up
 - **Asset Thumbnails**: Isometric preview rendering for all assets
 - **Asset Creation**: Use `/createAssets.html` to generate new voxel assets
 - **Asset Storage**: Assets stored as .vox files in `/public/assets/{type}/`
+- **Drag & Drop**: Drag .vox files onto the viewport to import them
+- **Asset Editing**: Edit placed assets and save back to the asset library
 
 ### File Operations
 - **Import VOX**: Load MagicaVoxel .vox files
@@ -111,6 +114,9 @@ A complete TypeScript-based voxel engine with instanced rendering, supporting up
 - Modal dialogs for file operations
 - Voxel panel with type selection and asset popover
 - Tilt-shift depth of field effect (toggle with T)
+- Layer system for organizing voxel content
+- Color picker with multiple palettes (Default, Pastel, Neon)
+- Layer thumbnails with real-time preview updates
 
 ## 🛠️ Development
 
@@ -156,6 +162,8 @@ v007/
 │   ├── engine/
 │   │   ├── VoxelEngine.ts   # Core voxel management
 │   │   ├── VoxelRenderer.ts # Instanced mesh rendering
+│   │   ├── VoxelLayer.ts    # Layer management system
+│   │   ├── ColorRegistry.ts # Dynamic color assignment system
 │   │   └── UndoRedoManager.ts # Operation history
 │   ├── interaction/
 │   │   └── DrawingSystem.ts # Drawing tools and interactions
@@ -163,6 +171,9 @@ v007/
 │   │   ├── VoxelPanel.ts    # UI components and menus
 │   │   ├── AssetPopover.ts  # Asset selection popover
 │   │   ├── AssetPreviewScene.ts # Isometric asset preview renderer
+│   │   ├── LayerPanel.ts    # Layer management UI
+│   │   ├── ColorPickerPopover.ts # Color palette selection
+│   │   ├── ModalDialog.ts   # Modal dialog system
 │   │   ├── Performance.ts   # Performance monitoring
 │   │   └── DirectionIndicator.ts # 3D axis helper
 │   ├── assets/
@@ -310,10 +321,20 @@ npx tsc --noEmit
 
 ## 📝 Recent Updates
 
+### Layer System & Color Management
+- **Layer System**: Organize voxels into multiple layers with visibility controls
+- **Color Picker**: Multiple color palettes (Default, Pastel, Neon) with tab switching
+- **ColorRegistry**: Dynamic color assignment system supporting 256+ unique colors
+- **Layer Thumbnails**: Real-time isometric previews for each layer
+- **Asset Editing**: Edit placed assets and save them back to the library
+- **Drag & Drop**: Import .vox files directly by dragging onto the viewport
+- **Modal Dialogs**: Promise-based dialogs replacing browser popups
+- **Per-Layer Operations**: Import, export, and clear operations per layer
+
 ### Asset System & UI
 - **Complete Asset System**: 27 premade structures across all 9 voxel types
 - **Asset Preview Thumbnails**: Isometric 3D previews rendered in real-time
-- **Voxel Brush Button**: Dedicated button (V key) for single voxel mode
+- **Voxel Brush Button**: Dedicated button (V key) for single voxel mode with color picker
 - **Minimalist Asset Cards**: Clean 40×40px cards matching button dimensions
 - **Asset Popover**: Click voxel buttons to show available assets
 - **Dynamic Asset Loading**: Lazy-loaded assets with caching
@@ -345,6 +366,9 @@ npx tsc --noEmit
 
 ## 🎯 Future Enhancements
 
+- [x] Layer system for organizing content
+- [x] Multiple color palettes with custom colors
+- [x] Asset editing and management
 - [ ] Chunk-based infinite world
 - [ ] Texture atlas support
 - [ ] Ambient occlusion
@@ -352,9 +376,10 @@ npx tsc --noEmit
 - [ ] Multiplayer support
 - [ ] VR/AR compatibility
 - [ ] Procedural generation
-- [ ] Custom voxel types
 - [ ] Animation system
 - [ ] Physics integration
+- [ ] Layer operations in undo/redo system
+- [ ] Drawing system using active layer
 
 ## 📄 License
 

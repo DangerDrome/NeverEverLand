@@ -24,7 +24,8 @@
       "Bash(cat:*)",
       "Bash(ls:*)",
       "Bash(find:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(touch:*)"
     ],
     "deny": []
   }

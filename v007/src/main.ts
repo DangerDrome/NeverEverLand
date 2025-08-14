@@ -15,12 +15,13 @@ import { FileManager } from './io/FileManager';
 import { DynamicGrid } from './ui/DynamicGrid';
 import { BoxSelectionTool } from './tools/BoxSelectionTool';
 import { attachPerformanceTest } from './utils/PerformanceTest';
+import { MenuBar } from './ui/MenuBar';
 
 // =====================================
-// SETTINGS - Customize your experience
+// settings - Customize your experience
 // =====================================
 
-const SETTINGS = {
+export const settings = {
     // Camera Settings
     camera: {
         frustumSize: 20,              // Size of the orthographic camera view
@@ -149,6 +150,7 @@ const SETTINGS = {
         colorCenterLine: 0x444444,     // Center line color
         colorGrid: 0x222222,           // Grid line color
         opacity: 0.4,                  // Grid opacity
+        showGrid: true,                // Whether to show grid initially
         axisLines: {
             xColor: 0xff6666,          // X-axis color (bright red)
             zColor: 0x6666ff,          // Z-axis color (bright blue)
@@ -192,8 +194,6 @@ const SETTINGS = {
     // UI Settings
     ui: {
         showLoadingScreen: true,       // Show loading screen
-        showControls: false,           // Show controls panel
-        showStats: true,               // Show stats panel
         defaultBrushSize: 1,           // Default brush size
         defaultVoxelType: VoxelType.GRASS, // Default voxel type
         showWireframe: true            // Show wireframe/edges on startup
@@ -323,7 +323,10 @@ const SETTINGS = {
         presetSizes: [1, 2, 4, 6, 8, 10], // Brush sizes (cubic: 1x1x1, 2x2x2, 4x4x4, etc.)
         defaultSizeIndex: 0,               // Start with single voxel brush
         defaultSize: 1                     // Default brush size
-    }
+    },
+    
+    // Application version
+    version: '0.7.1'
 };
 
 class VoxelApp {
@@ -341,6 +344,7 @@ class VoxelApp {
     private layerPanel: LayerPanel | null;
     private fileManager: FileManager | null;
     private boxSelectionTool: BoxSelectionTool | null;
+    private menuBar: MenuBar | null;
     private raycaster: THREE.Raycaster;
     private mouse: THREE.Vector2;
     private gridHelper: THREE.GridHelper | null = null;
@@ -354,8 +358,8 @@ class VoxelApp {
     private axisIdleFadeTimer: number = 0;
     private selectionMode: boolean = false;
     private lastMousePos: { x: number; y: number } = { x: 0, y: 0 };
-    private currentBrushSize: number = SETTINGS.brush.defaultSize;
-    private currentBrushIndex: number = SETTINGS.brush.defaultSizeIndex;
+    private currentBrushSize: number = settings.brush.defaultSize;
+    private currentBrushIndex: number = settings.brush.defaultSizeIndex;
     private isMiddleMouseDragging: boolean = false;
     private isRotating: boolean = false;
     
@@ -374,6 +378,7 @@ class VoxelApp {
         this.layerPanel = null;
         this.fileManager = null;
         this.boxSelectionTool = null;
+        this.menuBar = null;
         
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
@@ -386,53 +391,56 @@ class VoxelApp {
     
     init() {
         // Hide loading, show UI based on settings
-        if (SETTINGS.ui.showLoadingScreen) {
+        if (settings.ui.showLoadingScreen) {
             const loadingEl = document.getElementById('loading');
             if (loadingEl) loadingEl.style.display = 'none';
         }
-        if (SETTINGS.performance.showStats) {
-            const statsEl = document.getElementById('stats');
-            if (statsEl) statsEl.style.display = 'block';
-        }
-        if (SETTINGS.ui.showControls) {
-            const controlsEl = document.getElementById('controls');
-            if (controlsEl) controlsEl.style.display = 'block';
-        }
+        
+        // Load version info and update info bar
+        this.loadVersionInfo();
+        
+        // Initialize ActionLogger
+        import('./ui/ActionLogger').then(({ ActionLogger }) => {
+            const logger = ActionLogger.getInstance();
+            logger.log('Application started');
+        });
         
         // Setup renderer
+        const canvas = document.getElementById('canvas') as HTMLCanvasElement;
         this.renderer = new THREE.WebGLRenderer({ 
-            antialias: SETTINGS.renderer.antialias,
-            powerPreference: SETTINGS.renderer.powerPreference
+            canvas,
+            antialias: settings.renderer.antialias,
+            powerPreference: settings.renderer.powerPreference
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(window.devicePixelRatio);
-        this.renderer.shadowMap.enabled = SETTINGS.renderer.shadowMap.enabled;
-        this.renderer.shadowMap.type = SETTINGS.renderer.shadowMap.type;
+        this.renderer.shadowMap.enabled = settings.renderer.shadowMap.enabled;
+        this.renderer.shadowMap.type = settings.renderer.shadowMap.type;
         const containerEl = document.getElementById('container');
         if (containerEl) containerEl.appendChild(this.renderer.domElement);
         
         // Setup camera
         const aspect = window.innerWidth / window.innerHeight;
-        const frustumSize = SETTINGS.camera.frustumSize;
+        const frustumSize = settings.camera.frustumSize;
         this.camera = new THREE.OrthographicCamera(
             -frustumSize * aspect / 2,
             frustumSize * aspect / 2,
             frustumSize / 2,
             -frustumSize / 2,
-            SETTINGS.camera.near,
-            SETTINGS.camera.far
+            settings.camera.near,
+            settings.camera.far
         );
         
         // Position camera for isometric view
         this.camera.position.set(
-            SETTINGS.camera.position.x,
-            SETTINGS.camera.position.y,
-            SETTINGS.camera.position.z
+            settings.camera.position.x,
+            settings.camera.position.y,
+            settings.camera.position.z
         );
         this.camera.lookAt(
-            SETTINGS.camera.lookAt.x,
-            SETTINGS.camera.lookAt.y,
-            SETTINGS.camera.lookAt.z
+            settings.camera.lookAt.x,
+            settings.camera.lookAt.y,
+            settings.camera.lookAt.z
         );
         
         // Set initial zoom level (more zoomed in)
@@ -444,17 +452,17 @@ class VoxelApp {
         
         // Setup controls
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-        this.controls.enableDamping = SETTINGS.controls.enableDamping;
-        this.controls.dampingFactor = SETTINGS.controls.dampingFactor;
-        this.controls.screenSpacePanning = SETTINGS.controls.screenSpacePanning;
-        this.controls.minZoom = SETTINGS.controls.minZoom;
-        this.controls.maxZoom = SETTINGS.controls.maxZoom;
+        this.controls.enableDamping = settings.controls.enableDamping;
+        this.controls.dampingFactor = settings.controls.dampingFactor;
+        this.controls.screenSpacePanning = settings.controls.screenSpacePanning;
+        this.controls.minZoom = settings.controls.minZoom;
+        this.controls.maxZoom = settings.controls.maxZoom;
         
         // Configure mouse buttons
         this.controls.mouseButtons = {
-            LEFT: SETTINGS.controls.mouseButtons.left,
-            MIDDLE: SETTINGS.controls.mouseButtons.middle,
-            RIGHT: SETTINGS.controls.mouseButtons.right
+            LEFT: settings.controls.mouseButtons.left,
+            MIDDLE: settings.controls.mouseButtons.middle,
+            RIGHT: settings.controls.mouseButtons.right
         };
         
         // Set minimum polar angle to prevent camera from going below ground
@@ -476,15 +484,15 @@ class VoxelApp {
         });
         
         // Setup scene
-        this.scene.background = new THREE.Color(SETTINGS.scene.backgroundColor);
-        if (SETTINGS.scene.fog.enabled) {
+        this.scene.background = new THREE.Color(settings.scene.backgroundColor);
+        if (settings.scene.fog.enabled) {
             // Apply fog with custom color and adjusted density based on opacity
-            const fogColor = new THREE.Color(SETTINGS.scene.fog.color);
+            const fogColor = new THREE.Color(settings.scene.fog.color);
             
             // Adjust fog distances based on opacity (lower opacity = further distances)
-            const opacityMultiplier = 1.0 / Math.max(0.1, SETTINGS.scene.fog.opacity);
-            const adjustedNear = SETTINGS.scene.fog.near * opacityMultiplier;
-            const adjustedFar = SETTINGS.scene.fog.far * opacityMultiplier;
+            const opacityMultiplier = 1.0 / Math.max(0.1, settings.scene.fog.opacity);
+            const adjustedNear = settings.scene.fog.near * opacityMultiplier;
+            const adjustedFar = settings.scene.fog.far * opacityMultiplier;
             
             this.scene.fog = new THREE.Fog(
                 fogColor,
@@ -495,72 +503,72 @@ class VoxelApp {
         
         // Lighting with shadow control
         // Mix shadow color tint with white based on darkness
-        const shadowTint = new THREE.Color(SETTINGS.scene.shadows.colorTint);
+        const shadowTint = new THREE.Color(settings.scene.shadows.colorTint);
         const white = new THREE.Color(0xffffff);
-        const ambientColor = white.clone().lerp(shadowTint, SETTINGS.scene.shadows.darkness * 0.3);
+        const ambientColor = white.clone().lerp(shadowTint, settings.scene.shadows.darkness * 0.3);
         
         const ambientLight = new THREE.AmbientLight(
             ambientColor,
-            SETTINGS.scene.shadows.getAmbientIntensity()  // Use calculated intensity based on shadow darkness
+            settings.scene.shadows.getAmbientIntensity()  // Use calculated intensity based on shadow darkness
         );
         this.scene.add(ambientLight);
         
         const directionalLight = new THREE.DirectionalLight(
-            SETTINGS.lighting.directional.color,
-            SETTINGS.lighting.directional.intensity
+            settings.lighting.directional.color,
+            settings.lighting.directional.intensity
         );
         directionalLight.position.set(
-            SETTINGS.lighting.directional.position.x,
-            SETTINGS.lighting.directional.position.y,
-            SETTINGS.lighting.directional.position.z
+            settings.lighting.directional.position.x,
+            settings.lighting.directional.position.y,
+            settings.lighting.directional.position.z
         );
         directionalLight.castShadow = true;
-        directionalLight.shadow.camera.left = SETTINGS.lighting.directional.shadow.camera.left;
-        directionalLight.shadow.camera.right = SETTINGS.lighting.directional.shadow.camera.right;
-        directionalLight.shadow.camera.top = SETTINGS.lighting.directional.shadow.camera.top;
-        directionalLight.shadow.camera.bottom = SETTINGS.lighting.directional.shadow.camera.bottom;
-        directionalLight.shadow.camera.near = SETTINGS.lighting.directional.shadow.camera.near;
-        directionalLight.shadow.camera.far = SETTINGS.lighting.directional.shadow.camera.far;
-        directionalLight.shadow.mapSize.width = SETTINGS.lighting.directional.shadow.mapSize;
-        directionalLight.shadow.mapSize.height = SETTINGS.lighting.directional.shadow.mapSize;
-        directionalLight.shadow.bias = SETTINGS.lighting.directional.shadow.bias;
-        directionalLight.shadow.normalBias = SETTINGS.lighting.directional.shadow.normalBias;
-        directionalLight.shadow.radius = SETTINGS.lighting.directional.shadow.radius;
-        directionalLight.shadow.blurSamples = SETTINGS.lighting.directional.shadow.blurSamples;
+        directionalLight.shadow.camera.left = settings.lighting.directional.shadow.camera.left;
+        directionalLight.shadow.camera.right = settings.lighting.directional.shadow.camera.right;
+        directionalLight.shadow.camera.top = settings.lighting.directional.shadow.camera.top;
+        directionalLight.shadow.camera.bottom = settings.lighting.directional.shadow.camera.bottom;
+        directionalLight.shadow.camera.near = settings.lighting.directional.shadow.camera.near;
+        directionalLight.shadow.camera.far = settings.lighting.directional.shadow.camera.far;
+        directionalLight.shadow.mapSize.width = settings.lighting.directional.shadow.mapSize;
+        directionalLight.shadow.mapSize.height = settings.lighting.directional.shadow.mapSize;
+        directionalLight.shadow.bias = settings.lighting.directional.shadow.bias;
+        directionalLight.shadow.normalBias = settings.lighting.directional.shadow.normalBias;
+        directionalLight.shadow.radius = settings.lighting.directional.shadow.radius;
+        directionalLight.shadow.blurSamples = settings.lighting.directional.shadow.blurSamples;
         this.scene.add(directionalLight);
         
         // Ground plane
         const groundGeometry = new THREE.PlaneGeometry(
-            SETTINGS.ground.size,
-            SETTINGS.ground.size
+            settings.ground.size,
+            settings.ground.size
         );
         const groundMaterial = new THREE.MeshStandardMaterial({ 
-            color: SETTINGS.ground.color,
-            roughness: SETTINGS.ground.roughness,
-            metalness: SETTINGS.ground.metalness
+            color: settings.ground.color,
+            roughness: settings.ground.roughness,
+            metalness: settings.ground.metalness
         });
         const ground = new THREE.Mesh(groundGeometry, groundMaterial);
         ground.rotation.x = -Math.PI / 2;
-        ground.position.y = SETTINGS.ground.yPosition;
+        ground.position.y = settings.ground.yPosition;
         ground.receiveShadow = true;
         this.scene.add(ground);
         
         // Create dynamic grid instead of static GridHelper
-        this.dynamicGrid = new DynamicGrid(SETTINGS.grid.size);
+        this.dynamicGrid = new DynamicGrid(settings.grid.size);
         this.scene.add(this.dynamicGrid);
         
         // Keep old gridHelper reference for compatibility
         this.gridHelper = null;
         
         // Add thick glowing main axis lines for X and Z
-        const axisLength = SETTINGS.grid.axisLines.length;
+        const axisLength = settings.grid.axisLines.length;
         const axisThickness = 0.002; // Thinner axis lines (0.2cm)
         const axisHeight = 0.001; // Slightly above ground to avoid z-fighting
         
         // X-axis line (glowing red)
         const xAxisGeometry = new THREE.BoxGeometry(axisLength * 2, axisThickness, axisThickness);
         const xAxisMaterial = new THREE.MeshBasicMaterial({ 
-            color: SETTINGS.grid.axisLines.xColor,
+            color: settings.grid.axisLines.xColor,
             opacity: 0,       // Start invisible
             transparent: true,
             depthWrite: false
@@ -573,7 +581,7 @@ class VoxelApp {
         // Add glow effect for X-axis
         const xGlowGeometry = new THREE.BoxGeometry(axisLength * 2, axisThickness * 3, axisThickness * 3);
         const xGlowMaterial = new THREE.MeshBasicMaterial({ 
-            color: SETTINGS.grid.axisLines.xColor,
+            color: settings.grid.axisLines.xColor,
             opacity: 0,       // Start invisible
             transparent: true,
             depthWrite: false,
@@ -587,7 +595,7 @@ class VoxelApp {
         // Z-axis line (glowing blue)
         const zAxisGeometry = new THREE.BoxGeometry(axisThickness, axisThickness, axisLength * 2);
         const zAxisMaterial = new THREE.MeshBasicMaterial({ 
-            color: SETTINGS.grid.axisLines.zColor,
+            color: settings.grid.axisLines.zColor,
             opacity: 0,       // Start invisible
             transparent: true,
             depthWrite: false
@@ -600,7 +608,7 @@ class VoxelApp {
         // Add glow effect for Z-axis
         const zGlowGeometry = new THREE.BoxGeometry(axisThickness * 3, axisThickness * 3, axisLength * 2);
         const zGlowMaterial = new THREE.MeshBasicMaterial({ 
-            color: SETTINGS.grid.axisLines.zColor,
+            color: settings.grid.axisLines.zColor,
             opacity: 0,       // Start invisible
             transparent: true,
             depthWrite: false,
@@ -629,11 +637,11 @@ class VoxelApp {
         
         // Initialize systems
         // Always use 0.1m voxel size for high detail
-        this.voxelEngine = new VoxelEngine(this.scene, SETTINGS.ui.showWireframe, SETTINGS.voxel.size);
+        this.voxelEngine = new VoxelEngine(this.scene, settings.ui.showWireframe, settings.voxel.size);
         this.drawingSystem = new DrawingSystem(this.voxelEngine);
         this.performanceMonitor = new PerformanceMonitor();
         this.directionIndicator = new DirectionIndicator();
-        this.voxelPanel = new VoxelPanel(this.drawingSystem, SETTINGS.colorPalettes);
+        this.voxelPanel = new VoxelPanel(this.drawingSystem);
         this.layerPanel = new LayerPanel(this.voxelEngine, () => {
             // Update callback - re-render when layer state changes
             this.voxelEngine?.updateInstances();
@@ -648,7 +656,7 @@ class VoxelApp {
         // Update tilt-shift button initial state after VoxelPanel creates it
         setTimeout(() => {
             const tiltShiftButton = document.getElementById('tiltshift-toggle-button') as HTMLButtonElement;
-            if (tiltShiftButton && !SETTINGS.postProcessing.tiltShift.enabled) {
+            if (tiltShiftButton && !settings.postProcessing.tiltShift.enabled) {
                 const tiltShiftIcon = tiltShiftButton.querySelector('span');
                 tiltShiftButton.style.background = 'rgba(100, 100, 100, 0.2)';
                 tiltShiftButton.style.borderColor = 'transparent';
@@ -660,6 +668,22 @@ class VoxelApp {
         this.fileManager = new FileManager(this.voxelEngine);
         this.voxelPanel.setFileManager(this.fileManager);
         this.voxelPanel.setVoxelEngine(this.voxelEngine);
+        
+        // Initialize menu bar
+        if (this.voxelEngine && this.drawingSystem && this.fileManager && this.directionIndicator && this.layerPanel) {
+            const voxelRenderer = (this.voxelEngine as any).renderer as VoxelRenderer;
+            const undoRedoManager = (this.voxelEngine as any).undoRedoManager;
+            
+            this.menuBar = new MenuBar(
+                this.voxelEngine,
+                voxelRenderer,
+                this.drawingSystem,
+                undoRedoManager,
+                this.fileManager,
+                this.directionIndicator,
+                this.layerPanel
+            );
+        }
         
         // Initialize box selection tool
         if (this.camera) {
@@ -705,9 +729,9 @@ class VoxelApp {
     }
     
     initializeButtonStates() {
-        // Initialize edge/wireframe button based on SETTINGS
+        // Initialize edge/wireframe button based on settings
         const edgeButton = document.getElementById('edge-toggle-button') as HTMLButtonElement;
-        if (edgeButton && SETTINGS.ui.showWireframe) {
+        if (edgeButton && settings.ui.showWireframe) {
             const edgeIcon = edgeButton.querySelector('span');
             edgeButton.style.background = 'rgba(100, 200, 100, 0.3)';
             edgeButton.style.borderColor = 'rgba(100, 200, 100, 0.8)';
@@ -717,7 +741,7 @@ class VoxelApp {
     }
     
     setupPostProcessing() {
-        if (!SETTINGS.postProcessing.enabled || !this.renderer || !this.camera) return;
+        if (!settings.postProcessing.enabled || !this.renderer || !this.camera) return;
         
         try {
             // Create effect composer
@@ -734,12 +758,12 @@ class VoxelApp {
             );
             
             // Apply settings from config
-            this.tiltShiftPass.focusPosition = SETTINGS.postProcessing.tiltShift.focusPosition;
-            this.tiltShiftPass.focusBandwidth = SETTINGS.postProcessing.tiltShift.focusBandwidth;
-            this.tiltShiftPass.blurStrength = SETTINGS.postProcessing.tiltShift.blurStrength;
-            this.tiltShiftPass.gammaCorrection = SETTINGS.postProcessing.tiltShift.gammaCorrection;
-            this.tiltShiftPass.bladeCount = SETTINGS.postProcessing.tiltShift.bladeCount;
-            this.tiltShiftPass.enabled = SETTINGS.postProcessing.tiltShift.enabled;
+            this.tiltShiftPass.focusPosition = settings.postProcessing.tiltShift.focusPosition;
+            this.tiltShiftPass.focusBandwidth = settings.postProcessing.tiltShift.focusBandwidth;
+            this.tiltShiftPass.blurStrength = settings.postProcessing.tiltShift.blurStrength;
+            this.tiltShiftPass.gammaCorrection = settings.postProcessing.tiltShift.gammaCorrection;
+            this.tiltShiftPass.bladeCount = settings.postProcessing.tiltShift.bladeCount;
+            this.tiltShiftPass.enabled = settings.postProcessing.tiltShift.enabled;
             
             this.composer.addPass(this.tiltShiftPass);
             
@@ -762,6 +786,25 @@ class VoxelApp {
         this.axisIdleFadeTimer = 0;
     }
     
+    async loadVersionInfo() {
+        try {
+            const response = await fetch('/public/version.json');
+            const version = await response.json();
+            
+            const versionElement = document.getElementById('app-version');
+            if (versionElement) {
+                versionElement.textContent = version.version || '0.0.0';
+                versionElement.title = `${version.name || 'Never Ever Land'} - ${version.codename || ''} (${version.build || ''})`;
+            }
+        } catch (error) {
+            console.warn('Failed to load version info:', error);
+            const versionElement = document.getElementById('app-version');
+            if (versionElement) {
+                versionElement.textContent = settings.version || '0.7.0';
+            }
+        }
+    }
+    
     setupEventListeners() {
         // Window resize
         window.addEventListener('resize', () => this.onWindowResize());
@@ -782,11 +825,28 @@ class VoxelApp {
         
         // Keyboard events
         window.addEventListener('keydown', (e) => this.onKeyDown(e));
+        
+        // Custom events from MenuBar
+        window.addEventListener('resetCamera', () => {
+            if (this.controls) {
+                this.controls.reset();
+            }
+        });
+        
+        window.addEventListener('toggleTiltShift', () => {
+            if (this.tiltShiftPass) {
+                this.tiltShiftPass.enabled = !this.tiltShiftPass.enabled;
+            }
+        });
+        
+        window.addEventListener('toggleGrid', (e: Event) => {
+            this.toggleGrid();
+        });
     }
     
     onWindowResize() {
         const aspect = window.innerWidth / window.innerHeight;
-        const frustumSize = SETTINGS.camera.frustumSize;
+        const frustumSize = settings.camera.frustumSize;
         
         if (this.camera) {
             this.camera.left = -frustumSize * aspect / 2;
@@ -1151,8 +1211,8 @@ class VoxelApp {
                 }
                 
                 // Clamp zoom to min/max values from settings
-                this.camera.zoom = Math.max(SETTINGS.controls.minZoom, 
-                    Math.min(SETTINGS.controls.maxZoom, this.camera.zoom));
+                this.camera.zoom = Math.max(settings.controls.minZoom, 
+                    Math.min(settings.controls.maxZoom, this.camera.zoom));
                 
                 this.camera.updateProjectionMatrix();
                 
@@ -1624,7 +1684,7 @@ class VoxelApp {
         const currentCameraDist = this.camera.position.distanceTo(center);
         
         // Calculate appropriate zoom to fit the bounds
-        const frustumSize = SETTINGS.camera.frustumSize;
+        const frustumSize = settings.camera.frustumSize;
         const aspect = window.innerWidth / window.innerHeight;
         
         // Calculate zoom based on current view direction to properly frame the bounds
@@ -1723,20 +1783,20 @@ class VoxelApp {
             return;
         }
         
-        if (!SETTINGS.testScene.enabled) {
+        if (!settings.testScene.enabled) {
             this.voxelEngine.updateInstances();
             return;
         }
         
-        switch (SETTINGS.testScene.mode) {
+        switch (settings.testScene.mode) {
             case 'empty':
                 // Start with empty scene
                 break;
                 
             case 'flat':
                 // Simple flat ground with water and snow features
-                const sizeX = SETTINGS.testScene.flatGround.sizeX;
-                const sizeZ = SETTINGS.testScene.flatGround.sizeZ;
+                const sizeX = settings.testScene.flatGround.sizeX;
+                const sizeZ = settings.testScene.flatGround.sizeZ;
                 for (let x = -sizeX; x <= sizeX; x++) {
                     for (let z = -sizeZ; z <= sizeZ; z++) {
                         // Create a small pond in the corner
@@ -1785,7 +1845,7 @@ class VoxelApp {
     }
     
     cycleBrushSize() {
-        const presetSizes = SETTINGS.brush.presetSizes;
+        const presetSizes = settings.brush.presetSizes;
         
         // Move to next size, wrapping around to start
         this.currentBrushIndex = (this.currentBrushIndex + 1) % presetSizes.length;
@@ -1810,7 +1870,7 @@ class VoxelApp {
     }
     
     cycleBrushSizeReverse() {
-        const presetSizes = SETTINGS.brush.presetSizes;
+        const presetSizes = settings.brush.presetSizes;
         
         // Move to previous size, wrapping around to end
         this.currentBrushIndex = this.currentBrushIndex - 1;
@@ -1869,6 +1929,13 @@ class VoxelApp {
         // Update performance monitor
         if (this.performanceMonitor) {
             this.performanceMonitor.update();
+            
+            // Update stats display with voxel count
+            if (this.voxelEngine) {
+                const voxelCount = this.voxelEngine.getVoxelCount();
+                const instanceCount = (this.voxelEngine as any).renderer?.getTotalInstanceCount() || 0;
+                this.performanceMonitor.render(voxelCount, instanceCount);
+            }
         }
         
         // Update gizmo scale to maintain constant screen size
@@ -1945,8 +2012,8 @@ class VoxelApp {
             
             // Create color interpolation targets
             const fadeColor = new THREE.Color(0x333333); // Faint gray instead of dark
-            const xColor = new THREE.Color(SETTINGS.grid.axisLines.xColor);
-            const zColor = new THREE.Color(SETTINGS.grid.axisLines.zColor);
+            const xColor = new THREE.Color(settings.grid.axisLines.xColor);
+            const zColor = new THREE.Color(settings.grid.axisLines.zColor);
             
             // Update X-axis
             if (this.xAxisLine && this.xAxisGlow) {
@@ -2014,7 +2081,7 @@ class VoxelApp {
         
         // Render scene with post-processing or directly
         if (this.renderer && this.camera) {
-            if (this.composer && SETTINGS.postProcessing.enabled) {
+            if (this.composer && settings.postProcessing.enabled) {
                 this.composer.render();
             } else {
                 this.renderer.render(this.scene, this.camera);

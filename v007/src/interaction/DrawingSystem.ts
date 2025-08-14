@@ -743,6 +743,10 @@ export class DrawingSystem {
         this.hideConstraintPlane();
         this.gridShown = false;
         
+        // Get operation count before ending batch
+        const operationCount = this.voxelEngine.getBatchOperationCount ? 
+            this.voxelEngine.getBatchOperationCount() : 0;
+        
         // End batch mode and apply all changes
         this.voxelEngine.endBatch();
         
@@ -754,6 +758,18 @@ export class DrawingSystem {
         
         // Finalize undo/redo group
         this.voxelEngine.finalizePendingOperations();
+        
+        // Log the operation
+        if (operationCount > 0) {
+            import('../ui/ActionLogger').then(({ ActionLogger }) => {
+                const logger = ActionLogger.getInstance();
+                if (this.drawMode === 'add') {
+                    logger.log(ActionLogger.actions.placeVoxel(operationCount));
+                } else {
+                    logger.log(ActionLogger.actions.removeVoxel(operationCount));
+                }
+            });
+        }
     }
     
     /**
@@ -880,6 +896,26 @@ export class DrawingSystem {
         this.clearToolPreviews();
         this.boxStart = null;
         this.lineStart = null;
+        
+        // Update current tool display in info bar
+        const toolElement = document.getElementById('current-tool');
+        if (toolElement) {
+            const toolNames: { [key: string]: string } = {
+                'brush': 'Brush',
+                'eraser': 'Eraser',
+                'box': 'Box',
+                'line': 'Line',
+                'fill': 'Fill',
+                'asset': 'Asset'
+            };
+            toolElement.textContent = toolNames[mode] || mode;
+        }
+        
+        // Log tool change
+        import('../ui/ActionLogger').then(({ ActionLogger }) => {
+            const logger = ActionLogger.getInstance();
+            logger.log(ActionLogger.actions.selectTool(mode));
+        });
         
         // Clear asset selection when switching tools
         if (mode !== 'asset') {
