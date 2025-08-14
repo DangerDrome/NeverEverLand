@@ -210,4 +210,94 @@ export class FileManager {
     getSupportedExportFormats(): string[] {
         return ['vox', 'json'];
     }
+    
+    /**
+     * Export a specific layer to VOX file
+     */
+    async exportLayer(layerId: string, format: 'vox' | 'json'): Promise<void> {
+        const layers = this.voxelEngine.getAllLayers();
+        const layer = layers.find(l => l.id === layerId);
+        
+        if (!layer) {
+            throw new Error(`Layer with id ${layerId} not found`);
+        }
+        
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+        const filename = `${layer.name.replace(/\s+/g, '_')}_${timestamp}`;
+        
+        if (format === 'vox') {
+            // Get voxels from the specific layer
+            const voxelsByType = layer.getVoxelsByType();
+            
+            // Create VOX file
+            const buffer = this.voxWriter.createVoxFile(voxelsByType);
+            
+            // Download file
+            this.downloadFile(buffer, `${filename}.vox`, 'application/octet-stream');
+            
+            console.log(`Exported ${layer.getVoxelCount()} voxels from layer "${layer.name}" to VOX file`);
+        } else {
+            // Export as JSON with layer data
+            const exportData = {
+                version: '2.0',
+                timestamp: Date.now(),
+                voxelSize: 0.1,
+                layers: [layer.exportData()],
+                metadata: {
+                    format: 'NeverEverLand v007 Layer Export',
+                    layerName: layer.name,
+                    voxelCount: layer.getVoxelCount()
+                }
+            };
+            
+            const json = JSON.stringify(exportData, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            this.downloadFile(blob, `${filename}.json`, 'application/json');
+            
+            console.log(`Exported layer "${layer.name}" to JSON file`);
+        }
+    }
+    
+    /**
+     * Import VOX file into a specific layer
+     */
+    async importToLayer(file: File, layerId: string): Promise<void> {
+        const layers = this.voxelEngine.getAllLayers();
+        const layer = layers.find(l => l.id === layerId);
+        
+        if (!layer) {
+            throw new Error(`Layer with id ${layerId} not found`);
+        }
+        
+        const extension = file.name.split('.').pop()?.toLowerCase();
+        
+        if (extension === 'vox') {
+            try {
+                const buffer = await file.arrayBuffer();
+                const voxData = await this.voxParser.parseVoxFile(buffer);
+                
+                console.log(`Importing VOX file with ${voxData.models.length} models into layer "${layer.name}"`);
+                
+                // Clear the layer first
+                layer.clear();
+                
+                // Convert and import voxels
+                const voxels = this.voxParser.convertToVoxelData(voxData);
+                
+                for (const [posKey, type] of voxels.entries()) {
+                    layer.setVoxel(posKey, type);
+                }
+                
+                // Update rendering
+                this.voxelEngine.updateInstances();
+                
+                console.log(`Imported ${voxels.size} voxels into layer "${layer.name}"`);
+            } catch (error) {
+                console.error('Error importing VOX file:', error);
+                throw new Error(`Failed to import VOX file: ${error}`);
+            }
+        } else {
+            throw new Error(`Unsupported file format for layer import: ${extension}`);
+        }
+    }
 }

@@ -4,10 +4,12 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { TiltShiftPass } from './postprocessing/TiltShiftPass';
 import { VoxelEngine, VoxelType } from './engine/VoxelEngine';
+import { VoxelRenderer } from './engine/VoxelRenderer';
 import { DrawingSystem } from './interaction/DrawingSystem';
 import { PerformanceMonitor } from './ui/Performance';
 import { DirectionIndicator } from './ui/DirectionIndicator';
 import { VoxelPanel } from './ui/VoxelPanel';
+import { LayerPanel } from './ui/LayerPanel';
 import { FileManager } from './io/FileManager';
 import { DynamicGrid } from './ui/DynamicGrid';
 import { BoxSelectionTool } from './tools/BoxSelectionTool';
@@ -196,6 +198,33 @@ const SETTINGS = {
         showWireframe: true            // Show wireframe/edges on startup
     },
     
+    // Color Palette Settings - Soft but vibrant colors for voxel painting
+    colorPalette: [
+        // Row 1 - Neutrals
+        { name: 'Pure White', hex: '#FFFFFF' },       // Clean white
+        { name: 'Silver', hex: '#D4D4D4' },           // Light gray
+        { name: 'Stone Gray', hex: '#9B9B9B' },       // Medium gray
+        { name: 'Charcoal', hex: '#4A4A4A' },         // Dark gray
+        
+        // Row 2 - Warm colors
+        { name: 'Rose Pink', hex: '#FF99CC' },        // Soft pink
+        { name: 'Peach', hex: '#FFAB91' },            // Warm peach
+        { name: 'Tangerine', hex: '#FFB366' },        // Soft orange
+        { name: 'Butter', hex: '#FFE082' },           // Warm yellow
+        
+        // Row 3 - Cool colors
+        { name: 'Sky Blue', hex: '#90CAF9' },         // Clear blue
+        { name: 'Mint', hex: '#80CBC4' },             // Fresh mint
+        { name: 'Lavender', hex: '#B39DDB' },         // Soft purple
+        { name: 'Aqua', hex: '#80DEEA' },             // Bright aqua
+        
+        // Row 4 - Nature colors
+        { name: 'Sage', hex: '#A5D6A7' },             // Natural green
+        { name: 'Sand', hex: '#BCAAA4' },             // Warm beige
+        { name: 'Terracotta', hex: '#CE9686' },       // Earthy orange
+        { name: 'Ocean', hex: '#7986CB' }             // Deep blue
+    ],
+    
     // Voxel Settings
     voxel: {
         size: 0.1                      // Fixed voxel size at 0.1m for high detail
@@ -221,6 +250,7 @@ class VoxelApp {
     private performanceMonitor: PerformanceMonitor | null;
     private directionIndicator: DirectionIndicator | null;
     private voxelPanel: VoxelPanel | null;
+    private layerPanel: LayerPanel | null;
     private fileManager: FileManager | null;
     private boxSelectionTool: BoxSelectionTool | null;
     private raycaster: THREE.Raycaster;
@@ -253,6 +283,7 @@ class VoxelApp {
         this.performanceMonitor = null;
         this.directionIndicator = null;
         this.voxelPanel = null;
+        this.layerPanel = null;
         this.fileManager = null;
         this.boxSelectionTool = null;
         
@@ -503,16 +534,26 @@ class VoxelApp {
         // Setup post-processing
         this.setupPostProcessing();
         
+        // Update VoxelRenderer with custom colors from settings
+        VoxelRenderer.updateCustomColors(SETTINGS.colorPalette);
+        
         // Initialize systems
         // Always use 0.1m voxel size for high detail
         this.voxelEngine = new VoxelEngine(this.scene, SETTINGS.ui.showWireframe, SETTINGS.voxel.size);
         this.drawingSystem = new DrawingSystem(this.voxelEngine);
         this.performanceMonitor = new PerformanceMonitor();
         this.directionIndicator = new DirectionIndicator();
-        this.voxelPanel = new VoxelPanel(this.drawingSystem);
+        this.voxelPanel = new VoxelPanel(this.drawingSystem, SETTINGS.colorPalette);
+        this.layerPanel = new LayerPanel(this.voxelEngine, () => {
+            // Update callback - re-render when layer state changes
+            this.voxelEngine?.updateInstances();
+        });
         
         // Connect asset manager to drawing system
         this.drawingSystem.setAssetManager(this.voxelPanel.getAssetManager());
+        
+        // Add layer panel to the page
+        document.body.appendChild(this.layerPanel.getElement());
         
         // Update tilt-shift button initial state after VoxelPanel creates it
         setTimeout(() => {
@@ -642,6 +683,11 @@ class VoxelApp {
             this.renderer.domElement.addEventListener('mouseup', (e) => this.onMouseUp(e));
             this.renderer.domElement.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
             this.renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+            
+            // Drag and drop events
+            this.renderer.domElement.addEventListener('dragover', (e) => this.onDragOver(e));
+            this.renderer.domElement.addEventListener('dragleave', (e) => this.onDragLeave(e));
+            this.renderer.domElement.addEventListener('drop', (e) => this.onDrop(e));
         }
         
         // Keyboard events
@@ -1322,6 +1368,83 @@ class VoxelApp {
                     this.drawingSystem.rotateAsset();
                 }
                 break;
+        }
+    }
+    
+    onDragOver(event: DragEvent): void {
+        // Prevent default to allow drop
+        event.preventDefault();
+        
+        // Check if the dragged item is a file
+        if (event.dataTransfer?.types.includes('Files')) {
+            event.dataTransfer.dropEffect = 'copy';
+            
+            // Add visual feedback
+            const container = document.getElementById('container');
+            if (container && !container.classList.contains('drag-over')) {
+                container.classList.add('drag-over');
+            }
+        }
+    }
+    
+    onDragLeave(event: DragEvent): void {
+        // Remove visual feedback when leaving the drop zone
+        const container = document.getElementById('container');
+        if (container) {
+            container.classList.remove('drag-over');
+        }
+    }
+    
+    onDrop(event: DragEvent): void {
+        // Prevent default browser handling
+        event.preventDefault();
+        
+        // Remove visual feedback
+        const container = document.getElementById('container');
+        if (container) {
+            container.classList.remove('drag-over');
+        }
+        
+        // Check if files were dropped
+        const files = event.dataTransfer?.files;
+        if (!files || files.length === 0) return;
+        
+        // Process each dropped file
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            
+            // Check if it's a VOX file
+            if (file.name.toLowerCase().endsWith('.vox')) {
+                // Create a new layer for this VOX file
+                const layer = this.voxelEngine?.createLayer(file.name.replace('.vox', ''));
+                
+                if (layer && this.fileManager) {
+                    // Set the new layer as active
+                    this.voxelEngine?.setActiveLayer(layer.id);
+                    
+                    // Import the VOX file into the new layer
+                    this.fileManager.importToLayer(file, layer.id).then(() => {
+                        console.log(`Imported ${file.name} into new layer "${layer.name}"`);
+                        
+                        // Refresh the layer panel to show the new layer
+                        this.layerPanel?.refresh();
+                        
+                        // Update the preview for the new layer
+                        const layerElement = document.querySelector(`[data-layer-id="${layer.id}"] .layer-preview`) as HTMLCanvasElement;
+                        if (layerElement && this.layerPanel) {
+                            // Trigger preview update (requires access to the private method, so we'll call refresh instead)
+                            this.layerPanel.refresh();
+                        }
+                    }).catch((error) => {
+                        console.error(`Failed to import ${file.name}:`, error);
+                        // Remove the layer if import failed
+                        this.voxelEngine?.deleteLayer(layer.id);
+                        this.layerPanel?.refresh();
+                    });
+                }
+            } else {
+                console.warn(`Skipping non-VOX file: ${file.name}`);
+            }
         }
     }
     

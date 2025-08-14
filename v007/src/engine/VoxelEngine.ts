@@ -2,16 +2,18 @@ import * as THREE from 'three';
 import { VoxelRenderer } from './VoxelRenderer';
 import { VoxelType, VoxelPosition, RaycastHit } from '../types';
 import { UndoRedoManager } from './UndoRedoManager';
+import { VoxelLayer } from './VoxelLayer';
 
 export { VoxelType };
 
 export class VoxelEngine {
     private scene: THREE.Scene;
     private voxelSize: number;
-    private voxels: Map<string, VoxelType>;
-    private voxelsByType: Map<VoxelType, Set<string>>;
+    private layers: VoxelLayer[];
+    private activeLayerId: string;
     private renderer: VoxelRenderer;
     private undoRedoManager: UndoRedoManager;
+    private layerIdCounter: number = 0;
     
     // Batch update system
     private batchMode: boolean = false;
@@ -24,9 +26,10 @@ export class VoxelEngine {
         this.scene = scene;
         this.voxelSize = voxelSize; // Current voxel size for the world
         
-        // Simple voxel storage
-        this.voxels = new Map(); // key: "x,y,z" string, value: voxel type
-        this.voxelsByType = new Map(); // key: voxel type, value: Set of position strings
+        // Initialize with a default layer
+        this.layers = [];
+        const defaultLayer = this.createLayer('Layer 1');
+        this.activeLayerId = defaultLayer.id;
         
         // Voxel renderer handles all rendering
         this.renderer = new VoxelRenderer(scene, this.voxelSize, showWireframe);
@@ -45,6 +48,91 @@ export class VoxelEngine {
         return this.voxelSize;
     }
     
+    // Layer management methods
+    createLayer(name?: string): VoxelLayer {
+        const id = `layer_${++this.layerIdCounter}`;
+        const layerName = name || `Layer ${this.layerIdCounter}`;
+        const layer = new VoxelLayer(id, layerName);
+        this.layers.push(layer);
+        return layer;
+    }
+    
+    deleteLayer(layerId: string): boolean {
+        // Can't delete the last layer
+        if (this.layers.length <= 1) return false;
+        
+        const index = this.layers.findIndex(l => l.id === layerId);
+        if (index === -1) return false;
+        
+        // Remove the layer
+        this.layers.splice(index, 1);
+        
+        // If this was the active layer, switch to the first layer
+        if (this.activeLayerId === layerId && this.layers.length > 0) {
+            this.activeLayerId = this.layers[0].id;
+        }
+        
+        return true;
+    }
+    
+    setActiveLayer(layerId: string): boolean {
+        const layer = this.layers.find(l => l.id === layerId);
+        if (layer) {
+            this.activeLayerId = layerId;
+            return true;
+        }
+        return false;
+    }
+    
+    getActiveLayer(): VoxelLayer | null {
+        return this.layers.find(l => l.id === this.activeLayerId) || null;
+    }
+    
+    getAllLayers(): VoxelLayer[] {
+        return [...this.layers];
+    }
+    
+    moveLayer(layerId: string, newIndex: number): boolean {
+        const currentIndex = this.layers.findIndex(l => l.id === layerId);
+        if (currentIndex === -1 || newIndex < 0 || newIndex >= this.layers.length) {
+            return false;
+        }
+        
+        // Remove and reinsert at new position
+        const [layer] = this.layers.splice(currentIndex, 1);
+        this.layers.splice(newIndex, 0, layer);
+        return true;
+    }
+    
+    duplicateLayer(layerId: string): VoxelLayer | null {
+        const sourceLayer = this.layers.find(l => l.id === layerId);
+        if (!sourceLayer) return null;
+        
+        const newLayer = this.createLayer(`${sourceLayer.name} copy`);
+        
+        // Copy all voxels
+        const exportData = sourceLayer.exportData();
+        newLayer.importData(exportData);
+        
+        return newLayer;
+    }
+    
+    mergeLayerDown(layerId: string): boolean {
+        const index = this.layers.findIndex(l => l.id === layerId);
+        if (index <= 0) return false; // Can't merge first layer down
+        
+        const sourceLayer = this.layers[index];
+        const targetLayer = this.layers[index - 1];
+        
+        // Copy all voxels from source to target
+        for (const [key, type] of sourceLayer.getVoxels()) {
+            targetLayer.setVoxel(key, type);
+        }
+        
+        // Delete the source layer
+        this.deleteLayer(layerId);
+        return true;
+    }
     
     // Create position key for voxel storage
     private positionKey(x: number, y: number, z: number): string {
@@ -68,8 +156,11 @@ export class VoxelEngine {
         // Prevent placing voxels below the ground plane
         if (y < 0) return false;
         
+        const activeLayer = this.getActiveLayer();
+        if (!activeLayer || activeLayer.locked) return false;
+        
         const key = this.positionKey(x, y, z);
-        const oldType = this.voxels.get(key) || VoxelType.AIR;
+        const oldType = activeLayer.getVoxel(key);
         
         // No change needed
         if (oldType === type) return false;
@@ -83,27 +174,8 @@ export class VoxelEngine {
             );
         }
         
-        // Update voxels map
-        if (type === VoxelType.AIR) {
-            this.voxels.delete(key);
-        } else {
-            this.voxels.set(key, type);
-        }
-        
-        // Update voxelsByType map
-        if (oldType !== VoxelType.AIR) {
-            const oldTypeSet = this.voxelsByType.get(oldType);
-            if (oldTypeSet) {
-                oldTypeSet.delete(key);
-            }
-        }
-        
-        if (type !== VoxelType.AIR) {
-            if (!this.voxelsByType.has(type)) {
-                this.voxelsByType.set(type, new Set());
-            }
-            this.voxelsByType.get(type)!.add(key);
-        }
+        // Update voxel in active layer
+        activeLayer.setVoxel(key, type);
         
         // Track changed voxel for batch update
         if (this.batchMode) {
@@ -113,14 +185,26 @@ export class VoxelEngine {
         return true;
     }
     
-    // Get voxel at position
+    // Get voxel at position (checks all visible layers from top to bottom)
     getVoxel(x: number, y: number, z: number): VoxelType {
         x = Math.floor(x);
         y = Math.floor(y);
         z = Math.floor(z);
         
         const key = this.positionKey(x, y, z);
-        return this.voxels.get(key) || VoxelType.AIR;
+        
+        // Check layers from top to bottom
+        for (let i = this.layers.length - 1; i >= 0; i--) {
+            const layer = this.layers[i];
+            if (layer.visible) {
+                const type = layer.getVoxel(key);
+                if (type !== VoxelType.AIR) {
+                    return type;
+                }
+            }
+        }
+        
+        return VoxelType.AIR;
     }
     
     // Update all instance buffers
@@ -184,7 +268,33 @@ export class VoxelEngine {
     
     // Perform the actual update
     private performUpdate(): void {
-        this.renderer.updateFromVoxelsByType(this.voxelsByType, this.batchMode);
+        // Combine voxels from all visible layers
+        const combinedVoxelsByType = new Map<VoxelType, Set<string>>();
+        
+        // Initialize map for all voxel types
+        for (const type of Object.values(VoxelType)) {
+            if (typeof type === 'number' && type !== VoxelType.AIR) {
+                combinedVoxelsByType.set(type, new Set());
+            }
+        }
+        
+        // Combine layers from bottom to top
+        for (const layer of this.layers) {
+            if (layer.visible) {
+                const layerVoxelsByType = layer.getVoxelsByType();
+                for (const [type, positions] of layerVoxelsByType) {
+                    const combinedSet = combinedVoxelsByType.get(type);
+                    if (combinedSet) {
+                        // Add all positions from this layer
+                        for (const pos of positions) {
+                            combinedSet.add(pos);
+                        }
+                    }
+                }
+            }
+        }
+        
+        this.renderer.updateFromVoxelsByType(combinedVoxelsByType, this.batchMode);
         this.lastUpdateTime = Date.now();
         
         // Clear batched changes after update
@@ -404,25 +514,28 @@ export class VoxelEngine {
         return null;
     }
     
-    // Get total voxel count
+    // Get total voxel count across all layers
     getVoxelCount(): number {
-        return this.voxels.size;
+        let count = 0;
+        for (const layer of this.layers) {
+            count += layer.getVoxelCount();
+        }
+        return count;
     }
     
-    // Export voxel data for saving
+    // Export voxel data for saving (includes all layers)
     exportVoxels(): any {
         const voxelData: any = {
-            version: '1.0',
+            version: '2.0', // Updated version for layer support
             timestamp: Date.now(),
             voxelSize: this.voxelSize,
-            voxels: {}
+            activeLayerId: this.activeLayerId,
+            layers: []
         };
         
-        // Export all voxels by type
-        for (const [type, positions] of this.voxelsByType.entries()) {
-            if (type !== VoxelType.AIR && positions.size > 0) {
-                voxelData.voxels[type] = Array.from(positions);
-            }
+        // Export all layers
+        for (const layer of this.layers) {
+            voxelData.layers.push(layer.exportData());
         }
         
         return voxelData;
@@ -430,23 +543,43 @@ export class VoxelEngine {
     
     // Import voxel data from file
     importVoxels(data: any): void {
-        if (!data || !data.voxels) {
+        if (!data) {
             throw new Error('Invalid voxel data format');
         }
         
         // Clear existing voxels
         this.clear();
         
-        // Import voxels by type
-        for (const [typeStr, positions] of Object.entries(data.voxels)) {
-            const type = parseInt(typeStr) as VoxelType;
-            if (type in VoxelType && Array.isArray(positions)) {
-                for (const posKey of positions as string[]) {
-                    const [x, y, z] = posKey.split(',').map(Number);
-                    // Don't record undo operations when importing
-                    this.setVoxel(x, y, z, type, false);
+        // Check if this is the new layer format
+        if (data.version === '2.0' && data.layers) {
+            // Import layers
+            for (const layerData of data.layers) {
+                const layer = this.createLayer(layerData.name);
+                layer.importData(layerData);
+            }
+            
+            // Set active layer if specified
+            if (data.activeLayerId) {
+                this.setActiveLayer(data.activeLayerId);
+            }
+        } else if (data.voxels) {
+            // Old format - import into the default layer
+            const activeLayer = this.getActiveLayer();
+            if (!activeLayer) return;
+            
+            // Import voxels by type
+            for (const [typeStr, positions] of Object.entries(data.voxels)) {
+                const type = parseInt(typeStr) as VoxelType;
+                if (type in VoxelType && Array.isArray(positions)) {
+                    for (const posKey of positions as string[]) {
+                        const [x, y, z] = posKey.split(',').map(Number);
+                        // Don't record undo operations when importing
+                        this.setVoxel(x, y, z, type, false);
+                    }
                 }
             }
+        } else {
+            throw new Error('Invalid voxel data format');
         }
         
         console.log(`Imported ${this.getVoxelCount()} voxels from file`);
@@ -454,15 +587,11 @@ export class VoxelEngine {
 
     // Clear all voxels
     clear(): void {
-        this.voxels.clear();
-        this.voxelsByType.clear();
-        
-        // Re-initialize type maps
-        for (const type of Object.values(VoxelType)) {
-            if (typeof type === 'number') {
-                this.voxelsByType.set(type, new Set());
-            }
-        }
+        // Clear all layers but keep at least one
+        this.layers = [];
+        this.layerIdCounter = 0;
+        const defaultLayer = this.createLayer('Layer 1');
+        this.activeLayerId = defaultLayer.id;
         
         this.renderer.clear();
         
@@ -470,19 +599,28 @@ export class VoxelEngine {
         this.undoRedoManager.clear();
     }
     
-    // Get bounds of all voxels
+    // Get bounds of all voxels across all layers
     getBounds(): { min: VoxelPosition; max: VoxelPosition } {
         let min = { x: Infinity, y: Infinity, z: Infinity };
         let max = { x: -Infinity, y: -Infinity, z: -Infinity };
         
-        for (const posKey of this.voxels.keys()) {
-            const { x, y, z } = this.parsePositionKey(posKey);
-            min.x = Math.min(min.x, x);
-            min.y = Math.min(min.y, y);
-            min.z = Math.min(min.z, z);
-            max.x = Math.max(max.x, x);
-            max.y = Math.max(max.y, y);
-            max.z = Math.max(max.z, z);
+        let hasVoxels = false;
+        for (const layer of this.layers) {
+            for (const posKey of layer.getVoxels().keys()) {
+                const { x, y, z } = this.parsePositionKey(posKey);
+                min.x = Math.min(min.x, x);
+                min.y = Math.min(min.y, y);
+                min.z = Math.min(min.z, z);
+                max.x = Math.max(max.x, x);
+                max.y = Math.max(max.y, y);
+                max.z = Math.max(max.z, z);
+                hasVoxels = true;
+            }
+        }
+        
+        // If no voxels, return default bounds
+        if (!hasVoxels) {
+            return { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } };
         }
         
         return { min, max };
@@ -539,20 +677,27 @@ export class VoxelEngine {
         this.renderer.forceUpdateEdges();
     }
     
-    // Get all voxels in the world
+    // Get all voxels in the world (from all visible layers)
     getAllVoxels(): Array<{ x: number; y: number; z: number; type: VoxelType }> {
         const allVoxels: Array<{ x: number; y: number; z: number; type: VoxelType }> = [];
+        const processedPositions = new Set<string>();
         
-        // Iterate through all stored voxels
-        for (const [key, type] of this.voxels.entries()) {
-            if (type !== VoxelType.AIR) {
-                const pos = this.parsePositionKey(key);
-                allVoxels.push({
-                    x: pos.x,
-                    y: pos.y,
-                    z: pos.z,
-                    type: type
-                });
+        // Iterate through layers from top to bottom
+        for (let i = this.layers.length - 1; i >= 0; i--) {
+            const layer = this.layers[i];
+            if (layer.visible) {
+                for (const [key, type] of layer.getVoxels().entries()) {
+                    if (type !== VoxelType.AIR && !processedPositions.has(key)) {
+                        const pos = this.parsePositionKey(key);
+                        allVoxels.push({
+                            x: pos.x,
+                            y: pos.y,
+                            z: pos.z,
+                            type: type
+                        });
+                        processedPositions.add(key);
+                    }
+                }
             }
         }
         

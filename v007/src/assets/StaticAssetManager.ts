@@ -1,10 +1,12 @@
 import { VoxelType } from '../engine/VoxelEngine';
 import { VoxParser } from '../io/VoxParser';
+import { VoxWriter } from '../io/VoxWriter';
 import { AssetInfo, AssetData, IAssetManager } from './types';
 import { DEFAULT_ASSETS } from './defaultAssets';
 
 export class StaticAssetManager implements IAssetManager {
     private voxParser: VoxParser;
+    private voxWriter: VoxWriter;
     private assetCache: Map<string, AssetData>;
     private db: IDBDatabase | null = null;
     private readonly DB_NAME = 'VoxelAssets';
@@ -12,6 +14,7 @@ export class StaticAssetManager implements IAssetManager {
     
     constructor() {
         this.voxParser = new VoxParser();
+        this.voxWriter = new VoxWriter();
         this.assetCache = new Map();
         this.initIndexedDB();
     }
@@ -88,8 +91,9 @@ export class StaticAssetManager implements IAssetManager {
                 request.onsuccess = () => {
                     if (request.result) {
                         const data = request.result as AssetData;
-                        // Ensure user assets also have correct voxel types
-                        if (data.voxelData && data.type) {
+                        // For user assets, preserve the actual voxel colors
+                        // Only override colors for default assets
+                        if (!data.isUserAsset && data.voxelData && data.type) {
                             const correctedVoxelData = new Map<string, VoxelType>();
                             for (const [key, _] of data.voxelData) {
                                 correctedVoxelData.set(key, data.type);
@@ -135,6 +139,42 @@ export class StaticAssetManager implements IAssetManager {
         
         // Add to cache
         this.assetCache.set(id, assetData);
+        
+        return id;
+    }
+    
+    async updateAsset(id: string, asset: Omit<AssetData, 'id' | 'created'>): Promise<string> {
+        // Can only update user assets
+        if (!id.startsWith('user_')) {
+            throw new Error('Cannot update default assets - save as new asset instead');
+        }
+        
+        if (!this.db) {
+            await this.initIndexedDB();
+        }
+        
+        // Get existing asset to preserve created date
+        const existingAsset = await this.loadAsset(id);
+        
+        const updatedAsset: AssetData = {
+            ...asset,
+            id,
+            created: existingAsset.created,
+            modified: new Date(),
+            isUserAsset: true
+        };
+        
+        const tx = this.db!.transaction(['assets'], 'readwrite');
+        const store = tx.objectStore('assets');
+        const request = store.put(updatedAsset);
+        
+        await new Promise((resolve, reject) => {
+            request.onsuccess = () => resolve(undefined);
+            request.onerror = () => reject(request.error);
+        });
+        
+        // Update cache
+        this.assetCache.set(id, updatedAsset);
         
         return id;
     }
@@ -206,6 +246,39 @@ export class StaticAssetManager implements IAssetManager {
                 voxelData: new Map()
             };
         }
+    }
+    
+    /**
+     * Export an asset as a .vox file
+     */
+    async exportAssetAsVox(id: string): Promise<void> {
+        const asset = await this.loadAsset(id);
+        if (!asset.voxelData || asset.voxelData.size === 0) {
+            throw new Error('Asset has no voxel data');
+        }
+        
+        // Group voxels by type for the VoxWriter
+        const voxelsByType = new Map<VoxelType, Set<string>>();
+        for (const [posKey, type] of asset.voxelData) {
+            if (!voxelsByType.has(type)) {
+                voxelsByType.set(type, new Set());
+            }
+            voxelsByType.get(type)!.add(posKey);
+        }
+        
+        // Create VOX file
+        const buffer = this.voxWriter.createVoxFile(voxelsByType);
+        
+        // Download the file
+        const blob = new Blob([buffer], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${asset.name.replace(/[^a-z0-9]/gi, '_')}.vox`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     }
     
     // Optional: Export all user assets as a zip file

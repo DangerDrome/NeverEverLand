@@ -16,8 +16,8 @@ export class DirectionIndicator {
         this.canvas.width = this.size;
         this.canvas.height = this.size;
         this.canvas.style.position = 'absolute';
-        this.canvas.style.top = '10px';
-        this.canvas.style.right = '10px';
+        this.canvas.style.bottom = '10px';
+        this.canvas.style.left = '10px';
         this.canvas.style.border = '1px solid rgba(0, 0, 0, 0.3)';
         this.canvas.style.borderRadius = '8px';
         this.canvas.style.backgroundColor = 'rgba(50, 50, 50, 0.8)';

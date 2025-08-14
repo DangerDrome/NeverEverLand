@@ -14,7 +14,24 @@ const VOXEL_TYPES: Record<VoxelType, VoxelTypeDefinition> = {
     [VoxelType.WATER]: { color: 'rgb(135, 206, 235)', transparent: true, opacity: 0.95 }, // Sky blue (more transparent)
     [VoxelType.SAND]: { color: 'rgb(255, 228, 181)' },       // Moccasin (sandy color)
     [VoxelType.SNOW]: { color: 'rgb(240, 248, 255)', transparent: true, opacity: 0.85 },  // Alice blue (semi-transparent)
-    [VoxelType.ICE]: { color: 'rgb(135, 206, 235)', transparent: true, opacity: 0.9 }   // Sky blue
+    [VoxelType.ICE]: { color: 'rgb(135, 206, 235)', transparent: true, opacity: 0.9 },   // Sky blue
+    // Custom color slots - will be populated from color palette
+    [VoxelType.CUSTOM_1]: { color: '#FFFFFF' },
+    [VoxelType.CUSTOM_2]: { color: '#D4D4D4' },
+    [VoxelType.CUSTOM_3]: { color: '#9B9B9B' },
+    [VoxelType.CUSTOM_4]: { color: '#4A4A4A' },
+    [VoxelType.CUSTOM_5]: { color: '#FF99CC' },
+    [VoxelType.CUSTOM_6]: { color: '#FFAB91' },
+    [VoxelType.CUSTOM_7]: { color: '#FFB366' },
+    [VoxelType.CUSTOM_8]: { color: '#FFE082' },
+    [VoxelType.CUSTOM_9]: { color: '#90CAF9' },
+    [VoxelType.CUSTOM_10]: { color: '#80CBC4' },
+    [VoxelType.CUSTOM_11]: { color: '#B39DDB' },
+    [VoxelType.CUSTOM_12]: { color: '#80DEEA' },
+    [VoxelType.CUSTOM_13]: { color: '#A5D6A7' },
+    [VoxelType.CUSTOM_14]: { color: '#BCAAA4' },
+    [VoxelType.CUSTOM_15]: { color: '#CE9686' },
+    [VoxelType.CUSTOM_16]: { color: '#7986CB' }
 };
 
 interface InstanceData {
@@ -435,9 +452,12 @@ export class VoxelRenderer {
         // Store the complete voxel data
         this.currentVoxelData = allVoxelData;
         
-        // Update edges if enabled and under the performance limit
-        if (this.showEdges && allVoxelData.length > 0) {
-            if (allVoxelData.length < 50000) {  // Increased limit to 50k voxels
+        // Update edges if enabled
+        if (this.showEdges) {
+            if (allVoxelData.length === 0) {
+                // No voxels visible, clear edges
+                this.edgeRenderer.clearEdges();
+            } else if (allVoxelData.length < 50000) {  // Increased limit to 50k voxels
                 // Update edges with ALL current voxels in the scene
                 this.edgeRenderer.updateEdges(allVoxelData);
             } else {
@@ -548,10 +568,15 @@ export class VoxelRenderer {
         this.currentVoxelData = allVoxelData;
         
         // Update edges if needed (with throttling)
-        if (this.showEdges && allVoxelData.length < 50000) {  // Increased limit to 50k
-            this.edgeRenderer.updateEdges(allVoxelData);
-        } else if (this.showEdges) {
-            this.edgeRenderer.clearEdges();
+        if (this.showEdges) {
+            if (allVoxelData.length === 0) {
+                // No voxels visible, clear edges
+                this.edgeRenderer.clearEdges();
+            } else if (allVoxelData.length < 50000) {  // Increased limit to 50k
+                this.edgeRenderer.updateEdges(allVoxelData);
+            } else {
+                this.edgeRenderer.clearEdges();
+            }
         }
     }
     
@@ -651,6 +676,16 @@ export class VoxelRenderer {
             data.startIndex = 0;
             data.count = 0;
         }
+    }
+    
+    // Update custom color definitions from color palette
+    static updateCustomColors(colorPalette: { hex: string }[]): void {
+        colorPalette.forEach((color, index) => {
+            const voxelType = (VoxelType.CUSTOM_1 + index) as VoxelType;
+            if (VOXEL_TYPES[voxelType]) {
+                VOXEL_TYPES[voxelType].color = color.hex;
+            }
+        });
     }
     
     // Dispose of all resources

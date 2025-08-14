@@ -4,6 +4,8 @@ import { FileManager } from '../io/FileManager';
 import { StaticAssetManager } from '../assets/StaticAssetManager';
 import { AssetPopover } from './AssetPopover';
 import { AssetInfo } from '../assets/types';
+import { ModalDialog } from './ModalDialog';
+import { ColorPickerPopover, ColorInfo } from './ColorPickerPopover';
 
 interface VoxelButtonInfo {
     type: VoxelType;
@@ -20,15 +22,22 @@ export class VoxelPanel {
     private voxelButtons: Map<VoxelType, HTMLElement> = new Map();
     private toolButtons: Map<string, HTMLElement> = new Map();
     private selectedType: VoxelType = VoxelType.GRASS;
+    private selectedColor: ColorInfo | null = null;
     private selectedTool: string = 'brush';
     private assetManager: StaticAssetManager;
     private assetPopover: AssetPopover;
+    private colorPickerPopover: ColorPickerPopover;
     private voxelTypes: VoxelButtonInfo[] = [];
     
-    constructor(drawingSystem: DrawingSystem) {
+    constructor(drawingSystem: DrawingSystem, colorPalette?: ColorInfo[]) {
         this.drawingSystem = drawingSystem;
         this.assetManager = new StaticAssetManager();
         this.assetPopover = new AssetPopover(this.assetManager);
+        this.colorPickerPopover = new ColorPickerPopover(colorPalette);
+        
+        // Register this panel with the drawing system
+        this.drawingSystem.setVoxelPanel(this);
+        
         this.createPanel();
     }
     
@@ -322,10 +331,22 @@ export class VoxelPanel {
             
             // Otherwise show asset popover
             try {
-                await this.assetPopover.show(button, info.type, (asset) => {
-                    // When an asset is selected
-                    this.onAssetSelected(asset);
-                });
+                await this.assetPopover.show(
+                    button, 
+                    info.type, 
+                    (asset) => {
+                        // When an asset is selected
+                        this.onAssetSelected(asset);
+                    },
+                    (asset) => {
+                        // When an asset is edited
+                        this.onAssetEdit(asset);
+                    },
+                    (asset) => {
+                        // When an asset is deleted
+                        this.onAssetDelete(asset);
+                    }
+                );
             } catch (error) {
                 // If no assets available or popover cancelled, stay in single voxel mode
                 // Clear any asset selection to ensure we're in voxel painting mode
@@ -381,20 +402,6 @@ export class VoxelPanel {
         iconSpan.innerHTML = `<i data-lucide="box" style="width: 20px; height: 20px; stroke-width: 2;"></i>`;
         button.appendChild(iconSpan);
         
-        // Add subtle glow effect
-        const glowEffect = document.createElement('div');
-        glowEffect.style.cssText = `
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 20px;
-            height: 20px;
-            background: radial-gradient(circle, rgba(100, 200, 255, 0.4) 0%, transparent 70%);
-            transform: translate(-50%, -50%);
-            pointer-events: none;
-        `;
-        button.appendChild(glowEffect);
-        
         // Hover effect
         button.addEventListener('mouseenter', () => {
             if (!button.classList.contains('selected')) {
@@ -410,8 +417,18 @@ export class VoxelPanel {
             }
         });
         
-        // Click handler - enter single voxel mode
-        button.addEventListener('click', () => {
+        // Click handler - show color picker popover
+        button.addEventListener('click', async () => {
+            // If already selected, show color picker
+            if (button.classList.contains('selected')) {
+                await this.colorPickerPopover.show(button, (color) => {
+                    this.selectedColor = color;
+                    this.updateVoxelBrushButtonWithColor(color);
+                    console.log(`Selected color: ${color.name} (${color.hex})`);
+                });
+                return;
+            }
+            
             // Clear any asset selection and ensure we're in brush mode
             this.drawingSystem.setSelectedAsset(null);
             this.drawingSystem.setToolMode('brush');
@@ -443,6 +460,13 @@ export class VoxelPanel {
             button.style.animation = 'pulse 0.3s ease-out';
             
             console.log('Single voxel brush mode activated');
+            
+            // Show color picker automatically on first click
+            await this.colorPickerPopover.show(button, (color) => {
+                this.selectedColor = color;
+                this.updateVoxelBrushButtonWithColor(color);
+                console.log(`Selected color: ${color.name} (${color.hex})`);
+            });
         });
         
         // Add pulse animation
@@ -1049,8 +1073,138 @@ export class VoxelPanel {
         console.log(`Selected asset: ${asset.name} (${asset.id})`);
     }
     
+    private async onAssetEdit(asset: AssetInfo): Promise<void> {
+        if (!this.voxelEngine) {
+            console.error('VoxelEngine not set');
+            return;
+        }
+        
+        try {
+            // Load the asset data
+            const assetData = await this.assetManager.loadAsset(asset.id);
+            if (!assetData || !assetData.voxelData) {
+                console.error('Failed to load asset data');
+                return;
+            }
+            
+            // Create a new layer for editing
+            const layer = this.voxelEngine.createLayer(`Edit: ${asset.name}`);
+            
+            // Mark it as an asset editing layer
+            layer.isEditingAsset = true;
+            layer.editingAssetId = asset.id;
+            layer.editingAssetType = asset.type;
+            
+            // Load the asset voxels into the layer
+            for (const [posKey, voxelType] of assetData.voxelData) {
+                layer.setVoxel(posKey, voxelType);
+            }
+            
+            // Set the new layer as active
+            this.voxelEngine.setActiveLayer(layer.id);
+            
+            // Update the voxel engine rendering
+            this.voxelEngine.updateInstances();
+            
+            // Refresh the layer panel to show the new layer
+            if ((window as any).app?.layerPanel) {
+                (window as any).app.layerPanel.refresh();
+            }
+            
+            console.log(`Created edit layer for asset: ${asset.name}`);
+        } catch (error) {
+            console.error('Failed to create edit layer for asset:', error);
+        }
+    }
+    
     public getAssetManager(): StaticAssetManager {
         return this.assetManager;
+    }
+    
+    public getAssetPopover(): AssetPopover {
+        return this.assetPopover;
+    }
+    
+    public getColorPickerPopover(): ColorPickerPopover {
+        return this.colorPickerPopover;
+    }
+    
+    public getSelectedColorOrType(): { type: VoxelType; isCustomColor: boolean } {
+        // If in single voxel mode with a custom color selected
+        if (this.isInSingleVoxelMode() && this.selectedColor) {
+            // Use the VoxelType directly from the selected color
+            if (this.selectedColor.voxelType !== undefined) {
+                return { type: this.selectedColor.voxelType, isCustomColor: true };
+            }
+            // Fallback to closest type if no voxelType is set
+            const closestType = this.findClosestVoxelType(this.selectedColor.hex);
+            return { type: closestType, isCustomColor: true };
+        }
+        
+        // Otherwise return the selected voxel type
+        return { type: this.selectedType, isCustomColor: false };
+    }
+    
+    private findClosestVoxelType(hexColor: string): VoxelType {
+        // Convert hex to RGB
+        const targetRgb = this.hexToRgb(hexColor);
+        if (!targetRgb) return VoxelType.STONE; // Default fallback
+        
+        // Define voxel type colors (matching VoxelRenderer.ts)
+        const voxelColors: { type: VoxelType; rgb: { r: number; g: number; b: number } }[] = [
+            { type: VoxelType.GRASS, rgb: { r: 144, g: 238, b: 144 } },
+            { type: VoxelType.DIRT, rgb: { r: 139, g: 105, b: 20 } },
+            { type: VoxelType.STONE, rgb: { r: 105, g: 105, b: 105 } },
+            { type: VoxelType.WOOD, rgb: { r: 222, g: 184, b: 135 } },
+            { type: VoxelType.LEAVES, rgb: { r: 50, g: 205, b: 50 } },
+            { type: VoxelType.WATER, rgb: { r: 135, g: 206, b: 235 } },
+            { type: VoxelType.SAND, rgb: { r: 255, g: 228, b: 181 } },
+            { type: VoxelType.SNOW, rgb: { r: 240, g: 248, b: 255 } },
+            { type: VoxelType.ICE, rgb: { r: 135, g: 206, b: 235 } }
+        ];
+        
+        // Find closest color using color distance
+        let closestType = VoxelType.STONE;
+        let minDistance = Infinity;
+        
+        for (const voxelColor of voxelColors) {
+            const distance = Math.sqrt(
+                Math.pow(targetRgb.r - voxelColor.rgb.r, 2) +
+                Math.pow(targetRgb.g - voxelColor.rgb.g, 2) +
+                Math.pow(targetRgb.b - voxelColor.rgb.b, 2)
+            );
+            
+            if (distance < minDistance) {
+                minDistance = distance;
+                closestType = voxelColor.type;
+            }
+        }
+        
+        return closestType;
+    }
+    
+    private async onAssetDelete(asset: AssetInfo): Promise<void> {
+        try {
+            // Delete the asset
+            await this.assetManager.deleteAsset(asset.id);
+            console.log(`Deleted asset: ${asset.name} (${asset.id})`);
+            
+            // Clear preview cache for this asset
+            this.assetPopover.clearPreviewCache(asset.id);
+            
+            // If the deleted asset was selected, clear selection
+            if (this.drawingSystem.selectedAsset?.id === asset.id) {
+                this.drawingSystem.setSelectedAsset(null);
+                this.drawingSystem.setToolMode('brush');
+            }
+        } catch (error) {
+            console.error('Failed to delete asset:', error);
+            await ModalDialog.alert({
+                title: 'Delete Failed',
+                message: `Failed to delete asset: ${error}`,
+                type: 'error'
+            });
+        }
     }
     
     public isInSingleVoxelMode(): boolean {
@@ -1064,12 +1218,43 @@ export class VoxelPanel {
         if (voxelBrushButton) {
             const iconSpan = voxelBrushButton.querySelector('span');
             if (iconSpan) {
-                const typeInfo = this.voxelTypes.find(t => t.type === this.selectedType);
-                if (typeInfo) {
-                    iconSpan.style.color = typeInfo.color;
+                // If we have a selected color, use that; otherwise use voxel type color
+                if (this.selectedColor) {
+                    iconSpan.style.color = this.selectedColor.hex;
+                } else {
+                    const typeInfo = this.voxelTypes.find(t => t.type === this.selectedType);
+                    if (typeInfo) {
+                        iconSpan.style.color = typeInfo.color;
+                    }
                 }
             }
         }
+    }
+    
+    private updateVoxelBrushButtonWithColor(color: ColorInfo): void {
+        const voxelBrushButton = document.getElementById('voxel-brush-button');
+        if (voxelBrushButton) {
+            const iconSpan = voxelBrushButton.querySelector('span');
+            if (iconSpan) {
+                iconSpan.style.color = color.hex;
+            }
+            
+            // Update the button background to match the selected color slightly
+            const rgb = this.hexToRgb(color.hex);
+            if (rgb) {
+                voxelBrushButton.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.2)`;
+                voxelBrushButton.style.borderColor = color.hex;
+            }
+        }
+    }
+    
+    private hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16)
+        } : null;
     }
     
     public dispose(): void {

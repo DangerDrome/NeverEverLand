@@ -40,6 +40,7 @@ export class DrawingSystem {
     previewTargetPosition: THREE.Vector3;  // Target position for smooth preview movement
     previewLerpFactor: number;  // How fast the preview moves (0-1)
     lastUpdateHit: any | null;  // Store last hit for preview updates
+    voxelPanel: any | null;  // Reference to VoxelPanel for color selection
     
     constructor(voxelEngine: any) {
         this.voxelEngine = voxelEngine;
@@ -66,6 +67,7 @@ export class DrawingSystem {
         this.assetData = null;
         this.assetManager = null;
         this.assetRotation = 0;
+        this.voxelPanel = null;
         
         // Smooth preview animation
         this.previewTargetPosition = new THREE.Vector3();
@@ -480,22 +482,37 @@ export class DrawingSystem {
                     this.eraserGlowMaterial.opacity = 0.3;
                 }
             } else if (this.drawMode === 'add') {
-                // Use the actual voxel color for preview
-                const voxelColor = this.getVoxelColor(this.currentVoxelType);
-                this.previewMaterial.color.set(voxelColor);
+                // Check if we're using a custom color in single voxel mode
+                let previewColor: THREE.Color;
+                if (this.voxelPanel && this.brushSize === 1) {
+                    const colorPickerPopover = (this.voxelPanel as any).getColorPickerPopover?.();
+                    const colorInfo = colorPickerPopover?.getSelectedColor();
+                    if (colorInfo && (this.voxelPanel as any).isInSingleVoxelMode()) {
+                        // Use the actual selected color for preview
+                        previewColor = new THREE.Color(colorInfo.hex);
+                    } else {
+                        // Use the voxel type color
+                        previewColor = this.getVoxelColor(this.currentVoxelType);
+                    }
+                } else {
+                    // Use the voxel type color for larger brushes
+                    previewColor = this.getVoxelColor(this.currentVoxelType);
+                }
+                
+                this.previewMaterial.color.set(previewColor);
                 
                 // For edges, use a slightly brighter version of the color
-                const brightness = voxelColor.r * 0.299 + voxelColor.g * 0.587 + voxelColor.b * 0.114;
+                const brightness = previewColor.r * 0.299 + previewColor.g * 0.587 + previewColor.b * 0.114;
                 if (brightness < 0.3) {
                     // For very dark colors, lighten them up a bit
-                    const lightEdgeColor = voxelColor.clone();
+                    const lightEdgeColor = previewColor.clone();
                     lightEdgeColor.r = Math.min(1, lightEdgeColor.r + 0.3);
                     lightEdgeColor.g = Math.min(1, lightEdgeColor.g + 0.3);
                     lightEdgeColor.b = Math.min(1, lightEdgeColor.b + 0.3);
                     this.edgeMaterial.color.set(lightEdgeColor);
                 } else {
-                    // For other colors, use the voxel color directly
-                    this.edgeMaterial.color.set(voxelColor);
+                    // For other colors, use the preview color directly
+                    this.edgeMaterial.color.set(previewColor);
                 }
                 
                 this.previewMaterial.opacity = 0.5;
@@ -779,6 +796,17 @@ export class DrawingSystem {
             offsetY = 0;
         }
         
+        // Get the voxel type to use (may be mapped from custom color)
+        let voxelTypeToUse = this.currentVoxelType;
+        
+        // Check if we're in single voxel mode with a custom color
+        if (this.voxelPanel && this.brushSize === 1 && this.drawMode === 'add') {
+            const colorOrType = this.voxelPanel.getSelectedColorOrType();
+            if (colorOrType.isCustomColor) {
+                voxelTypeToUse = colorOrType.type;
+            }
+        }
+        
         // Apply brush in an exact NxNxN cubic pattern
         for (let x = 0; x < this.brushSize; x++) {
             for (let y = 0; y < this.brushSize; y++) {
@@ -796,7 +824,7 @@ export class DrawingSystem {
                     // Apply voxel change (batched internally)
                     if (this.drawMode === 'add') {
                         // When adding, replace any existing voxel with the new type
-                        this.voxelEngine.setVoxel(vx, vy, vz, this.currentVoxelType);
+                        this.voxelEngine.setVoxel(vx, vy, vz, voxelTypeToUse);
                     } else {
                         // When removing (eraser mode or right-click), set to AIR
                         this.voxelEngine.setVoxel(vx, vy, vz, VoxelType.AIR);
@@ -872,6 +900,10 @@ export class DrawingSystem {
     
     setAssetManager(assetManager: StaticAssetManager): void {
         this.assetManager = assetManager;
+    }
+    
+    setVoxelPanel(voxelPanel: any): void {
+        this.voxelPanel = voxelPanel;
     }
     
     async setSelectedAsset(asset: AssetInfo | null): Promise<void> {

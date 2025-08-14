@@ -3,11 +3,14 @@ import { VoxelType } from '../engine/VoxelEngine';
 import { AssetInfo, AssetData } from '../assets/types';
 import { StaticAssetManager } from '../assets/StaticAssetManager';
 import { AssetPreviewScene } from './AssetPreviewScene';
+import { ModalDialog } from './ModalDialog';
 
 export class AssetPopover {
     private element: HTMLElement | null = null;
     private assetManager: StaticAssetManager;
     private onSelectCallback: ((asset: AssetInfo) => void) | null = null;
+    private onEditCallback: ((asset: AssetInfo) => void) | null = null;
+    private onDeleteCallback: ((asset: AssetInfo) => void) | null = null;
     private previewScene: AssetPreviewScene;
     private previewCache: Map<string, string> = new Map(); // asset id -> base64 image
     
@@ -18,8 +21,10 @@ export class AssetPopover {
         this.previewScene = new AssetPreviewScene(128);
     }
     
-    async show(anchorElement: HTMLElement, type: VoxelType, onSelect: (asset: AssetInfo) => void): Promise<void> {
+    async show(anchorElement: HTMLElement, type: VoxelType, onSelect: (asset: AssetInfo) => void, onEdit?: (asset: AssetInfo) => void, onDelete?: (asset: AssetInfo) => void): Promise<void> {
         this.onSelectCallback = onSelect;
+        this.onEditCallback = onEdit || null;
+        this.onDeleteCallback = onDelete || null;
         
         // Hide any existing popover first
         this.hide();
@@ -261,6 +266,180 @@ export class AssetPopover {
             item.appendChild(badge);
         }
         
+        // Container for action buttons
+        const actionButtons: HTMLElement[] = [];
+        
+        // Add edit button
+        if (this.onEditCallback) {
+            const editButton = document.createElement('button');
+            editButton.style.cssText = `
+                position: absolute;
+                bottom: 4px;
+                right: 4px;
+                background: rgba(60, 60, 60, 0.9);
+                border: 1px solid rgba(255, 255, 255, 0.3);
+                border-radius: 4px;
+                width: 20px;
+                height: 20px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                opacity: 0;
+            `;
+            editButton.innerHTML = '<i data-lucide="pencil" style="width: 12px; height: 12px; color: rgba(255, 255, 255, 0.8);"></i>';
+            editButton.title = 'Edit Asset';
+            
+            // Edit button hover effect
+            editButton.addEventListener('mouseenter', () => {
+                editButton.style.background = 'rgba(100, 150, 255, 0.9)';
+                editButton.style.transform = 'scale(1.1)';
+            });
+            
+            editButton.addEventListener('mouseleave', () => {
+                editButton.style.background = 'rgba(60, 60, 60, 0.9)';
+                editButton.style.transform = 'scale(1)';
+            });
+            
+            // Edit button click handler
+            editButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.onEditCallback) {
+                    this.onEditCallback(asset);
+                }
+                this.hide();
+            });
+            
+            item.appendChild(editButton);
+            actionButtons.push(editButton);
+        }
+        
+        // Add export button
+        const exportButton = document.createElement('button');
+        exportButton.style.cssText = `
+            position: absolute;
+            bottom: 4px;
+            right: ${actionButtons.length > 0 ? (actionButtons.length * 24 + 4) + 'px' : '4px'};
+            background: rgba(60, 60, 60, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            opacity: 0;
+        `;
+        exportButton.innerHTML = '<i data-lucide="download" style="width: 12px; height: 12px; color: rgba(255, 255, 255, 0.8);"></i>';
+        exportButton.title = 'Export as VOX';
+        
+        // Export button hover effect
+        exportButton.addEventListener('mouseenter', () => {
+            exportButton.style.background = 'rgba(100, 200, 100, 0.9)';
+            exportButton.style.transform = 'scale(1.1)';
+        });
+        
+        exportButton.addEventListener('mouseleave', () => {
+            exportButton.style.background = 'rgba(60, 60, 60, 0.9)';
+            exportButton.style.transform = 'scale(1)';
+        });
+        
+        // Export button click handler
+        exportButton.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            try {
+                await this.assetManager.exportAssetAsVox(asset.id);
+                console.log(`Exported asset: ${asset.name}`);
+            } catch (error) {
+                console.error('Failed to export asset:', error);
+                await ModalDialog.alert({
+                    title: 'Export Failed',
+                    message: `Failed to export asset: ${error}`,
+                    type: 'error'
+                });
+            }
+        });
+        
+        item.appendChild(exportButton);
+        actionButtons.push(exportButton);
+        
+        // Add delete button for user assets
+        if (this.onDeleteCallback && asset.isUserAsset) {
+            const deleteButton = document.createElement('button');
+            deleteButton.style.cssText = `
+                position: absolute;
+                bottom: 4px;
+                right: ${actionButtons.length > 0 ? (actionButtons.length * 24 + 4) + 'px' : '4px'};
+                background: rgba(60, 60, 60, 0.9);
+                border: 1px solid rgba(255, 255, 255, 0.3);
+                border-radius: 4px;
+                width: 20px;
+                height: 20px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                opacity: 0;
+            `;
+            deleteButton.innerHTML = '<i data-lucide="trash-2" style="width: 12px; height: 12px; color: rgba(255, 255, 255, 0.8);"></i>';
+            deleteButton.title = 'Delete Asset';
+            
+            // Delete button hover effect
+            deleteButton.addEventListener('mouseenter', () => {
+                deleteButton.style.background = 'rgba(255, 100, 100, 0.9)';
+                deleteButton.style.transform = 'scale(1.1)';
+            });
+            
+            deleteButton.addEventListener('mouseleave', () => {
+                deleteButton.style.background = 'rgba(60, 60, 60, 0.9)';
+                deleteButton.style.transform = 'scale(1)';
+            });
+            
+            // Delete button click handler
+            deleteButton.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                if (this.onDeleteCallback) {
+                    const confirmed = await ModalDialog.confirm({
+                        title: 'Delete Asset',
+                        message: `Are you sure you want to delete the asset "${asset.name}"? This action cannot be undone.`,
+                        confirmText: 'Delete',
+                        cancelText: 'Cancel',
+                        confirmButtonStyle: 'danger'
+                    });
+                    
+                    if (confirmed) {
+                        this.onDeleteCallback(asset);
+                        this.hide();
+                    }
+                }
+            });
+            
+            item.appendChild(deleteButton);
+            actionButtons.push(deleteButton);
+        }
+        
+        // Show buttons on hover
+        if (actionButtons.length > 0) {
+            item.addEventListener('mouseenter', () => {
+                actionButtons.forEach(btn => btn.style.opacity = '1');
+            });
+            
+            item.addEventListener('mouseleave', () => {
+                actionButtons.forEach(btn => btn.style.opacity = '0');
+            });
+        }
+        
+        // Initialize Lucide icons
+        setTimeout(() => {
+            if ((window as any).lucide) {
+                (window as any).lucide.createIcons();
+            }
+        }, 0);
+        
         // Hover effect
         item.addEventListener('mouseenter', () => {
             item.style.background = 'rgba(70, 70, 70, 0.7)';
@@ -336,6 +515,16 @@ export class AssetPopover {
             this.hide();
         }
     };
+    
+    clearPreviewCache(assetId?: string): void {
+        if (assetId) {
+            // Clear specific asset preview
+            this.previewCache.delete(assetId);
+        } else {
+            // Clear all previews
+            this.previewCache.clear();
+        }
+    }
     
     dispose(): void {
         if (this.element && this.element.parentNode) {
