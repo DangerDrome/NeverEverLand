@@ -108,6 +108,9 @@ export class DrawingSystem {
         this.operationTimer = null;
         
         this.createPreviewMesh();
+        
+        // Set initial cursor
+        this.updateCursor(this.toolMode);
     }
     
     createConstraintPlane(position: THREE.Vector3, normal: THREE.Vector3, clickPos: { x: number; y: number; z: number }, size: number = 2): void {
@@ -483,9 +486,9 @@ export class DrawingSystem {
                     this.eraserGlowMaterial.opacity = 0.3;
                 }
             } else if (this.drawMode === 'add') {
-                // Check if we're using a custom color in single voxel mode
+                // Always use the same color logic as brush size 1
                 let previewColor: THREE.Color;
-                if (this.voxelPanel && this.brushSize === 1) {
+                if (this.voxelPanel) {
                     const colorPickerPopover = (this.voxelPanel as any).getColorPickerPopover?.();
                     const colorInfo = colorPickerPopover?.getSelectedColor();
                     if (colorInfo && (this.voxelPanel as any).isInSingleVoxelMode()) {
@@ -496,7 +499,7 @@ export class DrawingSystem {
                         previewColor = this.getVoxelColor(this.currentVoxelType);
                     }
                 } else {
-                    // Use the voxel type color for larger brushes
+                    // Use the voxel type color if no voxel panel
                     previewColor = this.getVoxelColor(this.currentVoxelType);
                 }
                 
@@ -816,8 +819,8 @@ export class DrawingSystem {
         // Get the voxel type to use (may be mapped from custom color)
         let voxelTypeToUse = this.currentVoxelType;
         
-        // Check if we're in single voxel mode with a custom color
-        if (this.voxelPanel && this.brushSize === 1 && this.drawMode === 'add') {
+        // Check if we're using a custom color (works for all brush sizes)
+        if (this.voxelPanel && this.drawMode === 'add') {
             const colorOrType = this.voxelPanel.getSelectedColorOrType();
             if (colorOrType.isCustomColor) {
                 voxelTypeToUse = colorOrType.type;
@@ -910,6 +913,9 @@ export class DrawingSystem {
             };
             toolElement.textContent = toolNames[mode] || mode;
         }
+        
+        // Update cursor based on tool
+        this.updateCursor(mode);
         
         // Log tool change
         import('../ui/ActionLogger').then(({ ActionLogger }) => {
@@ -1010,6 +1016,15 @@ export class DrawingSystem {
         const minZ = Math.min(start.z, end.z);
         const maxZ = Math.max(start.z, end.z);
         
+        // Get the voxel type to use (may be mapped from custom color)
+        let voxelTypeToUse = this.currentVoxelType;
+        if (this.voxelPanel && this.drawMode === 'add') {
+            const colorOrType = this.voxelPanel.getSelectedColorOrType();
+            if (colorOrType.isCustomColor) {
+                voxelTypeToUse = colorOrType.type;
+            }
+        }
+        
         // Start batch for box operation
         this.voxelEngine.startBatch();
         
@@ -1017,7 +1032,7 @@ export class DrawingSystem {
             for (let y = minY; y <= maxY; y++) {
                 for (let z = minZ; z <= maxZ; z++) {
                     if (this.drawMode === 'add') {
-                        this.voxelEngine.setVoxel(x, y, z, this.currentVoxelType);
+                        this.voxelEngine.setVoxel(x, y, z, voxelTypeToUse);
                     } else {
                         this.voxelEngine.setVoxel(x, y, z, VoxelType.AIR);
                     }
@@ -1037,6 +1052,15 @@ export class DrawingSystem {
         
         const steps = Math.max(dx, dy, dz);
         
+        // Get the voxel type to use (may be mapped from custom color)
+        let voxelTypeToUse = this.currentVoxelType;
+        if (this.voxelPanel && this.drawMode === 'add') {
+            const colorOrType = this.voxelPanel.getSelectedColorOrType();
+            if (colorOrType.isCustomColor) {
+                voxelTypeToUse = colorOrType.type;
+            }
+        }
+        
         // Start batch for line operation
         this.voxelEngine.startBatch();
         
@@ -1047,7 +1071,7 @@ export class DrawingSystem {
             const z = Math.round(start.z + (end.z - start.z) * t);
             
             if (this.drawMode === 'add') {
-                this.voxelEngine.setVoxel(x, y, z, this.currentVoxelType);
+                this.voxelEngine.setVoxel(x, y, z, voxelTypeToUse);
             } else {
                 this.voxelEngine.setVoxel(x, y, z, VoxelType.AIR);
             }
@@ -1059,8 +1083,17 @@ export class DrawingSystem {
     
     // Fill tool implementation (flood fill)
     applyFillTool(startPos: { x: number; y: number; z: number }): void {
+        // Get the voxel type to use (may be mapped from custom color)
+        let voxelTypeToUse = this.currentVoxelType;
+        if (this.voxelPanel && this.drawMode === 'add') {
+            const colorOrType = this.voxelPanel.getSelectedColorOrType();
+            if (colorOrType.isCustomColor) {
+                voxelTypeToUse = colorOrType.type;
+            }
+        }
+        
         const targetType = this.voxelEngine.getVoxel(startPos.x, startPos.y, startPos.z);
-        if (targetType === this.currentVoxelType) return;
+        if (targetType === voxelTypeToUse) return;
         
         const visited = new Set();
         const queue = [startPos];
@@ -1105,7 +1138,7 @@ export class DrawingSystem {
         // Apply all fill operations
         for (const pos of operations) {
             if (pos) {
-                this.voxelEngine.setVoxel(pos.x, pos.y, pos.z, this.currentVoxelType);
+                this.voxelEngine.setVoxel(pos.x, pos.y, pos.z, voxelTypeToUse);
             }
         }
         
@@ -1411,5 +1444,26 @@ export class DrawingSystem {
         
         // Update instances
         this.voxelEngine.updateInstances();
+    }
+    
+    /**
+     * Update cursor based on current tool
+     */
+    private updateCursor(tool: string): void {
+        const canvas = document.getElementById('canvas') as HTMLCanvasElement;
+        if (!canvas) return;
+        
+        // Create cursor styles based on tool
+        const cursors: { [key: string]: string } = {
+            'brush': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/></svg>') 12 12, crosshair`,
+            'eraser': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>') 12 12, crosshair`,
+            'box': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>') 12 12, crosshair`,
+            'line': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><line x1="5" y1="19" x2="19" y2="5"/></svg>') 12 12, crosshair`,
+            'fill': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 13h15"/><path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z"/></svg>') 12 12, crosshair`,
+            'asset': 'grab',
+            'selection': 'crosshair'
+        };
+        
+        canvas.style.cursor = cursors[tool] || 'crosshair';
     }
 }

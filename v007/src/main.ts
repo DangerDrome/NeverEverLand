@@ -1321,13 +1321,6 @@ class VoxelApp {
                 // Focus camera on selection or scene contents (like Blender/Houdini)
                 this.focusCameraOnTarget();
                 break;
-            case 'p':
-            case 'P':
-                // Toggle performance monitor (moved from 'f' key)
-                if (this.performanceMonitor) {
-                    this.performanceMonitor.toggle();
-                }
-                break;
             case 't':
             case 'T':
                 // Toggle tilt-shift effect
@@ -1474,6 +1467,19 @@ class VoxelApp {
                             this.drawingSystem.showPreview();
                         }
                     }
+                    
+                    // Update cursor for selection mode
+                    const canvas = document.getElementById('canvas') as HTMLCanvasElement;
+                    if (canvas) {
+                        if (this.selectionMode) {
+                            // Set selection cursor
+                            canvas.style.cursor = 'crosshair';
+                        } else if (this.drawingSystem) {
+                            // Restore the tool cursor
+                            this.drawingSystem.setToolMode(this.drawingSystem.toolMode);
+                        }
+                    }
+                    
                     console.log('Selection mode:', this.selectionMode ? 'ON' : 'OFF');
                 }
                 break;

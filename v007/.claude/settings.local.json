@@ -25,7 +25,8 @@
       "Bash(ls:*)",
       "Bash(find:*)",
       "Bash(node:*)",
-      "Bash(touch:*)"
+      "Bash(touch:*)",
+      "Bash(wget:*)"
     ],
     "deny": []
   }
