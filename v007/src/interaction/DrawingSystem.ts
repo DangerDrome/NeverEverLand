@@ -1378,7 +1378,7 @@ export class DrawingSystem {
         }
         
         // Fallback to predefined colors for standard types
-        const colors: Record<VoxelType, string> = {
+        const colors: Partial<Record<VoxelType, string>> = {
             [VoxelType.AIR]: 'rgb(0, 0, 0)',
             [VoxelType.GRASS]: 'rgb(144, 238, 144)',      // Light pastel green
             [VoxelType.DIRT]: 'rgb(139, 105, 20)',        // Dark goldenrod (brownish)

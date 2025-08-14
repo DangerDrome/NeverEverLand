@@ -1,20 +1,6 @@
 import * as THREE from 'three';
 import { VoxelType } from '../types';
 
-// Voxel type colors for edge tinting (as RGB strings for IDE color preview)
-const VOXEL_COLORS: Record<VoxelType, string> = {
-    [VoxelType.AIR]: 'rgb(0, 0, 0)',
-    [VoxelType.GRASS]: 'rgb(144, 238, 144)',
-    [VoxelType.DIRT]: 'rgb(139, 105, 20)',
-    [VoxelType.STONE]: 'rgb(105, 105, 105)',
-    [VoxelType.WOOD]: 'rgb(222, 184, 135)',
-    [VoxelType.LEAVES]: 'rgb(50, 205, 50)',
-    [VoxelType.WATER]: 'rgb(135, 206, 235)',
-    [VoxelType.SAND]: 'rgb(255, 228, 181)',
-    [VoxelType.SNOW]: 'rgb(240, 248, 255)',
-    [VoxelType.ICE]: 'rgb(135, 206, 235)'
-};
-
 // Transparent voxel types that should have limited edge rendering
 const TRANSPARENT_TYPES = new Set([
     VoxelType.WATER,

@@ -18,7 +18,7 @@ export class VoxWriter {
     private offset: number;
     
     // Color palette for voxel types (RGBA format)
-    private readonly typeColors: Record<VoxelType, number> = {
+    private readonly typeColors: Partial<Record<VoxelType, number>> = {
         [VoxelType.AIR]: 0x00000000,
         [VoxelType.GRASS]: 0x90EE90FF,
         [VoxelType.DIRT]: 0x8B6914FF,
@@ -174,7 +174,12 @@ export class VoxWriter {
         
         // Add our voxel type colors
         for (const type of typeOrder) {
-            palette.push(this.typeColors[type]);
+            const color = this.typeColors[type];
+            if (color !== undefined) {
+                palette.push(color);
+            } else {
+                palette.push(0xFFFFFFFF); // Default white for undefined types
+            }
         }
         
         // Fill rest with default palette colors

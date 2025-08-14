@@ -9,6 +9,7 @@ export interface AssetInfo {
     preview?: string;  // Base64 thumbnail
     tags?: string[];
     created?: Date;
+    modified?: Date;
     isUserAsset?: boolean;
 }
 

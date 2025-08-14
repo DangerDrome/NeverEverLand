@@ -3,7 +3,7 @@ import { AssetInfo } from './types';
 
 // Default assets that ship with the application
 // These will be stored as .vox files in the public/assets folder
-export const DEFAULT_ASSETS: Record<VoxelType, AssetInfo[]> = {
+export const DEFAULT_ASSETS: Partial<Record<VoxelType, AssetInfo[]>> = {
     [VoxelType.AIR]: [],
     
     [VoxelType.GRASS]: [

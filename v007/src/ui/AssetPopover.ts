@@ -491,7 +491,7 @@ export class AssetPopover {
     }
     
     private getVoxelTypeName(type: VoxelType): string {
-        const names: Record<VoxelType, string> = {
+        const names: Partial<Record<VoxelType, string>> = {
             [VoxelType.AIR]: 'Air',
             [VoxelType.GRASS]: 'Grass',
             [VoxelType.DIRT]: 'Dirt',
