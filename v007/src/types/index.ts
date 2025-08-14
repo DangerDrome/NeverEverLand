@@ -11,7 +11,7 @@ export enum VoxelType {
     SAND = 7,
     SNOW = 8,
     ICE = 9,
-    // Custom color slots (10-25) for color picker
+    // Custom color slots (10-265) for color picker - dynamically assigned
     CUSTOM_1 = 10,
     CUSTOM_2 = 11,
     CUSTOM_3 = 12,
@@ -27,7 +27,26 @@ export enum VoxelType {
     CUSTOM_13 = 22,
     CUSTOM_14 = 23,
     CUSTOM_15 = 24,
-    CUSTOM_16 = 25
+    CUSTOM_16 = 25,
+    // Extended custom slots for unlimited colors
+    CUSTOM_17 = 26,
+    CUSTOM_18 = 27,
+    CUSTOM_19 = 28,
+    CUSTOM_20 = 29,
+    CUSTOM_21 = 30,
+    CUSTOM_22 = 31,
+    CUSTOM_23 = 32,
+    CUSTOM_24 = 33,
+    CUSTOM_25 = 34,
+    CUSTOM_26 = 35,
+    CUSTOM_27 = 36,
+    CUSTOM_28 = 37,
+    CUSTOM_29 = 38,
+    CUSTOM_30 = 39,
+    CUSTOM_31 = 40,
+    CUSTOM_32 = 41,
+    // ... We'll generate the rest programmatically to avoid a huge enum
+    CUSTOM_256 = 265  // Maximum custom slot
 }
 
 export interface VoxelTypeDefinition {

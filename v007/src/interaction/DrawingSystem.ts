@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { VoxelType } from '../engine/VoxelEngine';
 import { AssetInfo, AssetData } from '../assets/types';
 import { StaticAssetManager } from '../assets/StaticAssetManager';
+import { ColorRegistry } from '../engine/ColorRegistry';
 
 export class DrawingSystem {
     // Properties
@@ -1300,7 +1301,14 @@ export class DrawingSystem {
     
     // Get voxel color based on type
     private getVoxelColor(type: VoxelType): THREE.Color {
-        // Match the colors from VoxelRenderer
+        // Try to get color from ColorRegistry first (for custom colors)
+        const colorRegistry = ColorRegistry.getInstance();
+        const registeredColor = colorRegistry.getColor(type);
+        if (registeredColor) {
+            return new THREE.Color(registeredColor);
+        }
+        
+        // Fallback to predefined colors for standard types
         const colors: Record<VoxelType, string> = {
             [VoxelType.AIR]: 'rgb(0, 0, 0)',
             [VoxelType.GRASS]: 'rgb(144, 238, 144)',      // Light pastel green

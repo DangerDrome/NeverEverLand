@@ -5,6 +5,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { TiltShiftPass } from './postprocessing/TiltShiftPass';
 import { VoxelEngine, VoxelType } from './engine/VoxelEngine';
 import { VoxelRenderer } from './engine/VoxelRenderer';
+import { AssetPreviewScene } from './ui/AssetPreviewScene';
 import { DrawingSystem } from './interaction/DrawingSystem';
 import { PerformanceMonitor } from './ui/Performance';
 import { DirectionIndicator } from './ui/DirectionIndicator';
@@ -198,31 +199,118 @@ const SETTINGS = {
         showWireframe: true            // Show wireframe/edges on startup
     },
     
-    // Color Palette Settings - Soft but vibrant colors for voxel painting
+    // Color Palette Settings - Organized by color families
+    colorPalettes: {
+        default: {
+            name: 'Default',
+            colors: [
+                // Row 1 - Grayscale
+                { name: 'Pure White', hex: '#FFFFFF' },
+                { name: 'Light Gray', hex: '#E0E0E0' },
+                { name: 'Medium Gray', hex: '#9E9E9E' },
+                { name: 'Dark Gray', hex: '#424242' },
+                
+                // Row 2 - Reds
+                { name: 'Light Red', hex: '#FFCDD2' },
+                { name: 'Soft Red', hex: '#EF9A9A' },
+                { name: 'Pure Red', hex: '#F44336' },
+                { name: 'Dark Red', hex: '#C62828' },
+                
+                // Row 3 - Greens
+                { name: 'Light Green', hex: '#C8E6C9' },
+                { name: 'Soft Green', hex: '#A5D6A7' },
+                { name: 'Pure Green', hex: '#4CAF50' },
+                { name: 'Dark Green', hex: '#2E7D32' },
+                
+                // Row 4 - Blues
+                { name: 'Light Blue', hex: '#BBDEFB' },
+                { name: 'Soft Blue', hex: '#90CAF9' },
+                { name: 'Pure Blue', hex: '#2196F3' },
+                { name: 'Dark Blue', hex: '#1565C0' }
+            ]
+        },
+        pastel: {
+            name: 'Pastel',
+            colors: [
+                // Row 1 - Neutrals
+                { name: 'Cloud', hex: '#FAFAFA' },
+                { name: 'Pearl', hex: '#F5F5F5' },
+                { name: 'Ash', hex: '#E0E0E0' },
+                { name: 'Slate', hex: '#B0BEC5' },
+                
+                // Row 2 - Warm Pastels
+                { name: 'Blush', hex: '#FFCDD2' },
+                { name: 'Peach', hex: '#FFCCBC' },
+                { name: 'Apricot', hex: '#FFE0B2' },
+                { name: 'Cream', hex: '#FFF9C4' },
+                
+                // Row 3 - Cool Pastels
+                { name: 'Mint', hex: '#B2DFDB' },
+                { name: 'Sky', hex: '#B3E5FC' },
+                { name: 'Lavender', hex: '#D1C4E9' },
+                { name: 'Lilac', hex: '#E1BEE7' },
+                
+                // Row 4 - Nature Pastels
+                { name: 'Sage', hex: '#DCEDC8' },
+                { name: 'Sand', hex: '#D7CCC8' },
+                { name: 'Rose', hex: '#F8BBD0' },
+                { name: 'Coral', hex: '#FFAB91' }
+            ]
+        },
+        neon: {
+            name: 'Neon',
+            colors: [
+                // Row 1 - Black/White contrast
+                { name: 'White', hex: '#FFFFFF' },
+                { name: 'Light Gray', hex: '#BDBDBD' },
+                { name: 'Dark Gray', hex: '#616161' },
+                { name: 'Black', hex: '#212121' },
+                
+                // Row 2 - Neon Warm
+                { name: 'Hot Pink', hex: '#FF1744' },
+                { name: 'Electric Orange', hex: '#FF6D00' },
+                { name: 'Laser Yellow', hex: '#FFEA00' },
+                { name: 'Neon Lime', hex: '#C6FF00' },
+                
+                // Row 3 - Neon Cool
+                { name: 'Cyber Green', hex: '#00E676' },
+                { name: 'Electric Blue', hex: '#00B0FF' },
+                { name: 'Ultra Violet', hex: '#651FFF' },
+                { name: 'Neon Purple', hex: '#D500F9' },
+                
+                // Row 4 - Neon Mix
+                { name: 'Acid Green', hex: '#76FF03' },
+                { name: 'Cyan Glow', hex: '#00E5FF' },
+                { name: 'Magenta', hex: '#F50057' },
+                { name: 'Electric Indigo', hex: '#3D5AFE' }
+            ]
+        }
+    },
+    // Keep the default palette as colorPalette for backward compatibility
     colorPalette: [
-        // Row 1 - Neutrals
-        { name: 'Pure White', hex: '#FFFFFF' },       // Clean white
-        { name: 'Silver', hex: '#D4D4D4' },           // Light gray
-        { name: 'Stone Gray', hex: '#9B9B9B' },       // Medium gray
-        { name: 'Charcoal', hex: '#4A4A4A' },         // Dark gray
+        // Row 1 - Grayscale
+        { name: 'Pure White', hex: '#FFFFFF' },
+        { name: 'Light Gray', hex: '#E0E0E0' },
+        { name: 'Medium Gray', hex: '#9E9E9E' },
+        { name: 'Dark Gray', hex: '#424242' },
         
-        // Row 2 - Warm colors
-        { name: 'Rose Pink', hex: '#FF99CC' },        // Soft pink
-        { name: 'Peach', hex: '#FFAB91' },            // Warm peach
-        { name: 'Tangerine', hex: '#FFB366' },        // Soft orange
-        { name: 'Butter', hex: '#FFE082' },           // Warm yellow
+        // Row 2 - Reds
+        { name: 'Light Red', hex: '#FFCDD2' },
+        { name: 'Soft Red', hex: '#EF9A9A' },
+        { name: 'Pure Red', hex: '#F44336' },
+        { name: 'Dark Red', hex: '#C62828' },
         
-        // Row 3 - Cool colors
-        { name: 'Sky Blue', hex: '#90CAF9' },         // Clear blue
-        { name: 'Mint', hex: '#80CBC4' },             // Fresh mint
-        { name: 'Lavender', hex: '#B39DDB' },         // Soft purple
-        { name: 'Aqua', hex: '#80DEEA' },             // Bright aqua
+        // Row 3 - Greens
+        { name: 'Light Green', hex: '#C8E6C9' },
+        { name: 'Soft Green', hex: '#A5D6A7' },
+        { name: 'Pure Green', hex: '#4CAF50' },
+        { name: 'Dark Green', hex: '#2E7D32' },
         
-        // Row 4 - Nature colors
-        { name: 'Sage', hex: '#A5D6A7' },             // Natural green
-        { name: 'Sand', hex: '#BCAAA4' },             // Warm beige
-        { name: 'Terracotta', hex: '#CE9686' },       // Earthy orange
-        { name: 'Ocean', hex: '#7986CB' }             // Deep blue
+        // Row 4 - Blues
+        { name: 'Light Blue', hex: '#BBDEFB' },
+        { name: 'Soft Blue', hex: '#90CAF9' },
+        { name: 'Pure Blue', hex: '#2196F3' },
+        { name: 'Dark Blue', hex: '#1565C0' }
     ],
     
     // Voxel Settings
@@ -534,8 +622,10 @@ class VoxelApp {
         // Setup post-processing
         this.setupPostProcessing();
         
-        // Update VoxelRenderer with custom colors from settings
-        VoxelRenderer.updateCustomColors(SETTINGS.colorPalette);
+        // Make VoxelRenderer and AssetPreviewScene globally available
+        // Colors are now managed by ColorRegistry on demand
+        (window as any).VoxelRenderer = VoxelRenderer;
+        (window as any).AssetPreviewScene = AssetPreviewScene;
         
         // Initialize systems
         // Always use 0.1m voxel size for high detail
@@ -543,7 +633,7 @@ class VoxelApp {
         this.drawingSystem = new DrawingSystem(this.voxelEngine);
         this.performanceMonitor = new PerformanceMonitor();
         this.directionIndicator = new DirectionIndicator();
-        this.voxelPanel = new VoxelPanel(this.drawingSystem, SETTINGS.colorPalette);
+        this.voxelPanel = new VoxelPanel(this.drawingSystem, SETTINGS.colorPalettes);
         this.layerPanel = new LayerPanel(this.voxelEngine, () => {
             // Update callback - re-render when layer state changes
             this.voxelEngine?.updateInstances();

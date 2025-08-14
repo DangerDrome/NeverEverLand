@@ -6,6 +6,7 @@ import { AssetPopover } from './AssetPopover';
 import { AssetInfo } from '../assets/types';
 import { ModalDialog } from './ModalDialog';
 import { ColorPickerPopover, ColorInfo } from './ColorPickerPopover';
+import { ColorRegistry } from '../engine/ColorRegistry';
 
 interface VoxelButtonInfo {
     type: VoxelType;
@@ -370,13 +371,13 @@ export class VoxelPanel {
     private createVoxelBrushButton(): HTMLElement {
         const button = document.createElement('button');
         button.id = 'voxel-brush-button';
-        button.className = 'voxel-brush-button selected'; // Start selected
+        button.className = 'voxel-brush-button'; // Not selected by default
         button.title = 'Single Voxel Brush (V)';
         
         button.style.cssText = `
             width: 40px;
             height: 40px;
-            border: 2px solid rgba(100, 200, 255, 0.8);
+            border: 2px solid transparent;
             border-radius: 6px;
             background: rgba(100, 200, 255, 0.2);
             cursor: pointer;
@@ -392,8 +393,10 @@ export class VoxelPanel {
         
         // Add Lucide cube icon
         const iconSpan = document.createElement('span');
+        // Get the first color from the color picker (Pure White)
+        const firstColor = this.colorPickerPopover.getSelectedColor();
         iconSpan.style.cssText = `
-            color: #90EE90; // Default to grass color
+            color: ${firstColor ? firstColor.hex : '#FFFFFF'};
             display: flex;
             align-items: center;
             justify-content: center;
@@ -401,6 +404,11 @@ export class VoxelPanel {
         `;
         iconSpan.innerHTML = `<i data-lucide="box" style="width: 20px; height: 20px; stroke-width: 2;"></i>`;
         button.appendChild(iconSpan);
+        
+        // Initialize selected color to first color
+        if (firstColor) {
+            this.selectedColor = firstColor;
+        }
         
         // Hover effect
         button.addEventListener('mouseenter', () => {
@@ -424,7 +432,18 @@ export class VoxelPanel {
                 await this.colorPickerPopover.show(button, (color) => {
                     this.selectedColor = color;
                     this.updateVoxelBrushButtonWithColor(color);
-                    console.log(`Selected color: ${color.name} (${color.hex})`);
+                    
+                    // Get or create a VoxelType for this color
+                    const colorRegistry = ColorRegistry.getInstance();
+                    const voxelType = colorRegistry.getOrCreateVoxelType(color.hex);
+                    
+                    if (voxelType) {
+                        // Store the voxelType in the color object for later use
+                        color.voxelType = voxelType;
+                        console.log(`Selected color: ${color.name} (${color.hex}) -> VoxelType ${voxelType}`);
+                    } else {
+                        console.error('Failed to get VoxelType for color');
+                    }
                 });
                 return;
             }
@@ -459,13 +478,31 @@ export class VoxelPanel {
             // Visual feedback
             button.style.animation = 'pulse 0.3s ease-out';
             
+            // Set the voxel type to the custom color's type
+            if (this.selectedColor && this.selectedColor.voxelType !== undefined) {
+                this.drawingSystem.setVoxelType(this.selectedColor.voxelType);
+            }
+            
             console.log('Single voxel brush mode activated');
             
             // Show color picker automatically on first click
             await this.colorPickerPopover.show(button, (color) => {
                 this.selectedColor = color;
                 this.updateVoxelBrushButtonWithColor(color);
-                console.log(`Selected color: ${color.name} (${color.hex})`);
+                
+                // Get or create a VoxelType for this color
+                const colorRegistry = ColorRegistry.getInstance();
+                const voxelType = colorRegistry.getOrCreateVoxelType(color.hex);
+                
+                if (voxelType) {
+                    // Store the voxelType in the color object
+                    color.voxelType = voxelType;
+                    // Update the drawing system
+                    this.drawingSystem.setVoxelType(voxelType);
+                    console.log(`Selected color: ${color.name} (${color.hex}) -> VoxelType ${voxelType}`);
+                } else {
+                    console.error('Failed to get VoxelType for color');
+                }
             });
         });
         

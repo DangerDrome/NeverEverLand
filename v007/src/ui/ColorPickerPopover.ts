@@ -6,51 +6,70 @@ export interface ColorInfo {
     voxelType?: VoxelType;
 }
 
+export interface ColorPalette {
+    name: string;
+    colors: ColorInfo[];
+}
+
 export class ColorPickerPopover {
     private element: HTMLElement | null = null;
     private onSelectCallback: ((color: ColorInfo) => void) | null = null;
     private selectedColor: ColorInfo | null = null;
-    private colors: ColorInfo[] = [];
+    private palettes: Map<string, ColorPalette> = new Map();
+    private currentPalette: string = 'default';
+    private tabContainer: HTMLElement | null = null;
+    private colorContainer: HTMLElement | null = null;
     
-    constructor(colorPalette?: ColorInfo[]) {
-        // Use provided color palette or default pastel colors
-        // Map each color to a custom VoxelType
-        if (colorPalette) {
-            this.colors = colorPalette.map((color, index) => ({
-                ...color,
-                voxelType: (VoxelType.CUSTOM_1 + index) as VoxelType
-            }));
+    constructor(colorPalettes?: any) {
+        // Initialize with provided palettes or default
+        if (colorPalettes) {
+            // Convert palettes object to Map and assign VoxelTypes
+            Object.entries(colorPalettes).forEach(([key, palette]: [string, any]) => {
+                this.palettes.set(key, {
+                    name: palette.name,
+                    colors: palette.colors.map((color: any) => ({
+                        ...color
+                        // VoxelTypes will be assigned dynamically by ColorRegistry
+                    }))
+                });
+            });
         } else {
-            // Default colors with VoxelType assignments
-            this.colors = [
-                // Row 1 - Neutrals
-                { name: 'Pure White', hex: '#FFFFFF', voxelType: VoxelType.CUSTOM_1 },
-                { name: 'Silver', hex: '#D4D4D4', voxelType: VoxelType.CUSTOM_2 },
-                { name: 'Stone Gray', hex: '#9B9B9B', voxelType: VoxelType.CUSTOM_3 },
-                { name: 'Charcoal', hex: '#4A4A4A', voxelType: VoxelType.CUSTOM_4 },
-                
-                // Row 2 - Warm colors
-                { name: 'Rose Pink', hex: '#FF99CC', voxelType: VoxelType.CUSTOM_5 },
-                { name: 'Peach', hex: '#FFAB91', voxelType: VoxelType.CUSTOM_6 },
-                { name: 'Tangerine', hex: '#FFB366', voxelType: VoxelType.CUSTOM_7 },
-                { name: 'Butter', hex: '#FFE082', voxelType: VoxelType.CUSTOM_8 },
-                
-                // Row 3 - Cool colors
-                { name: 'Sky Blue', hex: '#90CAF9', voxelType: VoxelType.CUSTOM_9 },
-                { name: 'Mint', hex: '#80CBC4', voxelType: VoxelType.CUSTOM_10 },
-                { name: 'Lavender', hex: '#B39DDB', voxelType: VoxelType.CUSTOM_11 },
-                { name: 'Aqua', hex: '#80DEEA', voxelType: VoxelType.CUSTOM_12 },
-                
-                // Row 4 - Nature colors
-                { name: 'Sage', hex: '#A5D6A7', voxelType: VoxelType.CUSTOM_13 },
-                { name: 'Sand', hex: '#BCAAA4', voxelType: VoxelType.CUSTOM_14 },
-                { name: 'Terracotta', hex: '#CE9686', voxelType: VoxelType.CUSTOM_15 },
-                { name: 'Ocean', hex: '#7986CB', voxelType: VoxelType.CUSTOM_16 }
-            ];
+            // Default palette
+            this.palettes.set('default', {
+                name: 'Default',
+                colors: [
+                    // Row 1 - Grayscale
+                    { name: 'Pure White', hex: '#FFFFFF' },
+                    { name: 'Light Gray', hex: '#E0E0E0' },
+                    { name: 'Medium Gray', hex: '#9E9E9E' },
+                    { name: 'Dark Gray', hex: '#424242' },
+                    
+                    // Row 2 - Reds
+                    { name: 'Light Red', hex: '#FFCDD2' },
+                    { name: 'Soft Red', hex: '#EF9A9A' },
+                    { name: 'Pure Red', hex: '#F44336' },
+                    { name: 'Dark Red', hex: '#C62828' },
+                    
+                    // Row 3 - Greens
+                    { name: 'Light Green', hex: '#C8E6C9' },
+                    { name: 'Soft Green', hex: '#A5D6A7' },
+                    { name: 'Pure Green', hex: '#4CAF50' },
+                    { name: 'Dark Green', hex: '#2E7D32' },
+                    
+                    // Row 4 - Blues
+                    { name: 'Light Blue', hex: '#BBDEFB' },
+                    { name: 'Soft Blue', hex: '#90CAF9' },
+                    { name: 'Pure Blue', hex: '#2196F3' },
+                    { name: 'Dark Blue', hex: '#1565C0' }
+                ]
+            });
         }
         
-        // Initialize with first color as default
-        this.selectedColor = this.colors[0];
+        // Initialize with first color of default palette
+        const defaultPalette = this.palettes.get(this.currentPalette);
+        if (defaultPalette && defaultPalette.colors.length > 0) {
+            this.selectedColor = defaultPalette.colors[0];
+        }
     }
     
     async show(anchorElement: HTMLElement, onSelect: (color: ColorInfo) => void): Promise<void> {
@@ -67,34 +86,58 @@ export class ColorPickerPopover {
         // Clear existing content
         this.element!.innerHTML = '';
         
-        // Add title
-        const title = document.createElement('div');
-        title.style.cssText = `
-            color: rgba(255, 255, 255, 0.9);
-            font-size: 14px;
-            font-weight: 500;
+        // Create tabs container
+        this.tabContainer = document.createElement('div');
+        this.tabContainer.style.cssText = `
+            display: flex;
+            gap: 4px;
             margin-bottom: 12px;
-            text-align: center;
-        `;
-        title.textContent = 'Voxel Colors';
-        this.element!.appendChild(title);
-        
-        // Create color grid
-        const grid = document.createElement('div');
-        grid.style.cssText = `
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 8px;
-            padding: 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 8px;
         `;
         
-        // Add color swatches
-        for (const color of this.colors) {
-            const swatch = this.createColorSwatch(color);
-            grid.appendChild(swatch);
+        // Create tabs
+        for (const [key, palette] of this.palettes) {
+            const tab = document.createElement('button');
+            tab.style.cssText = `
+                padding: 4px 12px;
+                background: ${key === this.currentPalette ? 'rgba(100, 200, 255, 0.2)' : 'transparent'};
+                border: 1px solid ${key === this.currentPalette ? 'rgba(100, 200, 255, 0.5)' : 'transparent'};
+                border-radius: 4px;
+                color: ${key === this.currentPalette ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.6)'};
+                font-size: 12px;
+                cursor: pointer;
+                transition: all 0.2s ease;
+            `;
+            tab.textContent = palette.name;
+            
+            tab.addEventListener('mouseenter', () => {
+                if (key !== this.currentPalette) {
+                    tab.style.background = 'rgba(255, 255, 255, 0.1)';
+                }
+            });
+            
+            tab.addEventListener('mouseleave', () => {
+                if (key !== this.currentPalette) {
+                    tab.style.background = 'transparent';
+                }
+            });
+            
+            tab.addEventListener('click', () => {
+                this.switchPalette(key);
+            });
+            
+            this.tabContainer.appendChild(tab);
         }
         
-        this.element!.appendChild(grid);
+        this.element!.appendChild(this.tabContainer);
+        
+        // Create color container
+        this.colorContainer = document.createElement('div');
+        this.element!.appendChild(this.colorContainer);
+        
+        // Display current palette
+        this.displayPalette();
         
         // Create arrow
         const arrow = document.createElement('div');
@@ -301,5 +344,62 @@ export class ColorPickerPopover {
     
     setSelectedColor(color: ColorInfo): void {
         this.selectedColor = color;
+    }
+    
+    private displayPalette(): void {
+        if (!this.colorContainer) return;
+        
+        // Clear existing colors
+        this.colorContainer.innerHTML = '';
+        
+        // Create color grid
+        const grid = document.createElement('div');
+        grid.style.cssText = `
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            padding: 0;
+        `;
+        
+        // Get current palette
+        const currentPalette = this.palettes.get(this.currentPalette);
+        if (!currentPalette) return;
+        
+        // Add color swatches
+        for (const color of currentPalette.colors) {
+            const swatch = this.createColorSwatch(color);
+            grid.appendChild(swatch);
+        }
+        
+        this.colorContainer.appendChild(grid);
+    }
+    
+    private switchPalette(paletteKey: string): void {
+        if (this.currentPalette === paletteKey) return;
+        
+        this.currentPalette = paletteKey;
+        
+        // Update tab styles
+        if (this.tabContainer) {
+            const tabs = this.tabContainer.querySelectorAll('button');
+            tabs.forEach((tab, index) => {
+                const key = Array.from(this.palettes.keys())[index];
+                if (key === paletteKey) {
+                    tab.style.background = 'rgba(100, 200, 255, 0.2)';
+                    tab.style.border = '1px solid rgba(100, 200, 255, 0.5)';
+                    tab.style.color = 'rgba(255, 255, 255, 0.9)';
+                } else {
+                    tab.style.background = 'transparent';
+                    tab.style.border = '1px solid transparent';
+                    tab.style.color = 'rgba(255, 255, 255, 0.6)';
+                }
+            });
+        }
+        
+        // Update displayed colors
+        this.displayPalette();
+        
+        // DON'T update VoxelRenderer or AssetPreviewScene colors
+        // This ensures existing voxels keep their original colors
     }
 }

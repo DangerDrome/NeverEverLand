@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { VoxelType } from '../types';
 
 // Import voxel type color definitions
-const VOXEL_COLORS: Record<VoxelType, { color: string; opacity?: number }> = {
+const VOXEL_COLORS: Record<number, { color: string; opacity?: number }> = {
     [VoxelType.AIR]: { color: 'rgb(0, 0, 0)', opacity: 0 },
     [VoxelType.GRASS]: { color: 'rgb(144, 238, 144)' },
     [VoxelType.DIRT]: { color: 'rgb(139, 105, 20)' },
@@ -13,6 +13,7 @@ const VOXEL_COLORS: Record<VoxelType, { color: string; opacity?: number }> = {
     [VoxelType.SAND]: { color: 'rgb(255, 228, 181)' },
     [VoxelType.SNOW]: { color: 'rgb(240, 248, 255)', opacity: 0.85 },
     [VoxelType.ICE]: { color: 'rgb(135, 206, 235)', opacity: 0.9 }
+    // Custom colors will be added dynamically via updateCustomColors
 };
 
 export class AssetPreviewScene {
@@ -23,6 +24,25 @@ export class AssetPreviewScene {
     private materials: Map<VoxelType, THREE.MeshStandardMaterial>;
     private voxelGeometry: THREE.BoxGeometry;
     private voxelSize = 0.1; // Same as main scene
+    
+    // Update custom color definitions from color palette
+    static updateCustomColors(colorPalette: { hex: string; voxelType?: VoxelType }[]): void {
+        colorPalette.forEach((color) => {
+            // If color has a specific voxelType, update or add it
+            if (color.voxelType !== undefined) {
+                VOXEL_COLORS[color.voxelType] = {
+                    color: color.hex
+                };
+            } else {
+                // Otherwise update by index (legacy behavior)
+                const index = colorPalette.indexOf(color);
+                const voxelType = (VoxelType.CUSTOM_1 + index) as VoxelType;
+                VOXEL_COLORS[voxelType] = {
+                    color: color.hex
+                };
+            }
+        });
+    }
     
     constructor(size = 256) {
         // Create scene
@@ -131,8 +151,8 @@ export class AssetPreviewScene {
         const depth = (maxZ - minZ + 1) * this.voxelSize;
         const maxDimension = Math.max(width, height, depth);
         
-        // Adjust frustum size to fit asset with more padding
-        const padding = 2.5; // Increased from 1.5 to 2.5 for more space around assets
+        // Adjust frustum size to fit asset with less padding for closer view
+        const padding = 1.2; // Reduced padding for tighter framing in thumbnails
         const frustumSize = maxDimension * padding;
         this.camera.left = -frustumSize / 2;
         this.camera.right = frustumSize / 2;
