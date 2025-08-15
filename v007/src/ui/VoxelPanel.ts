@@ -6,7 +6,7 @@ import { AssetPopover } from './AssetPopover';
 import { AssetInfo } from '../assets/types';
 import { ModalDialog } from './ModalDialog';
 import { ColorPickerPopover, ColorInfo } from './ColorPickerPopover';
-import { ColorRegistry } from '../engine/ColorRegistry';
+// ColorRegistry import removed - color palette functionality moved to ToolsPanel
 import { settings } from '../main';
 import { ToolsPanel } from './ToolsPanel';
 
@@ -19,22 +19,23 @@ interface VoxelButtonInfo {
 
 export class VoxelPanel {
     private drawingSystem: DrawingSystem;
-    private fileManager: FileManager | null = null;
+    // File manager removed - file operations moved to separate File Panel
     private voxelEngine: any | null = null;  // Reference to voxel engine for edge toggle
     private element: HTMLElement | null = null;
+    private content: HTMLElement | null = null;
     private voxelButtons: Map<VoxelType, HTMLElement> = new Map();
     // Tool buttons moved to ToolsPanel
     // private toolButtons: Map<string, HTMLElement> = new Map();
     private selectedType: VoxelType = VoxelType.GRASS;
     private selectedColor: ColorInfo | null = null;
-    private selectedTool: string = 'brush';
+    // Tool selection moved to ToolsPanel
     private assetManager: StaticAssetManager;
     private assetPopover: AssetPopover;
     private colorPickerPopover: ColorPickerPopover;
     private voxelTypes: VoxelButtonInfo[] = [];
     private toolsPanel: ToolsPanel | null = null;  // Reference to ToolsPanel for clearing selections
     
-    constructor(drawingSystem: DrawingSystem, colorPalette?: ColorInfo[]) {
+    constructor(drawingSystem: DrawingSystem, _colorPalette?: ColorInfo[]) {
         this.drawingSystem = drawingSystem;
         this.assetManager = new StaticAssetManager();
         this.assetPopover = new AssetPopover(this.assetManager);
@@ -53,30 +54,104 @@ export class VoxelPanel {
         this.element.style.cssText = `
             position: fixed;
             bottom: 40px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(30, 30, 30, 0.95);
-            border: 1px solid rgba(255, 255, 255, 0.15);
+            left: calc(50% - 300px);
+            width: fit-content;
+            background: rgba(40, 40, 40, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 8px;
-            padding: 12px;
             backdrop-filter: blur(10px);
             z-index: 100;
             display: flex;
-            gap: 8px;
-            align-items: center;
+            flex-direction: column;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
         `;
         
-        // Add title
-        const title = document.createElement('div');
-        title.textContent = 'Voxels:';
-        title.style.cssText = `
-            color: rgba(255, 255, 255, 0.7);
+        // Create header
+        const header = document.createElement('div');
+        header.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 16px;
+            background: transparent;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.5);
             font-size: 14px;
-            margin-right: 8px;
             font-weight: 500;
+            letter-spacing: 0.5px;
+            user-select: none;
+            cursor: grab;
         `;
-        this.element.appendChild(title);
+        
+        // Add icon to header
+        const headerIcon = document.createElement('span');
+        headerIcon.setAttribute('data-lucide', 'package');
+        headerIcon.style.cssText = `
+            width: 18px;
+            height: 18px;
+            color: rgba(255, 255, 255, 0.5);
+            flex-shrink: 0;
+        `;
+        header.appendChild(headerIcon);
+        
+        // Add text to header
+        const headerText = document.createElement('span');
+        headerText.textContent = 'Assets';
+        header.appendChild(headerText);
+        
+        this.element.appendChild(header);
+        
+        // Make panel draggable by header
+        let isDragging = false;
+        let currentX: number;
+        let currentY: number;
+        let initialX: number;
+        let initialY: number;
+        
+        header.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            header.style.cursor = 'grabbing';
+            
+            // Get current position
+            const rect = this.element!.getBoundingClientRect();
+            
+            // Remove bottom positioning and set top instead
+            this.element!.style.bottom = 'auto';
+            this.element!.style.transform = 'none';
+            this.element!.style.left = rect.left + 'px';
+            this.element!.style.top = rect.top + 'px';
+            
+            // Calculate initial offsets
+            initialX = e.clientX - rect.left;
+            initialY = e.clientY - rect.top;
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            
+            e.preventDefault();
+            currentX = e.clientX - initialX;
+            currentY = e.clientY - initialY;
+            
+            this.element!.style.left = currentX + 'px';
+            this.element!.style.top = currentY + 'px';
+        });
+        
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            header.style.cursor = 'grab';
+        });
+        
+        // Create content container
+        const content = document.createElement('div');
+        content.style.cssText = `
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            padding: 16px 20px;
+            white-space: nowrap;
+        `;
         
         
         // Define voxel types with Lucide icons and colors
@@ -96,7 +171,7 @@ export class VoxelPanel {
         this.voxelTypes.forEach((voxelInfo, index) => {
             const button = this.createVoxelButton(voxelInfo, index + 1);
             this.voxelButtons.set(voxelInfo.type, button);
-            this.element!.appendChild(button);
+            content.appendChild(button);
         });
         
         // Add separator
@@ -107,82 +182,20 @@ export class VoxelPanel {
             background: rgba(255, 255, 255, 0.2);
             margin: 0 8px;
         `;
-        this.element.appendChild(separator);
+        content.appendChild(separator);
         
         // Tools section removed - moved to ToolsPanel on the left
         
-        // Add separator
-        const separator2 = document.createElement('div');
-        separator2.style.cssText = `
-            width: 1px;
-            height: 30px;
-            background: rgba(255, 255, 255, 0.2);
-            margin: 0 8px;
-        `;
-        this.element.appendChild(separator2);
+        // Brush size and file buttons removed - file operations moved to separate File Panel
         
-        // Add title
-        const brushTitle = document.createElement('div');
-        brushTitle.textContent = 'Brush:';
-        brushTitle.style.cssText = `
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 14px;
-            margin-right: 8px;
-            font-weight: 500;
-        `;
-        this.element.appendChild(brushTitle);
-        
-        // Add brush size toggle button
-        const brushButton = document.createElement('button');
-        brushButton.id = 'brush-size-toggle';
-        brushButton.style.cssText = `
-            width: 40px;
-            height: 40px;
-            border: 2px solid transparent;
-            border-radius: 6px;
-            background: rgba(255, 255, 255, 0.1);
-            cursor: pointer;
-            transition: all 0.2s ease;
-            font-size: 20px;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            overflow: hidden;
-            color: rgba(255, 255, 255, 0.8);
-        `;
-        brushButton.title = 'Brush Size (Click to cycle or use [ ])';
-        brushButton.innerHTML = '<span id="brush-size-value">1</span>';
-        this.element.appendChild(brushButton);
-        
-        // Voxels are fixed at 0.1m size, no controls needed
-        
-        // Add file operations section
-        const separator3 = document.createElement('div');
-        separator3.style.cssText = `
-            width: 1px;
-            height: 30px;
-            background: rgba(255, 255, 255, 0.2);
-            margin: 0 8px;
-        `;
-        this.element.appendChild(separator3);
-        
-        // Add file buttons
-        this.createFileButtons();
-        
-        // Add another separator
-        const separator4 = document.createElement('div');
-        separator4.style.cssText = `
-            width: 1px;
-            height: 30px;
-            background: rgba(255, 255, 255, 0.2);
-            margin: 0 8px;
-        `;
-        this.element.appendChild(separator4);
+        // Store content reference for other methods
+        this.content = content;
         
         // Add view options buttons
         this.createViewButtons();
+        
+        // Append content to main element
+        this.element.appendChild(content);
         
         // Add to page
         document.body.appendChild(this.element);
@@ -352,6 +365,8 @@ export class VoxelPanel {
         return button;
     }
     
+    // Color palette button moved to ToolsPanel
+    /*
     private createVoxelBrushButton(): HTMLElement {
         const button = document.createElement('button');
         button.id = 'voxel-brush-button';
@@ -501,6 +516,7 @@ export class VoxelPanel {
         
         return button;
     }
+    */
     
     private createViewButtons(): void {
         // Edge/Wireframe toggle button
@@ -567,7 +583,7 @@ export class VoxelPanel {
             }
         });
         
-        this.element!.appendChild(edgeButton);
+        this.content!.appendChild(edgeButton);
         
         // Tilt-shift toggle button
         const tiltShiftButton = document.createElement('button');
@@ -619,9 +635,11 @@ export class VoxelPanel {
             }
         });
         
-        this.element!.appendChild(tiltShiftButton);
+        this.content!.appendChild(tiltShiftButton);
     }
     
+    // File buttons removed - moved to separate File Panel
+    /*
     private createFileButtons(): void {
         // Import button
         const importButton = document.createElement('button');
@@ -788,6 +806,7 @@ export class VoxelPanel {
         
         this.element!.appendChild(exportJsonButton);
     }
+    */
     
     /* Tool buttons moved to ToolsPanel
     private createToolButtons(): void {
@@ -1012,54 +1031,18 @@ export class VoxelPanel {
         }
     }
     
-    public updateBrushSize(size: number): void {
-        const element = document.getElementById('brush-size-value');
-        if (element) {
-            // Show just the number
-            element.textContent = size.toString();
-        }
-        
-        // Update toggle button hover effect and active state
-        const toggleBtn = document.getElementById('brush-size-toggle') as HTMLButtonElement;
-        if (toggleBtn) {
-            // Update title to show full size info
-            toggleBtn.title = `Brush Size: ${size}×${size}×${size} (Click to cycle or use [ ])`;
-            
-            // Add hover listener if not already added
-            if (!toggleBtn.dataset.listenerAdded) {
-                toggleBtn.addEventListener('mouseenter', () => {
-                    if (!toggleBtn.classList.contains('active')) {
-                        toggleBtn.style.background = 'rgba(255, 255, 255, 0.15)';
-                        toggleBtn.style.transform = 'scale(1.05)';
-                    }
-                });
-                
-                toggleBtn.addEventListener('mouseleave', () => {
-                    if (!toggleBtn.classList.contains('active')) {
-                        toggleBtn.style.background = 'rgba(255, 255, 255, 0.1)';
-                        toggleBtn.style.transform = 'scale(1)';
-                    }
-                });
-                
-                toggleBtn.addEventListener('mousedown', () => {
-                    toggleBtn.style.transform = 'scale(0.95)';
-                });
-                
-                toggleBtn.addEventListener('mouseup', () => {
-                    toggleBtn.style.transform = 'scale(1.05)';
-                });
-                
-                toggleBtn.dataset.listenerAdded = 'true';
-            }
-        }
+    // Brush size update removed - now handled by ToolsPanel
+    public updateBrushSize(_size: number): void {
+        // Brush size display moved to ToolsPanel
     }
     
     public updateToolMode(_mode: string): void {
         // Tool mode updates now handled by ToolsPanel
     }
     
-    public setFileManager(fileManager: FileManager): void {
-        this.fileManager = fileManager;
+    // File manager setter removed - file operations moved to separate File Panel
+    public setFileManager(_fileManager: FileManager): void {
+        // File operations moved to separate File Panel
     }
     
     public setVoxelEngine(voxelEngine: any): void {
@@ -1273,6 +1256,8 @@ export class VoxelPanel {
         }
     }
     
+    // Color palette button update moved to ToolsPanel
+    /*
     private updateVoxelBrushButtonWithColor(color: ColorInfo): void {
         const voxelBrushButton = document.getElementById('voxel-brush-button');
         if (voxelBrushButton) {
@@ -1289,6 +1274,7 @@ export class VoxelPanel {
             }
         }
     }
+    */
     
     private hexToRgb(hex: string): { r: number; g: number; b: number } | null {
         const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);

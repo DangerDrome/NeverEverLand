@@ -70,9 +70,9 @@ export class ToolsPanel {
             justify-content: center;
             gap: 6px;
             padding: 12px 16px;
-            background: rgba(30, 30, 30, 0.8);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            color: rgba(255, 255, 255, 0.7);
+            background: transparent;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.5);
             font-size: 12px;
             font-weight: 500;
             letter-spacing: 0.5px;
@@ -85,7 +85,7 @@ export class ToolsPanel {
         headerIcon.style.cssText = `
             width: 16px;
             height: 16px;
-            color: rgba(255, 255, 255, 0.6);
+            color: rgba(255, 255, 255, 0.5);
             flex-shrink: 0;
         `;
         header.appendChild(headerIcon);
