@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Never Ever Land</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="stylesheet" href="/src/styles/main.css">
 </head>
 <body>
@@ -30,22 +31,28 @@
     
     <!-- Info Bar Footer -->
     <div id="info-bar" class="info-bar">
-        <div class="info-section" id="info-tool">
-            <span class="info-label">Tool:</span>
-            <span class="info-value" id="current-tool">Brush</span>
-        </div>
-        <div class="info-separator"></div>
-        <div class="info-section" id="info-stats">
-            <span id="stats-fps">FPS: 0</span>
-            <span class="info-divider">|</span>
-            <span id="stats-voxels">Voxels: 0</span>
-            <span class="info-divider">|</span>
-            <span id="stats-memory">Memory: 0MB</span>
-        </div>
-        <div class="info-separator"></div>
+        <!-- Left: Action Log -->
         <div class="info-section info-log" id="info-log">
             <span id="action-log">Ready</span>
         </div>
+        
+        <!-- Center: Tool and Stats -->
+        <div class="info-center-group">
+            <div class="info-section" id="info-tool">
+                <span class="info-label">Tool:</span>
+                <span class="info-value" id="current-tool">Brush</span>
+            </div>
+            <div class="info-separator"></div>
+            <div class="info-section" id="info-stats">
+                <span id="stats-fps">FPS: 0</span>
+                <span class="info-divider">|</span>
+                <span id="stats-voxels">Voxels: 0</span>
+                <span class="info-divider">|</span>
+                <span id="stats-memory">Memory: 0MB</span>
+            </div>
+        </div>
+        
+        <!-- Right: Version -->
         <div class="info-section info-version-right" id="info-version">
             <span class="info-label">v</span>
             <span class="info-value" id="app-version">0.0.0</span>

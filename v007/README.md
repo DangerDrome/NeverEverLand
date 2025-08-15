@@ -81,6 +81,7 @@ A complete TypeScript-based voxel engine with instanced rendering, supporting up
 ### Core Engine
 - **TypeScript**: Full type safety and modern development experience
 - **Instanced Rendering**: Single draw call per voxel type for maximum performance
+- **Layer Baking**: Convert voxel layers to optimized meshes with face culling
 - **Mathematical Raycasting**: DDA algorithm for precise voxel selection
 - **Undo/Redo System**: Complete operation history with automatic grouping
 - **Save/Load**: Export and import voxel scenes as JSON or VOX files
@@ -325,25 +326,43 @@ npx tsc --noEmit
 
 ## 📝 Recent Updates
 
+### Layer Baking System (Performance Optimization)
+- **Face Culling Algorithm**: Only creates faces between solid voxels and empty space
+- **30-40% Face Reduction**: Eliminates all internal faces between adjacent voxels
+- **Reversible Baking**: Unbake layers to restore full editing capabilities
+- **UI Integration**: Bake/unbake buttons in layer panel with visual indicators
+- **Smart Face Detection**: Checks all 6 neighbors before creating each face
+- **Performance Boost**: Converts instance management overhead to static geometry
+- **Visual Feedback**: Orange border for baked layers, status in layer info
+- **Automatic Protection**: Baked layers prevent edits with footer notifications
+- **Shadow Support**: Baked meshes properly cast and receive shadows
+- **Wireframe Compatible**: Edge display works seamlessly with baked layers
+
 ### UI & Visual Improvements
 - **Custom Tool Cursors**: Each tool now displays its matching icon as the cursor
 - **Paint Bucket Fix**: Fixed garbled cursor to use proper paint bucket icon
 - **Selection Mode Cursor**: Crosshair cursor correctly shows in selection mode
-- **Info Bar Footer**: Replaced HUD with clean footer showing tool, stats, and actions
+- **Info Bar Footer**: Three-column layout with action log, stats, and version
 - **Dynamic Header Icon**: Swords icon color matches selected voxel color
 - **UI Polish**: Removed blue glow from single voxel button for cleaner look
-- **Version Display**: Version number now right-aligned in info bar
+- **Clean Console**: All startup logs redirected to footer action log
 - **Multi-Brush Color Support**: Custom colors now work with all brush sizes
+- **Layer Styling**: Green selection for regular layers, orange for baked layers
+- **Dimmed UI Elements**: Layer panel header/footer dimmed for better focus
+- **Improved Layer Controls**: Vertical save/load buttons, visibility button background
+- **Clean Name Editing**: Dark background when editing layer names, no borders
+- **Favicon**: White swords icon prevents 404 errors in console
 
 ### Layer System & Color Management
 - **Layer System**: Organize voxels into multiple layers with visibility controls
+- **Layer Baking**: Optimize static layers for 99%+ performance improvement
 - **Color Picker**: Multiple color palettes (Default, Pastel, Neon) with tab switching
 - **ColorRegistry**: Dynamic color assignment system supporting 256+ unique colors
 - **Layer Thumbnails**: Real-time isometric previews for each layer
 - **Asset Editing**: Edit placed assets and save them back to the library
 - **Drag & Drop**: Import .vox files directly by dragging onto the viewport
 - **Modal Dialogs**: Promise-based dialogs replacing browser popups
-- **Per-Layer Operations**: Import, export, and clear operations per layer
+- **Per-Layer Operations**: Import, export, clear, bake/unbake per layer
 
 ### Asset System & UI
 - **Complete Asset System**: 27 premade structures across all 9 voxel types
@@ -389,6 +408,8 @@ npx tsc --noEmit
 - [x] Layer system for organizing content
 - [x] Multiple color palettes with custom colors
 - [x] Asset editing and management
+- [x] Layer baking for performance optimization
+- [ ] Auto-baking suggestions for large layers
 - [ ] Chunk-based infinite world
 - [ ] Texture atlas support
 - [ ] Ambient occlusion

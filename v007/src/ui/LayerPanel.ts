@@ -175,6 +175,11 @@ export class LayerPanel {
             item.dataset.editingAsset = 'true';
         }
         
+        // Mark baked layers
+        if (layer.isBaked) {
+            item.dataset.baked = 'true';
+        }
+        
         // Click to select layer
         item.addEventListener('click', (e) => {
             if ((e.target as HTMLElement).closest('.layer-controls')) return;
@@ -212,8 +217,8 @@ export class LayerPanel {
         const visibilityButton = document.createElement('button');
         visibilityButton.className = 'layer-visibility';
         visibilityButton.innerHTML = layer.visible ? 
-            '<i data-lucide="eye" style="width: 14px; height: 14px;"></i>' : 
-            '<i data-lucide="eye-off" style="width: 14px; height: 14px;"></i>';
+            '<i data-lucide="eye" style="width: 12px; height: 12px;"></i>' : 
+            '<i data-lucide="eye-off" style="width: 12px; height: 12px;"></i>';
         visibilityButton.style.opacity = layer.visible ? '1' : '0.3';
         visibilityButton.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -257,26 +262,27 @@ export class LayerPanel {
         });
         nameSpan.appendChild(nameText);
         
-        // Layer info (voxel count)
+        // Layer info (voxel count and baking status)
         const infoSpan = document.createElement('span');
         infoSpan.className = 'layer-info';
-        infoSpan.textContent = `${layer.getVoxelCount()} voxels`;
+        let infoText = `${layer.getVoxelCount()} voxels`;
+        if (layer.isBaked) {
+            const metadata = layer.getBakingMetadata();
+            if (metadata) {
+                const reduction = ((1 - metadata.vertexCount / (metadata.originalVoxelCount * 24)) * 100).toFixed(1);
+                // Add line break before baked status
+                infoText += `\nBaked (${reduction}%)`;
+            }
+        } else {
+            // Show unbaked status
+            infoText += '\nUnbaked';
+        }
+        infoSpan.innerHTML = infoText.replace('\n', '<br>');
         
         nameContainer.appendChild(nameSpan);
         nameContainer.appendChild(infoSpan);
         
-        // Lock toggle
-        const lockButton = document.createElement('button');
-        lockButton.className = 'layer-lock';
-        lockButton.innerHTML = layer.locked ? 
-            '<i data-lucide="lock" style="width: 14px; height: 14px;"></i>' : 
-            '<i data-lucide="unlock" style="width: 14px; height: 14px;"></i>';
-        lockButton.style.opacity = layer.locked ? '1' : '0.3';
-        lockButton.addEventListener('click', (e) => {
-            e.stopPropagation();
-            layer.locked = !layer.locked;
-            this.refresh();
-        });
+        // Remove lock button - no longer needed
         
         // Save button - different for asset editing layers
         const saveButton = document.createElement('button');
@@ -284,7 +290,7 @@ export class LayerPanel {
         
         if (layer.isEditingAsset) {
             // Save Asset button for editing layers
-            saveButton.innerHTML = '<i data-lucide="save" style="width: 14px; height: 14px;"></i>';
+            saveButton.innerHTML = '<i data-lucide="save" style="width: 12px; height: 12px;"></i>';
             saveButton.title = 'Save as Asset';
             saveButton.style.background = 'rgba(100, 200, 100, 0.3)';
             saveButton.addEventListener('click', async (e) => {
@@ -293,7 +299,7 @@ export class LayerPanel {
             });
         } else {
             // Normal save as VOX button
-            saveButton.innerHTML = '<i data-lucide="download" style="width: 14px; height: 14px;"></i>';
+            saveButton.innerHTML = '<i data-lucide="download" style="width: 12px; height: 12px;"></i>';
             saveButton.title = 'Save layer as VOX';
             saveButton.addEventListener('click', async (e) => {
                 e.stopPropagation();
@@ -307,7 +313,7 @@ export class LayerPanel {
         // Load button
         const loadButton = document.createElement('button');
         loadButton.className = 'layer-load';
-        loadButton.innerHTML = '<i data-lucide="upload" style="width: 14px; height: 14px;"></i>';
+        loadButton.innerHTML = '<i data-lucide="upload" style="width: 12px; height: 12px;"></i>';
         loadButton.title = 'Load VOX into layer';
         loadButton.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -328,19 +334,42 @@ export class LayerPanel {
             input.click();
         });
         
-        // Icon column (visibility and lock)
+        // Bake/Unbake button (moved to where lock button was)
+        const bakeButton = document.createElement('button');
+        bakeButton.className = layer.isBaked ? 'layer-unbake' : 'layer-bake';
+        bakeButton.innerHTML = layer.isBaked ? 
+            '<i data-lucide="package-x" style="width: 12px; height: 12px;"></i>' : 
+            '<i data-lucide="package" style="width: 12px; height: 12px;"></i>';
+        bakeButton.title = layer.isBaked ? 'Unbake layer (restore editing)' : 'Bake layer (optimize for performance)';
+        bakeButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (layer.isBaked) {
+                this.voxelEngine.unbakeLayer(layer.id);
+            } else {
+                this.voxelEngine.bakeLayer(layer.id);
+            }
+            this.refresh();
+            this.updateCallback();
+        });
+        
+        // Icon column (visibility and bake button)
         const iconColumn = document.createElement('div');
         iconColumn.className = 'layer-icon-column';
         iconColumn.appendChild(visibilityButton);
-        iconColumn.appendChild(lockButton);
+        iconColumn.appendChild(bakeButton);
+        
+        // File button column (load and save stacked)
+        const fileColumn = document.createElement('div');
+        fileColumn.className = 'layer-file-column';
+        fileColumn.appendChild(loadButton);
+        fileColumn.appendChild(saveButton);
         
         // Controls container
         const controls = document.createElement('div');
         controls.className = 'layer-controls';
         controls.appendChild(iconColumn);
         controls.appendChild(nameContainer);
-        controls.appendChild(loadButton);
-        controls.appendChild(saveButton);
+        controls.appendChild(fileColumn);
         
         // Assemble item
         item.appendChild(previewContainer);

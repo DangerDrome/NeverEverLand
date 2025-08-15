@@ -16,6 +16,20 @@ import { DynamicGrid } from './ui/DynamicGrid';
 import { BoxSelectionTool } from './tools/BoxSelectionTool';
 import { attachPerformanceTest } from './utils/PerformanceTest';
 import { MenuBar } from './ui/MenuBar';
+import { testBaking } from './test/TestBaking';
+import { visualBakingTest } from './test/VisualBakingTest';
+import { debugBaking } from './test/DebugBaking';
+import { testTopFaces } from './test/TestTopFaces';
+import { testPlatformFaces } from './test/TestPlatformFaces';
+import { debugBakedFaces, clearDebugArrows } from './test/DebugBakedFaces';
+import { debugMissingFaces } from './test/DebugMissingFaces';
+import { testBoundaryFaces } from './test/TestBoundaryFaces';
+import { verifyGreedyMeshing } from './test/VerifyGreedyMeshing';
+import { compareBaking } from './test/CompareBaking';
+import { testSeparatedVoxels } from './test/TestSeparatedVoxels';
+import { testBoundaryFix } from './test/TestBoundaryFix';
+import { ActionLogger } from './ui/ActionLogger';
+import { testAllFaces } from './test/TestAllFaces';
 
 // =====================================
 // settings - Customize your experience
@@ -447,8 +461,7 @@ class VoxelApp {
         this.camera.zoom = 8.0;  // Start at 8x zoom for much closer initial view
         this.camera.updateProjectionMatrix();
         
-        console.log('Camera position:', this.camera.position);
-        console.log('Camera looking at:', new THREE.Vector3(0, 0, 0));
+        // Camera initialized at position (20, 20, 20)
         
         // Setup controls
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -710,9 +723,30 @@ class VoxelApp {
         this.animate();
         
         // Add some initial voxels for testing
-        console.log('Creating test scene...');
+        // Creating test scene
+        ActionLogger.getInstance().log('Initializing scene...', 1000);
         this.createTestScene();
-        console.log('Voxel count after test scene:', this.voxelEngine.getVoxelCount());
+        // Test scene created
+        
+        // Make test functions available globally
+        (window as any).testBaking = testBaking;
+        (window as any).visualBakingTest = () => visualBakingTest(this.scene, this.voxelEngine);
+        (window as any).debugBaking = debugBaking;
+        (window as any).testTopFaces = testTopFaces;
+        (window as any).testPlatformFaces = testPlatformFaces;
+        (window as any).debugBakedFaces = () => {
+            if (this.voxelEngine) debugBakedFaces(this.scene, this.voxelEngine);
+        };
+        (window as any).clearDebugArrows = () => clearDebugArrows(this.scene);
+        (window as any).debugMissingFaces = debugMissingFaces;
+        (window as any).testBoundaryFaces = testBoundaryFaces;
+        (window as any).verifyGreedyMeshing = verifyGreedyMeshing;
+        (window as any).compareBaking = compareBaking;
+        (window as any).testSeparatedVoxels = () => {
+            if (this.voxelEngine) testSeparatedVoxels(this.scene, this.voxelEngine);
+        };
+        (window as any).testBoundaryFix = testBoundaryFix;
+        (window as any).testAllFaces = testAllFaces;
     }
     
     setupBrushSizeButtons() {
@@ -767,7 +801,8 @@ class VoxelApp {
             
             this.composer.addPass(this.tiltShiftPass);
             
-            console.log('Post-processing initialized with tilt-shift');
+            // Post-processing initialized with tilt-shift
+            ActionLogger.getInstance().log('Tilt-shift enabled', 1500);
         } catch (error) {
             console.warn('Post-processing failed to initialize:', error);
             this.composer = null;
@@ -1119,14 +1154,11 @@ class VoxelApp {
         if (event.button === 0 && !event.altKey) {
             if (this.voxelEngine && this.drawingSystem) {
                 const hit = this.voxelEngine.raycast(this.raycaster);
-                console.log('Left click hit:', hit);
+                // Left click hit detected
                 if (hit) {
                     // Check if eraser tool is selected
                     const mode = this.drawingSystem.toolMode === 'eraser' ? 'remove' : 'add';
-                    console.log('Starting drawing at:', 
-                        mode === 'add' ? hit.adjacentPos : hit.voxelPos, 
-                        'on face with normal:', hit.normal,
-                        'mode:', mode);
+                    // Starting drawing operation
                     this.drawingSystem.startDrawing(hit, mode);
                     // Disable orbit controls to prevent rotation while drawing
                     if (this.controls) this.controls.enabled = false;
@@ -2105,7 +2137,9 @@ class VoxelApp {
 // Start application
 window.addEventListener('DOMContentLoaded', () => {
     try {
-        console.log('Starting VoxelApp...');
+        // Starting VoxelApp...
+        const logger = ActionLogger.getInstance();
+        logger.log('Starting VoxelApp...', 5000);
         const app = new VoxelApp();
         (window as any).app = app;
         
@@ -2115,8 +2149,9 @@ window.addEventListener('DOMContentLoaded', () => {
             attachPerformanceTest(voxelEngine);
         }
         
-        console.log('VoxelApp started successfully');
-        console.log('Performance test available via window.perfTest - type perfTest.suite() to run tests');
+        // VoxelApp started successfully
+        logger.log('VoxelApp ready', 2000);
+        // Performance test available via window.perfTest
     } catch (error) {
         console.error('Error starting VoxelApp:', error);
     }

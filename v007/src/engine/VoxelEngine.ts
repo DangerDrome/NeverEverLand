@@ -3,6 +3,7 @@ import { VoxelRenderer } from './VoxelRenderer';
 import { VoxelType, VoxelPosition, RaycastHit } from '../types';
 import { UndoRedoManager } from './UndoRedoManager';
 import { VoxelLayer } from './VoxelLayer';
+import { BakedMeshWireframe } from './BakedMeshWireframe';
 
 export { VoxelType };
 
@@ -14,6 +15,8 @@ export class VoxelEngine {
     private renderer: VoxelRenderer;
     private undoRedoManager: UndoRedoManager;
     private layerIdCounter: number = 0;
+    private bakedMeshes: Map<string, { opaque?: THREE.Mesh; transparent?: THREE.Mesh }> = new Map();
+    private bakedWireframe: BakedMeshWireframe;
     
     // Batch update system
     private batchMode: boolean = false;
@@ -33,6 +36,10 @@ export class VoxelEngine {
         
         // Voxel renderer handles all rendering
         this.renderer = new VoxelRenderer(scene, this.voxelSize, showWireframe);
+        
+        // Initialize baked mesh wireframe system
+        this.bakedWireframe = new BakedMeshWireframe();
+        this.bakedWireframe.setVisible(showWireframe);
         
         // Initialize undo/redo manager
         this.undoRedoManager = new UndoRedoManager(this);
@@ -64,6 +71,13 @@ export class VoxelEngine {
         const index = this.layers.findIndex(l => l.id === layerId);
         if (index === -1) return false;
         
+        const layer = this.layers[index];
+        
+        // Clean up baked meshes if any
+        if (layer.isBaked) {
+            this.removeBakedMeshes(layerId);
+        }
+        
         // Remove the layer
         this.layers.splice(index, 1);
         
@@ -71,6 +85,9 @@ export class VoxelEngine {
         if (this.activeLayerId === layerId && this.layers.length > 0) {
             this.activeLayerId = this.layers[0].id;
         }
+        
+        // Trigger update
+        this.updateInstances();
         
         return true;
     }
@@ -268,7 +285,10 @@ export class VoxelEngine {
     
     // Perform the actual update
     private performUpdate(): void {
-        // Combine voxels from all visible layers
+        // Update baked mesh visibility first
+        this.updateBakedMeshVisibility();
+        
+        // Combine voxels from all visible NON-BAKED layers
         const combinedVoxelsByType = new Map<VoxelType, Set<string>>();
         
         // Initialize map for all voxel types
@@ -278,9 +298,9 @@ export class VoxelEngine {
             }
         }
         
-        // Combine layers from bottom to top
+        // Combine layers from bottom to top (skip baked layers)
         for (const layer of this.layers) {
-            if (layer.visible) {
+            if (layer.visible && !layer.isBaked) {
                 const layerVoxelsByType = layer.getVoxelsByType();
                 for (const [type, positions] of layerVoxelsByType) {
                     const combinedSet = combinedVoxelsByType.get(type);
@@ -665,6 +685,8 @@ export class VoxelEngine {
     // Toggle edge display
     toggleEdges(): void {
         this.renderer.toggleEdges();
+        // Also toggle wireframe for baked meshes
+        this.bakedWireframe.setVisible(this.renderer.getShowEdges());
     }
     
     // Get edge display state
@@ -707,5 +729,126 @@ export class VoxelEngine {
     // Check if batch mode is active
     isBatchMode(): boolean {
         return this.batchMode;
+    }
+    
+    // Get all layers
+    getLayers(): VoxelLayer[] {
+        return this.layers;
+    }
+    
+    /**
+     * Bake a layer for optimized rendering
+     */
+    bakeLayer(layerId: string): boolean {
+        const layer = this.layers.find(l => l.id === layerId);
+        if (!layer || layer.isBaked) return false;
+        
+        // Remove old baked meshes if any
+        this.removeBakedMeshes(layerId);
+        
+        // Bake the layer
+        layer.bake(this.voxelSize);
+        
+        // Add baked meshes to scene
+        if (layer.bakedOpaqueMesh || layer.bakedTransparentMesh) {
+            const meshes: { opaque?: THREE.Mesh; transparent?: THREE.Mesh } = {};
+            
+            if (layer.bakedOpaqueMesh) {
+                meshes.opaque = layer.bakedOpaqueMesh;
+                this.scene.add(layer.bakedOpaqueMesh);
+                layer.bakedOpaqueMesh.visible = layer.visible;
+                // Create wireframe for opaque mesh
+                this.bakedWireframe.updateWireframe(layer.bakedOpaqueMesh);
+            }
+            
+            if (layer.bakedTransparentMesh) {
+                meshes.transparent = layer.bakedTransparentMesh;
+                this.scene.add(layer.bakedTransparentMesh);
+                layer.bakedTransparentMesh.visible = layer.visible;
+                // Ensure transparent mesh renders after opaque
+                layer.bakedTransparentMesh.renderOrder = 1;
+                // Create wireframe for transparent mesh
+                this.bakedWireframe.updateWireframe(layer.bakedTransparentMesh);
+            }
+            
+            this.bakedMeshes.set(layerId, meshes);
+        }
+        
+        // Update rendering to exclude baked layer from instanced rendering
+        this.updateInstances();
+        
+        return true;
+    }
+    
+    /**
+     * Unbake a layer to restore editable voxels
+     */
+    unbakeLayer(layerId: string): boolean {
+        const layer = this.layers.find(l => l.id === layerId);
+        if (!layer || !layer.isBaked) return false;
+        
+        // Remove baked meshes from scene
+        this.removeBakedMeshes(layerId);
+        
+        // Unbake the layer
+        layer.unbake();
+        
+        // Update rendering to include unbaked layer
+        this.updateInstances();
+        
+        return true;
+    }
+    
+    /**
+     * Remove baked meshes from scene
+     */
+    private removeBakedMeshes(layerId: string): void {
+        const meshes = this.bakedMeshes.get(layerId);
+        if (meshes) {
+            if (meshes.opaque) {
+                // Remove wireframe
+                this.bakedWireframe.removeWireframe(meshes.opaque);
+                // Remove mesh
+                this.scene.remove(meshes.opaque);
+                meshes.opaque.geometry.dispose();
+                if (meshes.opaque.material instanceof THREE.Material) {
+                    meshes.opaque.material.dispose();
+                }
+            }
+            if (meshes.transparent) {
+                // Remove wireframe
+                this.bakedWireframe.removeWireframe(meshes.transparent);
+                // Remove mesh
+                this.scene.remove(meshes.transparent);
+                meshes.transparent.geometry.dispose();
+                if (meshes.transparent.material instanceof THREE.Material) {
+                    meshes.transparent.material.dispose();
+                }
+            }
+            this.bakedMeshes.delete(layerId);
+        }
+    }
+    
+    /**
+     * Update visibility of baked meshes based on layer visibility
+     */
+    private updateBakedMeshVisibility(): void {
+        for (const layer of this.layers) {
+            if (layer.isBaked) {
+                const meshes = this.bakedMeshes.get(layer.id);
+                if (meshes) {
+                    if (meshes.opaque) {
+                        meshes.opaque.visible = layer.visible;
+                        // Update wireframe visibility
+                        this.bakedWireframe.updateVisibility(meshes.opaque, layer.visible);
+                    }
+                    if (meshes.transparent) {
+                        meshes.transparent.visible = layer.visible;
+                        // Update wireframe visibility
+                        this.bakedWireframe.updateVisibility(meshes.transparent, layer.visible);
+                    }
+                }
+            }
+        }
     }
 }

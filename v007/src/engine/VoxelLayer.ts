@@ -1,4 +1,9 @@
 import { VoxelType } from '../types';
+import * as THREE from 'three';
+import { BakedMeshGenerator } from './BakedMeshGenerator';
+import { AllFacesBakedMeshGenerator } from './AllFacesBakedMeshGenerator';
+import { FixedBakedMeshGenerator } from './FixedBakedMeshGenerator';
+import { ActionLogger } from '../ui/ActionLogger';
 
 /**
  * Represents a single layer in the voxel world
@@ -15,6 +20,17 @@ export class VoxelLayer {
     public isEditingAsset: boolean = false;
     public editingAssetId?: string;
     public editingAssetType?: VoxelType;
+    
+    // Baking properties
+    public isBaked: boolean = false;
+    public bakedOpaqueMesh?: THREE.Mesh;
+    public bakedTransparentMesh?: THREE.Mesh;
+    private bakedMetadata?: {
+        originalVoxelCount: number;
+        vertexCount: number;
+        faceCount: number;
+    };
+    private originalVoxelData?: Map<string, VoxelType>; // Store for unbaking
     
     // Voxel storage - same structure as original VoxelEngine
     private voxels: Map<string, VoxelType>;
@@ -38,6 +54,11 @@ export class VoxelLayer {
      * Set a voxel in this layer
      */
     setVoxel(key: string, type: VoxelType): boolean {
+        // Prevent modifications to baked layers
+        if (this.isBaked) {
+            ActionLogger.getInstance().log('Cannot modify baked layer. Unbake first.', 2000);
+            return false;
+        }
         const oldType = this.voxels.get(key) || VoxelType.AIR;
         
         // No change needed
@@ -79,6 +100,11 @@ export class VoxelLayer {
      * Clear all voxels in this layer
      */
     clear(): void {
+        // Prevent clearing baked layers
+        if (this.isBaked) {
+            console.warn('Cannot clear baked layer. Unbake first.');
+            return;
+        }
         this.voxels.clear();
         for (const set of this.voxelsByType.values()) {
             set.clear();
@@ -133,6 +159,11 @@ export class VoxelLayer {
      * Import layer data
      */
     importData(data: any): void {
+        // Unbake if necessary
+        if (this.isBaked) {
+            this.unbake();
+        }
+        
         if (data.name) this.name = data.name;
         if (data.visible !== undefined) this.visible = data.visible;
         if (data.opacity !== undefined) this.opacity = data.opacity;
@@ -152,5 +183,99 @@ export class VoxelLayer {
                 }
             }
         }
+    }
+    
+    /**
+     * Bake layer into optimized mesh geometry
+     * Reduces vertex count by 99%+ using greedy meshing
+     */
+    bake(voxelSize: number = 0.1): void {
+        if (this.isBaked) {
+            console.warn('Layer is already baked');
+            return;
+        }
+        
+        if (this.voxels.size === 0) {
+            console.warn('Cannot bake empty layer');
+            return;
+        }
+        
+        // Store original voxel data for unbaking
+        this.originalVoxelData = new Map(this.voxels);
+        
+        // Generate optimized meshes
+        // Use AllFacesBakedMeshGenerator to create ALL faces (no greedy meshing)
+        const generator = new AllFacesBakedMeshGenerator(voxelSize);
+        const result = generator.generateOptimizedMesh(this.voxels);
+        
+        // Store baked meshes and metadata
+        this.bakedOpaqueMesh = result.opaqueMesh || undefined;
+        this.bakedTransparentMesh = result.transparentMesh || undefined;
+        this.bakedMetadata = result.metadata;
+        
+        // Mark as baked
+        this.isBaked = true;
+        
+        ActionLogger.getInstance().log(`Baked layer '${this.name}': ${result.metadata.originalVoxelCount} voxels → ${result.metadata.faceCount} faces`, 3000);
+    }
+    
+    /**
+     * Unbake layer to restore editable voxels
+     */
+    unbake(): void {
+        if (!this.isBaked) {
+            console.warn('Layer is not baked');
+            return;
+        }
+        
+        if (!this.originalVoxelData) {
+            console.error('Cannot unbake: original voxel data missing');
+            return;
+        }
+        
+        // Clean up baked meshes
+        if (this.bakedOpaqueMesh) {
+            this.bakedOpaqueMesh.geometry.dispose();
+            if (this.bakedOpaqueMesh.material instanceof THREE.Material) {
+                this.bakedOpaqueMesh.material.dispose();
+            }
+            this.bakedOpaqueMesh = undefined;
+        }
+        
+        if (this.bakedTransparentMesh) {
+            this.bakedTransparentMesh.geometry.dispose();
+            if (this.bakedTransparentMesh.material instanceof THREE.Material) {
+                this.bakedTransparentMesh.material.dispose();
+            }
+            this.bakedTransparentMesh = undefined;
+        }
+        
+        // Restore original voxel data
+        this.voxels = new Map(this.originalVoxelData);
+        
+        // Rebuild voxelsByType
+        this.voxelsByType.clear();
+        for (const [key, type] of this.voxels) {
+            if (type !== VoxelType.AIR) {
+                if (!this.voxelsByType.has(type)) {
+                    this.voxelsByType.set(type, new Set());
+                }
+                this.voxelsByType.get(type)!.add(key);
+            }
+        }
+        
+        // Clear baking state
+        this.isBaked = false;
+        this.originalVoxelData = undefined;
+        this.bakedMetadata = undefined;
+        
+        console.log(`Unbaked layer '${this.name}'`);
+    }
+    
+    /**
+     * Get baking metadata
+     */
+    getBakingMetadata() {
+        return this.bakedMetadata;
     }
 }

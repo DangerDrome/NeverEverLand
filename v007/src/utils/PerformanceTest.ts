@@ -191,10 +191,10 @@ export function attachPerformanceTest(voxelEngine: VoxelEngine): void {
         monitor: PerformanceMonitor.getInstance()
     };
     
-    console.log('Performance testing attached to window.perfTest');
-    console.log('Usage:');
-    console.log('  perfTest.test(10000)     - Test with 10k voxels');
-    console.log('  perfTest.suite()         - Run full test suite');
-    console.log('  perfTest.continuous()    - Test continuous drawing');
-    console.log('  perfTest.monitor.logSummary() - Show performance metrics');
+    // Performance testing attached to window.perfTest
+    // Usage:
+    //   perfTest.test(10000)     - Test with 10k voxels
+    //   perfTest.suite()         - Run full test suite
+    //   perfTest.continuous()    - Test continuous drawing
+    //   perfTest.monitor.logSummary() - Show performance metrics
 }

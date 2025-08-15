@@ -198,7 +198,8 @@ export class VoxelRenderer {
             Math.ceil(minTransparentCapacity * VoxelRenderer.GROWTH_FACTOR)
         );
         
-        console.log(`Rebuilding meshes with capacity: opaque=${this.opaqueCapacity}, transparent=${this.transparentCapacity}`);
+        // Rebuilding meshes with new capacity
+        // Note: Mesh capacity increased to handle more voxels
         
         // Remove old meshes
         if (this.opaqueMesh) {
@@ -324,7 +325,7 @@ export class VoxelRenderer {
             
             const typeInfo = VOXEL_TYPES[type];
             if (!typeInfo) {
-                console.warn(`VoxelType ${type} not found in VOXEL_TYPES. Skipping.`);
+                // Skip unknown voxel types silently
                 continue;
             }
             
@@ -462,7 +463,7 @@ export class VoxelRenderer {
     }
     
     private fullDataRebuild(voxelsByType: Map<VoxelType, Set<string>>): void {
-        console.log('Performing full data rebuild');
+        // Performing full data rebuild
         
         // Clear position map and indices
         this.voxelPositionMap.clear();
@@ -493,7 +494,7 @@ export class VoxelRenderer {
             
             const typeInfo = VOXEL_TYPES[type];
             if (!typeInfo) {
-                console.warn(`VoxelType ${type} not found in VOXEL_TYPES. Skipping.`);
+                // Skip unknown voxel types silently
                 continue;
             }
             
