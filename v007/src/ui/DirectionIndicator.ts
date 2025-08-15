@@ -4,7 +4,7 @@ export class DirectionIndicator {
     private renderer: THREE.WebGLRenderer;
     private scene: THREE.Scene;
     private camera: THREE.OrthographicCamera;
-    private cube: THREE.Mesh;
+    private cube: THREE.Group;
     private canvas: HTMLCanvasElement;
     private size: number;
     
@@ -16,8 +16,8 @@ export class DirectionIndicator {
         this.canvas.width = this.size;
         this.canvas.height = this.size;
         this.canvas.style.position = 'fixed';
-        this.canvas.style.bottom = '40px';
-        this.canvas.style.left = '10px';
+        this.canvas.style.bottom = '60px';  // Moved up from 40px to 60px
+        this.canvas.style.left = '30px';    // Moved right from 10px to 30px
         this.canvas.style.pointerEvents = 'none';
         this.canvas.style.zIndex = '1000';
         
@@ -47,27 +47,71 @@ export class DirectionIndicator {
         this.camera.position.set(5, 5, 5);
         this.camera.lookAt(0, 0, 0);
         
-        // Create indicator cube with pastel colored faces
-        const geometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+        // Create cube group to hold separate faces
+        this.cube = new THREE.Group();
         
-        // Create materials for each face with pastel colors
-        const materials = [
-            new THREE.MeshPhongMaterial({ color: 0xffb3ba, emissive: 0x552222, shininess: 100 }), // +X (right) - pastel red
-            new THREE.MeshPhongMaterial({ color: 0x8b5a5a, emissive: 0x2a1515, shininess: 100 }), // -X (left) - dark pastel red
-            new THREE.MeshPhongMaterial({ color: 0xbaffc9, emissive: 0x225522, shininess: 100 }), // +Y (top) - pastel green
-            new THREE.MeshPhongMaterial({ color: 0x5a8b5a, emissive: 0x152a15, shininess: 100 }), // -Y (bottom) - dark pastel green
-            new THREE.MeshPhongMaterial({ color: 0xbae1ff, emissive: 0x222255, shininess: 100 }), // +Z (front) - pastel blue
-            new THREE.MeshPhongMaterial({ color: 0x5a5a8b, emissive: 0x15152a, shininess: 100 })  // -Z (back) - dark pastel blue
-        ];
+        // Create separate faces with gaps
+        const faceSize = 0.75;
+        const gap = 0.15;  // Increased gap from 0.05 to 0.15
+        const offset = faceSize / 2 + gap;
         
-        this.cube = new THREE.Mesh(geometry, materials);
+        // Create plane geometry for faces
+        const planeGeometry = new THREE.PlaneGeometry(faceSize, faceSize);
+        
+        // +X face (right) - bright red
+        const rightFace = new THREE.Mesh(
+            planeGeometry,
+            new THREE.MeshPhongMaterial({ color: 0xffcccc, emissive: 0x663333, shininess: 100, side: THREE.FrontSide })
+        );
+        rightFace.position.set(offset, 0, 0);
+        rightFace.rotation.y = Math.PI / 2;
+        this.cube.add(rightFace);
+        
+        // -X face (left) - darker red
+        const leftFace = new THREE.Mesh(
+            planeGeometry,
+            new THREE.MeshPhongMaterial({ color: 0xaa6666, emissive: 0x332222, shininess: 100, side: THREE.FrontSide })
+        );
+        leftFace.position.set(-offset, 0, 0);
+        leftFace.rotation.y = -Math.PI / 2;
+        this.cube.add(leftFace);
+        
+        // +Y face (top) - bright green
+        const topFace = new THREE.Mesh(
+            planeGeometry,
+            new THREE.MeshPhongMaterial({ color: 0xccffcc, emissive: 0x336633, shininess: 100, side: THREE.FrontSide })
+        );
+        topFace.position.set(0, offset, 0);
+        topFace.rotation.x = -Math.PI / 2;
+        this.cube.add(topFace);
+        
+        // -Y face (bottom) - darker green
+        const bottomFace = new THREE.Mesh(
+            planeGeometry,
+            new THREE.MeshPhongMaterial({ color: 0x66aa66, emissive: 0x223322, shininess: 100, side: THREE.FrontSide })
+        );
+        bottomFace.position.set(0, -offset, 0);
+        bottomFace.rotation.x = Math.PI / 2;
+        this.cube.add(bottomFace);
+        
+        // +Z face (front) - bright blue
+        const frontFace = new THREE.Mesh(
+            planeGeometry,
+            new THREE.MeshPhongMaterial({ color: 0xccddff, emissive: 0x333366, shininess: 100, side: THREE.FrontSide })
+        );
+        frontFace.position.set(0, 0, offset);
+        this.cube.add(frontFace);
+        
+        // -Z face (back) - darker blue
+        const backFace = new THREE.Mesh(
+            planeGeometry,
+            new THREE.MeshPhongMaterial({ color: 0x6666aa, emissive: 0x222233, shininess: 100, side: THREE.FrontSide })
+        );
+        backFace.position.set(0, 0, -offset);
+        backFace.rotation.y = Math.PI;
+        this.cube.add(backFace);
+        
         this.scene.add(this.cube);
-        
-        // Add thicker edges with darker color for Blender-style look
-        const edges = new THREE.EdgesGeometry(geometry);
-        const edgesMaterial = new THREE.LineBasicMaterial({ color: 0x333333, linewidth: 3 });
-        const edgesMesh = new THREE.LineSegments(edges, edgesMaterial);
-        this.cube.add(edgesMesh);
         
         // Add axis arrows
         this.addAxisArrows();
@@ -92,24 +136,62 @@ export class DirectionIndicator {
             new THREE.Vector3(0.4, 0, 0),  // Start from cube edge
             new THREE.Vector3(1.7, 0, 0)   // End near circle (adjusted for new position)
         ]);
-        const xLine = new THREE.Line(xLineGeometry, new THREE.LineBasicMaterial({ color: 0xff9999, opacity: 0.6, transparent: true }));
+        const xLine = new THREE.Line(xLineGeometry, new THREE.LineBasicMaterial({ 
+            color: 0xff9999, 
+            opacity: 0.8,  // Increased opacity
+            transparent: true,
+            linewidth: 3   // Make line thicker
+        }));
+        // Add cylinder for thicker appearance
+        const xCylinder = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.04, 0.04, 1.3, 8),
+            new THREE.MeshBasicMaterial({ color: 0xff9999, opacity: 0.8, transparent: true })
+        );
+        xCylinder.rotation.z = -Math.PI / 2;
+        xCylinder.position.set(1.05, 0, 0);
         this.scene.add(xLine);
+        this.scene.add(xCylinder);
         
         // Y axis line (pastel green)
         const yLineGeometry = new THREE.BufferGeometry().setFromPoints([
             new THREE.Vector3(0, 0.4, 0),  // Start from cube edge
             new THREE.Vector3(0, 1.7, 0)   // End near circle (adjusted for new position)
         ]);
-        const yLine = new THREE.Line(yLineGeometry, new THREE.LineBasicMaterial({ color: 0x99ff99, opacity: 0.6, transparent: true }));
+        const yLine = new THREE.Line(yLineGeometry, new THREE.LineBasicMaterial({ 
+            color: 0x99ff99, 
+            opacity: 0.8,  // Increased opacity
+            transparent: true,
+            linewidth: 3   // Make line thicker
+        }));
+        // Add cylinder for thicker appearance
+        const yCylinder = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.04, 0.04, 1.3, 8),
+            new THREE.MeshBasicMaterial({ color: 0x99ff99, opacity: 0.8, transparent: true })
+        );
+        yCylinder.position.set(0, 1.05, 0);
         this.scene.add(yLine);
+        this.scene.add(yCylinder);
         
         // Z axis line (pastel blue)
         const zLineGeometry = new THREE.BufferGeometry().setFromPoints([
             new THREE.Vector3(0, 0, 0.4),  // Start from cube edge
             new THREE.Vector3(0, 0, 1.7)   // End near circle (adjusted for new position)
         ]);
-        const zLine = new THREE.Line(zLineGeometry, new THREE.LineBasicMaterial({ color: 0x99ccff, opacity: 0.6, transparent: true }));
+        const zLine = new THREE.Line(zLineGeometry, new THREE.LineBasicMaterial({ 
+            color: 0x99ccff, 
+            opacity: 0.8,  // Increased opacity
+            transparent: true,
+            linewidth: 3   // Make line thicker
+        }));
+        // Add cylinder for thicker appearance
+        const zCylinder = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.04, 0.04, 1.3, 8),
+            new THREE.MeshBasicMaterial({ color: 0x99ccff, opacity: 0.8, transparent: true })
+        );
+        zCylinder.rotation.x = Math.PI / 2;
+        zCylinder.position.set(0, 0, 1.05);
         this.scene.add(zLine);
+        this.scene.add(zCylinder);
     }
     
     private addAxisLabels(): void {
