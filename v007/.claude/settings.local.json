@@ -27,7 +27,8 @@
       "Bash(node:*)",
       "Bash(touch:*)",
       "Bash(wget:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "WebFetch(domain:blog.coding.kiwi)"
     ],
     "deny": []
   }

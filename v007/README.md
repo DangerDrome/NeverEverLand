@@ -51,10 +51,11 @@ A complete TypeScript-based voxel engine with instanced rendering, supporting up
 - **Brush**: Single voxel or area placement (adjustable size with [/] keys)
 - **Box**: Draw rectangular volumes (click and drag)
 - **Line**: Draw straight lines between two points
-- **Fill**: Fill connected areas of the same type
+- **Fill**: Fill connected areas of the same type (paint bucket tool)
 - **Selection**: Box selection tool for copying/moving regions
 - **Eraser**: Remove voxels (E key or right-click drag)
 - **Constraint Plane**: Hold for 300ms to see grid preview during drag operations
+- **Custom Colors**: All tools support custom colors from color picker
 
 ### Asset System
 - **Voxel Brush Button**: First button (V key) for single voxel painting mode with color picker
@@ -108,7 +109,9 @@ A complete TypeScript-based voxel engine with instanced rendering, supporting up
 
 ### User Interface
 - Professional menu bar with File, Edit, View, and Help menus
-- Real-time performance monitoring (voxel count, memory usage)
+- Clean info bar footer showing current tool, stats, and actions
+- Real-time performance monitoring (FPS, voxel count, memory usage)
+- Tool-specific mouse cursors matching UI icons
 - Visual feedback for tool selection and operations
 - Keyboard shortcut indicators in menus
 - Modal dialogs for file operations
@@ -117,6 +120,7 @@ A complete TypeScript-based voxel engine with instanced rendering, supporting up
 - Layer system for organizing voxel content
 - Color picker with multiple palettes (Default, Pastel, Neon)
 - Layer thumbnails with real-time preview updates
+- Dynamic header icon color matching selected voxel
 
 ## 🛠️ Development
 
@@ -321,6 +325,16 @@ npx tsc --noEmit
 
 ## 📝 Recent Updates
 
+### UI & Visual Improvements
+- **Custom Tool Cursors**: Each tool now displays its matching icon as the cursor
+- **Paint Bucket Fix**: Fixed garbled cursor to use proper paint bucket icon
+- **Selection Mode Cursor**: Crosshair cursor correctly shows in selection mode
+- **Info Bar Footer**: Replaced HUD with clean footer showing tool, stats, and actions
+- **Dynamic Header Icon**: Swords icon color matches selected voxel color
+- **UI Polish**: Removed blue glow from single voxel button for cleaner look
+- **Version Display**: Version number now right-aligned in info bar
+- **Multi-Brush Color Support**: Custom colors now work with all brush sizes
+
 ### Layer System & Color Management
 - **Layer System**: Organize voxels into multiple layers with visibility controls
 - **Color Picker**: Multiple color palettes (Default, Pastel, Neon) with tab switching
@@ -354,6 +368,12 @@ npx tsc --noEmit
 - **Color Preservation**: Assets maintain declared type colors
 - **Memory Efficient**: Preview cache system for thumbnails
 - **Batch Operations**: Grouped voxel updates for performance
+
+### Build & Compatibility Fixes
+- **TypeScript Build Fixes**: Updated type definitions to use Partial<Record<>> for extensibility
+- **Asset System Types**: Added 'modified' property to AssetInfo interface
+- **Color Mapping**: Fixed partial record handling in VoxWriter and drawing systems
+- **Cloudflare Build**: Resolved all TypeScript errors for successful deployment
 
 ### Previous Updates
 - **Selection Tool**: Box selection mode for working with regions
