@@ -396,8 +396,8 @@ body {
 /* Layer Panel Styles */
 .layer-panel {
     position: absolute;
-    right: 10px;
-    top: 60px;
+    right: 30px;
+    top: 100px;
     width: 280px;
     background: rgba(40, 40, 40, 0.95);
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -405,7 +405,7 @@ body {
     color: white;
     font-size: 12px;
     user-select: none;
-    max-height: calc(100vh - 80px);
+    max-height: calc(100vh - 120px);
     display: flex;
     flex-direction: column;
 }

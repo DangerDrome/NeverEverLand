@@ -11,6 +11,7 @@ import { PerformanceMonitor } from './ui/Performance';
 import { DirectionIndicator } from './ui/DirectionIndicator';
 import { VoxelPanel } from './ui/VoxelPanel';
 import { LayerPanel } from './ui/LayerPanel';
+import { ToolsPanel } from './ui/ToolsPanel';
 import { FileManager } from './io/FileManager';
 import { DynamicGrid } from './ui/DynamicGrid';
 import { BoxSelectionTool } from './tools/BoxSelectionTool';
@@ -356,6 +357,7 @@ class VoxelApp {
     private directionIndicator: DirectionIndicator | null;
     private voxelPanel: VoxelPanel | null;
     private layerPanel: LayerPanel | null;
+    private toolsPanel: ToolsPanel | null;
     private fileManager: FileManager | null;
     private boxSelectionTool: BoxSelectionTool | null;
     private menuBar: MenuBar | null;
@@ -390,6 +392,7 @@ class VoxelApp {
         this.directionIndicator = null;
         this.voxelPanel = null;
         this.layerPanel = null;
+        this.toolsPanel = null;
         this.fileManager = null;
         this.boxSelectionTool = null;
         this.menuBar = null;
@@ -660,6 +663,11 @@ class VoxelApp {
             this.voxelEngine?.updateInstances();
         });
         
+        // Create tools panel
+        this.toolsPanel = new ToolsPanel();
+        this.toolsPanel.setDrawingSystem(this.drawingSystem);
+        this.toolsPanel.setVoxelEngine(this.voxelEngine);
+        
         // Connect asset manager to drawing system
         this.drawingSystem.setAssetManager(this.voxelPanel.getAssetManager());
         
@@ -772,6 +780,11 @@ class VoxelApp {
             if (edgeIcon) edgeIcon.style.color = 'rgba(100, 255, 100, 1)';
         }
         
+        // Initialize tools panel wireframe button
+        if (this.toolsPanel && settings.ui.showWireframe) {
+            this.toolsPanel.updateWireframeButton(true);
+        }
+        
     }
     
     setupPostProcessing() {
@@ -874,8 +887,64 @@ class VoxelApp {
             }
         });
         
+        // Handle toggle event from tools panel
+        window.addEventListener('toggle-tiltshift', () => {
+            if (this.tiltShiftPass) {
+                this.tiltShiftPass.enabled = !this.tiltShiftPass.enabled;
+                // Update tools panel button state
+                if (this.toolsPanel) {
+                    this.toolsPanel.updateTiltShiftButton(this.tiltShiftPass.enabled);
+                }
+                // Update voxel panel button if it exists
+                const tiltShiftButton = document.getElementById('tiltshift-toggle-button') as HTMLButtonElement;
+                if (tiltShiftButton) {
+                    const isActive = this.tiltShiftPass.enabled;
+                    const icon = tiltShiftButton.querySelector('span');
+                    
+                    if (isActive) {
+                        tiltShiftButton.style.background = 'rgba(100, 200, 100, 0.3)';
+                        tiltShiftButton.style.borderColor = 'rgba(100, 200, 100, 0.8)';
+                        if (icon) icon.style.color = 'rgba(100, 255, 100, 1)';
+                    } else {
+                        tiltShiftButton.style.background = 'rgba(100, 100, 100, 0.2)';
+                        tiltShiftButton.style.borderColor = 'transparent';
+                        if (icon) icon.style.color = 'rgba(255, 255, 255, 0.8)';
+                    }
+                }
+            }
+        });
+        
         window.addEventListener('toggleGrid', (e: Event) => {
             this.toggleGrid();
+        });
+        
+        // Handle selection mode toggle from tools panel
+        window.addEventListener('toggle-selection-mode', () => {
+            // Toggle selection mode
+            this.selectionMode = !this.selectionMode;
+            if (this.boxSelectionTool) {
+                if (!this.selectionMode) {
+                    this.boxSelectionTool.clearSelection();
+                }
+            }
+            // Hide/show drawing preview based on selection mode
+            if (this.drawingSystem) {
+                if (this.selectionMode) {
+                    this.drawingSystem.hidePreview();
+                    this.drawingSystem.clearConstraintPlane();
+                    this.drawingSystem.stopDrawing();
+                } else {
+                    this.drawingSystem.showPreview();
+                    this.updatePreviewAtCurrentMouse();
+                    // Restore the previous tool mode
+                    this.drawingSystem.setToolMode(this.drawingSystem.toolMode);
+                }
+            }
+            
+            // Update tools panel
+            if (this.toolsPanel && this.selectionMode) {
+                this.toolsPanel.selectTool('selection');
+            }
         });
     }
     
@@ -1301,7 +1370,7 @@ class VoxelApp {
                     this.boxSelectionTool.cutSelection();
                 }
             } else if (event.key === 'v' || event.key === 'V') {
-                // Paste Selection
+                // Paste Selection in selection mode, or activate voxel brush
                 event.preventDefault();
                 if (this.selectionMode && this.boxSelectionTool) {
                     // Get mouse world position for paste location
@@ -1331,6 +1400,14 @@ class VoxelApp {
         }
         
         switch(event.key) {
+            case 'v':
+            case 'V':
+                // Activate voxel brush button
+                const voxelBrushButton = document.getElementById('voxel-brush-button');
+                if (voxelBrushButton) {
+                    voxelBrushButton.click();
+                }
+                break;
             case '1':
             case '2':
             case '3':
@@ -1393,6 +1470,9 @@ class VoxelApp {
                 if (this.voxelPanel) {
                     this.voxelPanel.updateToolMode('brush');
                 }
+                if (this.toolsPanel) {
+                    this.toolsPanel.selectTool('brush');
+                }
                 break;
             case 'e':
             case 'E':
@@ -1408,6 +1488,9 @@ class VoxelApp {
                 }
                 if (this.voxelPanel) {
                     this.voxelPanel.updateToolMode('eraser');
+                }
+                if (this.toolsPanel) {
+                    this.toolsPanel.selectTool('eraser');
                 }
                 break;
             case 'x':
@@ -1425,6 +1508,9 @@ class VoxelApp {
                 if (this.voxelPanel) {
                     this.voxelPanel.updateToolMode('box');
                 }
+                if (this.toolsPanel) {
+                    this.toolsPanel.selectTool('box');
+                }
                 break;
             case 'l':
             case 'L':
@@ -1441,6 +1527,9 @@ class VoxelApp {
                 if (this.voxelPanel) {
                     this.voxelPanel.updateToolMode('line');
                 }
+                if (this.toolsPanel) {
+                    this.toolsPanel.selectTool('line');
+                }
                 break;
             case 'p':
             case 'P':
@@ -1456,6 +1545,9 @@ class VoxelApp {
                 }
                 if (this.voxelPanel) {
                     this.voxelPanel.updateToolMode('fill');
+                }
+                if (this.toolsPanel) {
+                    this.toolsPanel.selectTool('fill');
                 }
                 break;
             case 'w':
@@ -1477,6 +1569,10 @@ class VoxelApp {
                             edgeButton.style.borderColor = 'transparent';
                             if (edgeIcon) edgeIcon.style.color = 'rgba(255, 255, 255, 0.8)';
                         }
+                    }
+                    // Update tools panel wireframe button
+                    if (this.toolsPanel) {
+                        this.toolsPanel.updateWireframeButton(this.voxelEngine.getShowEdges());
                     }
                     console.log('Wireframe:', this.voxelEngine.getShowEdges() ? 'ON' : 'OFF');
                 }
@@ -1513,6 +1609,11 @@ class VoxelApp {
                     }
                     
                     console.log('Selection mode:', this.selectionMode ? 'ON' : 'OFF');
+                    
+                    // Update tools panel
+                    if (this.toolsPanel && this.selectionMode) {
+                        this.toolsPanel.selectTool('selection');
+                    }
                 }
                 break;
             case 'Delete':

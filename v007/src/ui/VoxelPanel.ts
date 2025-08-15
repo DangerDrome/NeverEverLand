@@ -22,7 +22,8 @@ export class VoxelPanel {
     private voxelEngine: any | null = null;  // Reference to voxel engine for edge toggle
     private element: HTMLElement | null = null;
     private voxelButtons: Map<VoxelType, HTMLElement> = new Map();
-    private toolButtons: Map<string, HTMLElement> = new Map();
+    // Tool buttons moved to ToolsPanel
+    // private toolButtons: Map<string, HTMLElement> = new Map();
     private selectedType: VoxelType = VoxelType.GRASS;
     private selectedColor: ColorInfo | null = null;
     private selectedTool: string = 'brush';
@@ -75,19 +76,6 @@ export class VoxelPanel {
         `;
         this.element.appendChild(title);
         
-        // Add default voxel brush button (single voxel mode)
-        const voxelBrushButton = this.createVoxelBrushButton();
-        this.element.appendChild(voxelBrushButton);
-        
-        // Add separator after voxel brush button
-        const voxelBrushSeparator = document.createElement('div');
-        voxelBrushSeparator.style.cssText = `
-            width: 1px;
-            height: 30px;
-            background: rgba(255, 255, 255, 0.2);
-            margin: 0 8px;
-        `;
-        this.element.appendChild(voxelBrushSeparator);
         
         // Define voxel types with Lucide icons and colors
         this.voxelTypes = [
@@ -119,21 +107,9 @@ export class VoxelPanel {
         `;
         this.element.appendChild(separator);
         
-        // Add title for tools
-        const toolsTitle = document.createElement('div');
-        toolsTitle.textContent = 'Tools:';
-        toolsTitle.style.cssText = `
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 14px;
-            margin-right: 8px;
-            font-weight: 500;
-        `;
-        this.element.appendChild(toolsTitle);
+        // Tools section removed - moved to ToolsPanel on the left
         
-        // Add tool buttons
-        this.createToolButtons();
-        
-        // Add another separator
+        // Add separator
         const separator2 = document.createElement('div');
         separator2.style.cssText = `
             width: 1px;
@@ -459,11 +435,7 @@ export class VoxelPanel {
             this.drawingSystem.setSelectedAsset(null);
             this.drawingSystem.setToolMode('brush');
             
-            // Update tool buttons to show brush is selected
-            const brushToolButton = this.toolButtons.get('brush');
-            if (brushToolButton) {
-                this.selectTool('brush', true);
-            }
+            // Tool selection handled by ToolsPanel now
             
             // Remove selected class from all voxel type buttons and restore their original colors
             this.voxelButtons.forEach((btn, type) => {
@@ -554,7 +526,7 @@ export class VoxelPanel {
             align-items: center;
             justify-content: center;
         `;
-        edgeIcon.innerHTML = `<i data-lucide="grid-3x3" style="width: 20px; height: 20px; stroke-width: 2;"></i>`;
+        edgeIcon.innerHTML = `<i data-lucide="box" style="width: 20px; height: 20px; stroke-width: 2;"></i>`;
         edgeButton.appendChild(edgeIcon);
         
         edgeButton.addEventListener('click', () => {
@@ -621,13 +593,12 @@ export class VoxelPanel {
             align-items: center;
             justify-content: center;
         `;
-        tiltShiftIcon.innerHTML = `<i data-lucide="focus" style="width: 20px; height: 20px; stroke-width: 2;"></i>`;
+        tiltShiftIcon.innerHTML = `<i data-lucide="aperture" style="width: 20px; height: 20px; stroke-width: 2;"></i>`;
         tiltShiftButton.appendChild(tiltShiftIcon);
         
         tiltShiftButton.addEventListener('click', () => {
-            // Dispatch a keyboard event to toggle tilt-shift
-            const event = new KeyboardEvent('keydown', { key: 'T' });
-            window.dispatchEvent(event);
+            // Dispatch custom event to toggle tilt-shift
+            window.dispatchEvent(new CustomEvent('toggle-tiltshift'));
         });
         
         tiltShiftButton.addEventListener('mouseenter', () => {
@@ -816,6 +787,7 @@ export class VoxelPanel {
         this.element!.appendChild(exportJsonButton);
     }
     
+    /* Tool buttons moved to ToolsPanel
     private createToolButtons(): void {
         const tools = [
             { id: 'brush', name: 'Brush', icon: 'brush', key: 'B' },
@@ -904,6 +876,9 @@ export class VoxelPanel {
         return button;
     }
     
+    */
+    
+    /* Tool selection moved to ToolsPanel
     private selectTool(toolId: string, fromKeyboard: boolean = false): void {
         this.selectedTool = toolId;
         
@@ -961,6 +936,7 @@ export class VoxelPanel {
             (window as any).lucide.createIcons();
         }
     }
+    */
     
     private selectVoxelType(type: VoxelType): void {
         this.selectedType = type;
@@ -1076,11 +1052,8 @@ export class VoxelPanel {
         }
     }
     
-    // Voxel size is now fixed at 0.1m, no need for this method
-    
     public updateToolMode(mode: string): void {
-        // Update the internal selection (called from keyboard, so pass true to avoid loop)
-        this.selectTool(mode, true);
+        // Tool mode updates now handled by ToolsPanel
     }
     
     public setFileManager(fileManager: FileManager): void {

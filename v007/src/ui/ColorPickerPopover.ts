@@ -72,15 +72,21 @@ export class ColorPickerPopover {
         }
     }
     
-    async show(anchorElement: HTMLElement, onSelect: (color: ColorInfo) => void): Promise<void> {
+    async show(anchorElement: HTMLElement, onSelect: (color: ColorInfo) => void, preferredDirection: 'left' | 'right' | 'auto' = 'auto'): Promise<void> {
         this.onSelectCallback = onSelect;
         
-        // Hide any existing popover
-        this.hide();
+        // Remove any existing click listener first
+        document.removeEventListener('click', this.handleClickOutside);
         
         // Create popover if it doesn't exist
         if (!this.element) {
             this.createElement();
+        }
+        
+        // Check if element is in DOM
+        if (!document.body.contains(this.element!)) {
+            console.error('ColorPickerPopover element not in DOM!');
+            document.body.appendChild(this.element!);
         }
         
         // Clear existing content
@@ -174,22 +180,59 @@ export class ColorPickerPopover {
         this.element!.style.visibility = 'hidden';
         this.element!.style.left = '-9999px';
         
+        
         const popoverHeight = this.element!.offsetHeight;
         const popoverWidth = 200; // Fixed width for color picker
         
         const rect = anchorElement.getBoundingClientRect();
-        const buttonCenterX = rect.left + rect.width / 2;
-        let left = buttonCenterX - popoverWidth / 2;
-        let top = rect.top - popoverHeight - 20;
+        let left: number;
+        let top: number;
         
-        // Keep within viewport
+        // For voxel brush button, align with tools panel header
+        const toolsPanel = anchorElement.closest('.tools-panel');
+        if (toolsPanel && anchorElement.id === 'voxel-brush-button') {
+            const panelRect = toolsPanel.getBoundingClientRect();
+            // Align with panel header (60px from top of window for panel + header height)
+            top = panelRect.top;
+        } else {
+            // Default: Center vertically with button
+            top = rect.top + rect.height / 2 - popoverHeight / 2;
+        }
+        
+        // Determine horizontal position based on preferred direction
+        if (preferredDirection === 'right' || (preferredDirection === 'auto' && rect.left < window.innerWidth / 2)) {
+            // Position to the right of the button with larger gap
+            left = rect.right + 40; // Increased to 40px gap
+            
+            // If it goes off screen, try left side
+            if (left + popoverWidth > window.innerWidth - 10) {
+                left = rect.left - popoverWidth - 40; // Increased to 40px gap
+            }
+        } else if (preferredDirection === 'left' || (preferredDirection === 'auto' && rect.left >= window.innerWidth / 2)) {
+            // Position to the left of the button
+            left = rect.left - popoverWidth - 40; // Increased to 40px gap
+            
+            // If it goes off screen, try right side
+            if (left < 10) {
+                left = rect.right + 40; // Increased to 40px gap
+            }
+        } else {
+            // Default center positioning (original behavior)
+            const buttonCenterX = rect.left + rect.width / 2;
+            left = buttonCenterX - popoverWidth / 2;
+        }
+        
+        // Keep within viewport bounds
         if (left < 10) left = 10;
         if (left + popoverWidth > window.innerWidth - 10) {
             left = window.innerWidth - popoverWidth - 10;
         }
         
+        // Vertical positioning - if centered position goes off screen, position above or below
         if (top < 10) {
             top = rect.bottom + 10;
+        } else if (top + popoverHeight > window.innerHeight - 10) {
+            top = rect.top - popoverHeight - 10;
         }
         
         this.element!.style.left = `${left}px`;
@@ -197,25 +240,134 @@ export class ColorPickerPopover {
         this.element!.style.width = `${popoverWidth}px`;
         this.element!.style.visibility = 'visible';
         
-        // Position arrow
-        const arrowX = buttonCenterX - left;
+        
+        // Position arrow for side positioning
         const arrowElement = document.getElementById('color-popover-arrow');
         const arrowBorderElement = document.getElementById('color-popover-arrow-border');
         
-        if (arrowElement) {
-            arrowElement.style.left = `${arrowX}px`;
-            arrowElement.style.transform = 'translateX(-50%)';
+        if (arrowElement && arrowBorderElement) {
+            const isRightPositioned = left > rect.right;
+            const isLeftPositioned = left + popoverWidth < rect.left;
+            
+            if (isRightPositioned || isLeftPositioned) {
+                // Show arrows for side positioning
+                arrowElement.style.display = 'block';
+                arrowBorderElement.style.display = 'block';
+                
+                // Reset styles first
+                arrowElement.style.removeProperty('bottom');
+                arrowElement.style.removeProperty('top');
+                arrowElement.style.removeProperty('left');
+                arrowElement.style.removeProperty('right');
+                arrowElement.style.removeProperty('transform');
+                arrowBorderElement.style.removeProperty('bottom');
+                arrowBorderElement.style.removeProperty('top');
+                arrowBorderElement.style.removeProperty('left');
+                arrowBorderElement.style.removeProperty('right');
+                arrowBorderElement.style.removeProperty('transform');
+                
+                // Calculate vertical position to align with button center
+                const buttonCenterY = rect.top + rect.height / 2;
+                const arrowY = buttonCenterY - top;
+                
+                if (isRightPositioned) {
+                    // Arrow on left side of popover pointing left
+                    arrowElement.style.cssText = `
+                        position: absolute;
+                        left: -10px;
+                        top: ${arrowY}px;
+                        transform: translateY(-50%);
+                        width: 0;
+                        height: 0;
+                        border-top: 10px solid transparent;
+                        border-bottom: 10px solid transparent;
+                        border-right: 10px solid rgba(30, 30, 30, 0.95);
+                        z-index: 1001;
+                    `;
+                    arrowBorderElement.style.cssText = `
+                        position: absolute;
+                        left: -11px;
+                        top: ${arrowY}px;
+                        transform: translateY(-50%);
+                        width: 0;
+                        height: 0;
+                        border-top: 11px solid transparent;
+                        border-bottom: 11px solid transparent;
+                        border-right: 11px solid rgba(255, 255, 255, 0.15);
+                        z-index: 1000;
+                    `;
+                } else {
+                    // Arrow on right side of popover pointing right
+                    arrowElement.style.cssText = `
+                        position: absolute;
+                        right: -10px;
+                        top: ${arrowY}px;
+                        transform: translateY(-50%);
+                        width: 0;
+                        height: 0;
+                        border-top: 10px solid transparent;
+                        border-bottom: 10px solid transparent;
+                        border-left: 10px solid rgba(30, 30, 30, 0.95);
+                        z-index: 1001;
+                    `;
+                    arrowBorderElement.style.cssText = `
+                        position: absolute;
+                        right: -11px;
+                        top: ${arrowY}px;
+                        transform: translateY(-50%);
+                        width: 0;
+                        height: 0;
+                        border-top: 11px solid transparent;
+                        border-bottom: 11px solid transparent;
+                        border-left: 11px solid rgba(255, 255, 255, 0.15);
+                        z-index: 1000;
+                    `;
+                }
+            } else {
+                // Show arrows for top/bottom positioning
+                arrowElement.style.display = 'block';
+                arrowBorderElement.style.display = 'block';
+                
+                // Reset to default bottom arrow styles
+                arrowElement.style.cssText = `
+                    position: absolute;
+                    bottom: -10px;
+                    width: 0;
+                    height: 0;
+                    border-left: 10px solid transparent;
+                    border-right: 10px solid transparent;
+                    border-top: 10px solid rgba(30, 30, 30, 0.95);
+                    z-index: 1001;
+                `;
+                arrowBorderElement.style.cssText = `
+                    position: absolute;
+                    bottom: -11px;
+                    width: 0;
+                    height: 0;
+                    border-left: 11px solid transparent;
+                    border-right: 11px solid transparent;
+                    border-top: 11px solid rgba(255, 255, 255, 0.15);
+                    z-index: 1000;
+                `;
+                
+                const buttonCenterX = rect.left + rect.width / 2;
+                const arrowX = buttonCenterX - left;
+                arrowElement.style.left = `${arrowX}px`;
+                arrowElement.style.transform = 'translateX(-50%)';
+                arrowBorderElement.style.left = `${arrowX}px`;
+                arrowBorderElement.style.transform = 'translateX(-50%)';
+            }
         }
         
-        if (arrowBorderElement) {
-            arrowBorderElement.style.left = `${arrowX}px`;
-            arrowBorderElement.style.transform = 'translateX(-50%)';
-        }
+        // Ensure popover is visible
+        this.element!.style.display = 'block';
+        this.element!.style.opacity = '1';
         
         // Add click outside listener
         setTimeout(() => {
             document.addEventListener('click', this.handleClickOutside);
         }, 100);
+        
     }
     
     hide(): void {
@@ -234,7 +386,7 @@ export class ColorPickerPopover {
             border: 1px solid rgba(255, 255, 255, 0.15);
             border-radius: 8px;
             padding: 16px;
-            z-index: 1000;
+            z-index: 10000;
             display: none;
             backdrop-filter: blur(10px);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
@@ -273,20 +425,33 @@ export class ColorPickerPopover {
             swatch.style.borderColor = 'rgba(255, 255, 255, 0.8)';
             swatch.style.transform = 'scale(1.1)';
             
-            // Add checkmark
-            const check = document.createElement('div');
-            check.style.cssText = `
+            // Add X icon
+            const iconContainer = document.createElement('div');
+            iconContainer.style.cssText = `
                 position: absolute;
                 top: 50%;
                 left: 50%;
                 transform: translate(-50%, -50%);
+                width: 20px;
+                height: 20px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
                 color: ${this.isLightColor(color.hex) ? '#000' : '#FFF'};
-                font-size: 16px;
-                font-weight: bold;
-                text-shadow: 0 0 2px ${this.isLightColor(color.hex) ? '#FFF' : '#000'};
+                filter: drop-shadow(0 0 2px ${this.isLightColor(color.hex) ? '#FFF' : '#000'});
+                pointer-events: none;
             `;
-            check.textContent = '✓';
-            swatch.appendChild(check);
+            
+            const icon = document.createElement('i');
+            icon.setAttribute('data-lucide', 'x');
+            icon.style.cssText = `
+                width: 16px;
+                height: 16px;
+                stroke-width: 3;
+                display: block;
+            `;
+            iconContainer.appendChild(icon);
+            swatch.appendChild(iconContainer);
         }
         
         // Hover effect
@@ -372,6 +537,11 @@ export class ColorPickerPopover {
         }
         
         this.colorContainer.appendChild(grid);
+        
+        // Initialize lucide icons for the X indicators
+        if ((window as any).lucide) {
+            (window as any).lucide.createIcons();
+        }
     }
     
     private switchPalette(paletteKey: string): void {

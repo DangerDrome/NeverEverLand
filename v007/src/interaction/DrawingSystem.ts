@@ -42,6 +42,19 @@ export class DrawingSystem {
     previewLerpFactor: number;  // How fast the preview moves (0-1)
     lastUpdateHit: any | null;  // Store last hit for preview updates
     voxelPanel: any | null;  // Reference to VoxelPanel for color selection
+    customColor: THREE.Color | null;  // Custom color for voxel painting
+    
+    // Face highlight and normal visualization
+    faceHighlight: THREE.Mesh | null;
+    normalArrow: THREE.ArrowHelper | null;
+    faceHighlightMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffffff,  // Will be updated based on axis
+        transparent: true,
+        opacity: 0.15,  // Reduced opacity for subtler highlight
+        side: THREE.DoubleSide,
+        depthTest: false,
+        depthWrite: false
+    });
     
     constructor(voxelEngine: any) {
         this.voxelEngine = voxelEngine;
@@ -63,6 +76,10 @@ export class DrawingSystem {
         this.gridShowTimer = null; // Timer for delayed grid display
         this.gridShown = false; // Track grid visibility
         
+        // Face highlight and normal visualization
+        this.faceHighlight = null;
+        this.normalArrow = null;
+        
         // Asset state
         this.selectedAsset = null;
         this.assetData = null;
@@ -79,7 +96,7 @@ export class DrawingSystem {
         this.previewMesh = null;
         this.previewMaterial = new THREE.MeshBasicMaterial({
             color: 0xffffff,
-            opacity: 0.5,
+            opacity: 0.1,  // Very low opacity for extremely subtle preview
             transparent: true,
             wireframe: false
         });
@@ -108,6 +125,9 @@ export class DrawingSystem {
         this.operationTimer = null;
         
         this.createPreviewMesh();
+        
+        // Initialize custom color
+        this.customColor = null;
         
         // Set initial cursor
         this.updateCursor(this.toolMode);
@@ -408,7 +428,16 @@ export class DrawingSystem {
         if (!hit && !constrainedPos) {
             this.previewGroup.visible = false;
             this.clearToolPreviews();
+            this.hideFaceHighlight();
             return;
+        }
+        
+        // Update face highlight and normal visualization for brush tool
+        // Only show when hovering, not when dragging
+        if (hit && this.toolMode === 'brush' && !this.isDrawing) {
+            this.updateFaceHighlight(hit);
+        } else {
+            this.hideFaceHighlight();
         }
         
         let pos;
@@ -476,7 +505,7 @@ export class DrawingSystem {
                 // Red glowing preview for eraser
                 this.previewMaterial.color.setHex(0xff0000);
                 this.edgeMaterial.color.setHex(0xffaaaa); // Brighter red edges
-                this.previewMaterial.opacity = 0.5; // More visible
+                this.previewMaterial.opacity = 0.15; // Very subtle opacity
                 this.edgeMaterial.opacity = 0.8; // Bright edges
                 
                 // Show and scale glow effect
@@ -519,7 +548,7 @@ export class DrawingSystem {
                     this.edgeMaterial.color.set(previewColor);
                 }
                 
-                this.previewMaterial.opacity = 0.5;
+                this.previewMaterial.opacity = 0.1; // Very subtle opacity
                 this.edgeMaterial.opacity = 0.4; // Reset to default
                 
                 // Hide eraser glow
@@ -530,7 +559,7 @@ export class DrawingSystem {
                 // Red preview for remove
                 this.previewMaterial.color.setHex(0xff0000);
                 this.edgeMaterial.color.setHex(0xff0000);
-                this.previewMaterial.opacity = 0.3;
+                this.previewMaterial.opacity = 0.1; // Very subtle for remove mode
                 this.edgeMaterial.opacity = 0.4; // Reset to default
                 
                 // Hide eraser glow
@@ -1453,17 +1482,155 @@ export class DrawingSystem {
         const canvas = document.getElementById('canvas') as HTMLCanvasElement;
         if (!canvas) return;
         
-        // Create cursor styles based on tool
+        // Create cursor styles based on tool - hotspot at bottom-left (0 24)
         const cursors: { [key: string]: string } = {
-            'brush': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/></svg>') 12 12, crosshair`,
-            'eraser': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>') 12 12, crosshair`,
-            'box': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>') 12 12, crosshair`,
-            'line': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><line x1="5" y1="19" x2="19" y2="5"/></svg>') 12 12, crosshair`,
-            'fill': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 13h15"/><path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z"/></svg>') 12 12, crosshair`,
+            'brush': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M17 3l4 4L7.5 20.5L2 22l1.5-5.5L17 3z"/></svg>') 0 24, crosshair`,
+            'eraser': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>') 0 24, crosshair`,
+            'box': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>') 0 24, crosshair`,
+            'line': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><line x1="5" y1="19" x2="19" y2="5"/></svg>') 0 24, crosshair`,
+            'fill': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 13h15"/><path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z"/></svg>') 0 24, crosshair`,
             'asset': 'grab',
             'selection': 'crosshair'
         };
         
         canvas.style.cursor = cursors[tool] || 'crosshair';
+    }
+    
+    clearConstraintPlane(): void {
+        if (this.constraintPlane) {
+            this.voxelEngine.scene.remove(this.constraintPlane);
+            
+            // Dispose of all geometries and materials
+            if (this.constraintPlane.traverse) {
+                this.constraintPlane.traverse((child: any) => {
+                    if (child.geometry) {
+                        child.geometry.dispose();
+                    }
+                    if (child.material) {
+                        if (Array.isArray(child.material)) {
+                            child.material.forEach((mat: any) => mat.dispose());
+                        } else {
+                            child.material.dispose();
+                        }
+                    }
+                });
+            }
+            
+            this.constraintPlane = null;
+        }
+    }
+    
+    updateFaceHighlight(hit: any): void {
+        const voxelSize = this.voxelEngine.getCurrentVoxelSize();
+        
+        // Create face highlight if it doesn't exist
+        if (!this.faceHighlight) {
+            const planeGeometry = new THREE.PlaneGeometry(voxelSize, voxelSize);
+            this.faceHighlight = new THREE.Mesh(planeGeometry, this.faceHighlightMaterial);
+            this.voxelEngine.scene.add(this.faceHighlight);
+        }
+        
+        // Position the face highlight at the hit face
+        const facePos = new THREE.Vector3(
+            (hit.voxelPos.x + 0.5) * voxelSize,
+            (hit.voxelPos.y + 0.5) * voxelSize,
+            (hit.voxelPos.z + 0.5) * voxelSize
+        );
+        
+        // Offset based on face normal
+        const offset = voxelSize * 0.501; // Slightly outside the face to avoid z-fighting
+        facePos.add(new THREE.Vector3(
+            hit.normal.x * offset,
+            hit.normal.y * offset,
+            hit.normal.z * offset
+        ));
+        
+        this.faceHighlight.position.copy(facePos);
+        
+        // Orient the plane to face along the normal
+        if (Math.abs(hit.normal.y) > 0.5) {
+            // Horizontal face
+            this.faceHighlight.rotation.x = -Math.PI / 2 * Math.sign(hit.normal.y);
+            this.faceHighlight.rotation.y = 0;
+            this.faceHighlight.rotation.z = 0;
+        } else if (Math.abs(hit.normal.x) > 0.5) {
+            // Vertical face facing X
+            this.faceHighlight.rotation.x = 0;
+            this.faceHighlight.rotation.y = Math.PI / 2 * Math.sign(hit.normal.x);
+            this.faceHighlight.rotation.z = 0;
+        } else {
+            // Vertical face facing Z
+            this.faceHighlight.rotation.x = 0;
+            this.faceHighlight.rotation.y = Math.abs(hit.normal.z) > 0.5 ? 0 : Math.PI;
+            this.faceHighlight.rotation.z = 0;
+        }
+        
+        this.faceHighlight.visible = true;
+        
+        // Update or create normal arrow
+        if (!this.normalArrow) {
+            const origin = new THREE.Vector3();
+            const direction = new THREE.Vector3(0, 1, 0);
+            const length = voxelSize * 1.5;
+            const color = 0xffffff;  // Default white, will be updated based on axis
+            this.normalArrow = new THREE.ArrowHelper(direction, origin, length, color);
+            
+            // Set arrow line and cone opacity
+            const arrowLine = this.normalArrow.line as THREE.Line;
+            const arrowCone = this.normalArrow.cone as THREE.Mesh;
+            if (arrowLine.material instanceof THREE.LineBasicMaterial) {
+                arrowLine.material.transparent = true;
+                arrowLine.material.opacity = 0.5;
+                arrowLine.material.linewidth = 3;
+            }
+            if (arrowCone.material instanceof THREE.MeshBasicMaterial) {
+                arrowCone.material.transparent = true;
+                arrowCone.material.opacity = 0.5;
+            }
+            
+            this.voxelEngine.scene.add(this.normalArrow);
+        }
+        
+        // Determine axis color based on normal direction
+        let axisColor = 0xffffff;
+        if (Math.abs(hit.normal.x) > 0.5) {
+            axisColor = 0x0000ff;  // Blue for X axis
+        } else if (Math.abs(hit.normal.y) > 0.5) {
+            axisColor = 0x00ff00;  // Green for Y axis
+        } else if (Math.abs(hit.normal.z) > 0.5) {
+            axisColor = 0xff0000;  // Red for Z axis
+        }
+        
+        // Update face highlight color to match axis
+        this.faceHighlightMaterial.color.setHex(axisColor);
+        
+        // Update arrow color
+        const arrowLine = this.normalArrow.line as THREE.Line;
+        const arrowCone = this.normalArrow.cone as THREE.Mesh;
+        if (arrowLine.material instanceof THREE.LineBasicMaterial) {
+            arrowLine.material.color.setHex(axisColor);
+        }
+        if (arrowCone.material instanceof THREE.MeshBasicMaterial) {
+            arrowCone.material.color.setHex(axisColor);
+        }
+        
+        // Position and orient the arrow with visible head
+        this.normalArrow.position.copy(facePos);
+        this.normalArrow.setDirection(hit.normal);
+        this.normalArrow.setLength(voxelSize * 0.8, voxelSize * 0.15, voxelSize * 0.18);
+        this.normalArrow.visible = true;
+    }
+    
+    hideFaceHighlight(): void {
+        if (this.faceHighlight) {
+            this.faceHighlight.visible = false;
+        }
+        if (this.normalArrow) {
+            this.normalArrow.visible = false;
+        }
+    }
+    
+    setCustomColor(color: THREE.Color): void {
+        this.customColor = color;
     }
 }
