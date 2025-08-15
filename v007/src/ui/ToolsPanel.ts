@@ -131,13 +131,15 @@ export class ToolsPanel {
         // Store reference to container for adding buttons
         this.toolsContainer = toolsContainer;
         
-        // Add voxel brush button at the top
-        this.createVoxelBrushButton();
+        // Create tool buttons first
+        this.createToolButton('brush', 'Brush Tool (B)', 'B');
+        this.createToolButton('eraser', 'Eraser Tool (E)', 'E');
+        this.createToolButton('box', 'Box Tool (X)', 'X');
+        this.createToolButton('line', 'Line Tool (L)', 'L');
+        this.createToolButton('fill', 'Fill Tool (P)', 'P');
+        this.createToolButton('selection', 'Selection Tool (S)', 'S');
         
-        // Add brush size button
-        this.createBrushSizeButton();
-        
-        // Add separator after voxel brush section
+        // Add separator before voxel brush section
         const voxelSeparator = document.createElement('div');
         voxelSeparator.style.cssText = `
             height: 1px;
@@ -147,13 +149,11 @@ export class ToolsPanel {
         `;
         this.toolsContainer.appendChild(voxelSeparator);
         
-        // Create tool buttons
-        this.createToolButton('brush', 'Brush Tool (B)', 'B', true);
-        this.createToolButton('eraser', 'Eraser Tool (E)', 'E');
-        this.createToolButton('box', 'Box Tool (X)', 'X');
-        this.createToolButton('line', 'Line Tool (L)', 'L');
-        this.createToolButton('fill', 'Fill Tool (P)', 'P');
-        this.createToolButton('selection', 'Selection Tool (S)', 'S');
+        // Add voxel brush button at the bottom
+        this.createVoxelBrushButton();
+        
+        // Add brush size button
+        this.createBrushSizeButton();
         
         // Add footer for padding
         const footer = document.createElement('div');
@@ -220,14 +220,20 @@ export class ToolsPanel {
         // Add click handler
         button.addEventListener('click', () => {
             if (this.drawingSystem) {
+                // Set the active button first
+                this.setActiveToolButton(button);
+                
                 // Handle selection tool separately
                 if (toolId === 'selection') {
-                    // Emit event to toggle selection mode
-                    window.dispatchEvent(new CustomEvent('toggle-selection-mode'));
+                    // Set tool mode to selection
+                    this.drawingSystem.setToolMode('selection');
+                    // Emit event to enable selection mode
+                    window.dispatchEvent(new CustomEvent('enable-selection-mode'));
                 } else {
+                    // For other tools, disable selection mode if active
+                    window.dispatchEvent(new CustomEvent('disable-selection-mode'));
                     this.drawingSystem.setToolMode(toolId);
                 }
-                this.setActiveToolButton(button);
                 ActionLogger.getInstance().log(ActionLogger.actions.selectTool(toolId));
             }
         });
@@ -365,11 +371,16 @@ export class ToolsPanel {
                 swatch.style.boxShadow = '0 0 8px rgba(100, 255, 100, 0.5)';
             }
         } else {
-            // For other tools, update icon color
+            // For other tools, update icon color only for the selected button
             const newSpan = button.querySelector('span');
             if (newSpan instanceof HTMLElement) {
                 newSpan.style.color = 'rgba(100, 255, 100, 1)';
             }
+        }
+        
+        // Debug: Force lucide to update icons after color changes
+        if ((window as any).lucide) {
+            (window as any).lucide.createIcons();
         }
     }
     
@@ -390,6 +401,43 @@ export class ToolsPanel {
         const button = document.getElementById(`tool-${toolId}`);
         if (button) {
             this.setActiveToolButton(button);
+        }
+    }
+    
+    clearActiveSelection(): void {
+        // Clear the active tool button selection
+        if (this.activeToolButton) {
+            // Reset all tool buttons
+            const allToolButtons = this.toolsContainer?.querySelectorAll('button');
+            if (allToolButtons) {
+                allToolButtons.forEach((btn) => {
+                    if (btn instanceof HTMLElement) {
+                        // Remove selected class from voxel brush button
+                        btn.classList.remove('selected');
+                        
+                        // Reset styles for all buttons
+                        if (btn.id === 'voxel-brush-button') {
+                            btn.style.background = 'transparent';
+                        } else {
+                            btn.style.background = 'rgba(100, 100, 100, 0.2)';
+                            btn.style.borderColor = 'transparent';
+                        }
+                        btn.style.transform = 'scale(1)';
+                        
+                        const span = btn.querySelector('span');
+                        if (span instanceof HTMLElement) {
+                            span.style.color = 'rgba(255, 255, 255, 0.8)';
+                        }
+                        
+                        // Reset color swatch glow effect
+                        const swatch = btn.querySelector('.voxel-color-swatch');
+                        if (swatch instanceof HTMLElement) {
+                            swatch.style.boxShadow = '0 0 0 1px rgba(0, 0, 0, 0.2)';
+                        }
+                    }
+                });
+            }
+            this.activeToolButton = null;
         }
     }
     

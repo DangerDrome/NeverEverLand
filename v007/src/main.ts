@@ -689,6 +689,7 @@ class VoxelApp {
         this.fileManager = new FileManager(this.voxelEngine);
         this.voxelPanel.setFileManager(this.fileManager);
         this.voxelPanel.setVoxelEngine(this.voxelEngine);
+        this.voxelPanel.setToolsPanel(this.toolsPanel);
         
         // Initialize menu bar
         if (this.voxelEngine && this.drawingSystem && this.fileManager && this.directionIndicator && this.layerPanel) {
@@ -918,32 +919,27 @@ class VoxelApp {
             this.toggleGrid();
         });
         
-        // Handle selection mode toggle from tools panel
-        window.addEventListener('toggle-selection-mode', () => {
-            // Toggle selection mode
-            this.selectionMode = !this.selectionMode;
-            if (this.boxSelectionTool) {
-                if (!this.selectionMode) {
-                    this.boxSelectionTool.clearSelection();
-                }
-            }
-            // Hide/show drawing preview based on selection mode
+        // Handle selection mode enable from tools panel
+        window.addEventListener('enable-selection-mode', () => {
+            this.selectionMode = true;
             if (this.drawingSystem) {
-                if (this.selectionMode) {
-                    this.drawingSystem.hidePreview();
-                    this.drawingSystem.clearConstraintPlane();
-                    this.drawingSystem.stopDrawing();
-                } else {
+                this.drawingSystem.hidePreview();
+                this.drawingSystem.clearConstraintPlane();
+                this.drawingSystem.stopDrawing();
+            }
+        });
+        
+        // Handle selection mode disable from tools panel
+        window.addEventListener('disable-selection-mode', () => {
+            if (this.selectionMode) {
+                this.selectionMode = false;
+                if (this.boxSelectionTool) {
+                    this.boxSelectionTool.clearSelection(false); // Don't record undo when switching tools
+                }
+                if (this.drawingSystem) {
                     this.drawingSystem.showPreview();
                     this.updatePreviewAtCurrentMouse();
-                    // Restore the previous tool mode
-                    this.drawingSystem.setToolMode(this.drawingSystem.toolMode);
                 }
-            }
-            
-            // Update tools panel
-            if (this.toolsPanel && this.selectionMode) {
-                this.toolsPanel.selectTool('selection');
             }
         });
     }
@@ -1002,8 +998,11 @@ class VoxelApp {
                 return;
             }
             
-            if (this.boxSelectionTool.isInSelectionMode() && hit) {
-                // Update selection box while dragging
+            if (this.boxSelectionTool.isDoingScreenSpaceSelection()) {
+                // Update screen space selection box
+                this.boxSelectionTool.updateScreenSpaceSelection(event.clientX, event.clientY);
+            } else if (this.boxSelectionTool.isInSelectionMode() && hit) {
+                // Update selection box while dragging (old 3D selection - kept for compatibility)
                 this.boxSelectionTool.updateSelection(hit.point);
             } else if (event.buttons === 1) {
                 // Handle gizmo dragging
@@ -1205,14 +1204,20 @@ class VoxelApp {
                         // Check if clicking on a voxel (not empty space)
                         // Pass voxelPos for single/double click selection
                         if (!this.boxSelectionTool.handleClick(hit.voxelPos, event.shiftKey)) {
-                            // No voxel clicked, start box selection (pass shift key for additive selection)
-                            this.boxSelectionTool.startSelection(hit.point, event.shiftKey);
+                            // No voxel clicked, start screen space selection
+                            this.boxSelectionTool.startScreenSpaceSelection(event.clientX, event.clientY);
                             // Disable orbit controls during selection
                             if (this.controls) this.controls.enabled = false;
                         } else {
                             // Single voxel or contiguous selection handled
                             // Keep controls enabled for now
                         }
+                    } else {
+                        // No hit - clicked on empty space
+                        // Start screen space selection from mouse position
+                        this.boxSelectionTool.startScreenSpaceSelection(event.clientX, event.clientY);
+                        // Disable orbit controls during selection
+                        if (this.controls) this.controls.enabled = false;
                     }
                 }
             }
@@ -1274,7 +1279,9 @@ class VoxelApp {
         
         // Handle selection mode
         if (this.selectionMode && this.boxSelectionTool) {
-            if (this.boxSelectionTool.isInSelectionMode()) {
+            if (this.boxSelectionTool.isDoingScreenSpaceSelection()) {
+                this.boxSelectionTool.endScreenSpaceSelection(event.shiftKey);
+            } else if (this.boxSelectionTool.isInSelectionMode()) {
                 this.boxSelectionTool.endSelection();
             }
             // End gizmo drag if active
@@ -1460,7 +1467,7 @@ class VoxelApp {
                 // Exit selection mode when switching tools
                 this.selectionMode = false;
                 if (this.boxSelectionTool) {
-                    this.boxSelectionTool.clearSelection();
+                    this.boxSelectionTool.clearSelection(false); // Don't record undo when switching tools
                 }
                 if (this.drawingSystem) {
                     this.drawingSystem.setToolMode('brush');
@@ -1479,7 +1486,7 @@ class VoxelApp {
                 // Exit selection mode when switching tools
                 this.selectionMode = false;
                 if (this.boxSelectionTool) {
-                    this.boxSelectionTool.clearSelection();
+                    this.boxSelectionTool.clearSelection(false); // Don't record undo when switching tools
                 }
                 if (this.drawingSystem) {
                     this.drawingSystem.setToolMode('eraser');
@@ -1498,7 +1505,7 @@ class VoxelApp {
                 // Exit selection mode when switching tools
                 this.selectionMode = false;
                 if (this.boxSelectionTool) {
-                    this.boxSelectionTool.clearSelection();
+                    this.boxSelectionTool.clearSelection(false); // Don't record undo when switching tools
                 }
                 if (this.drawingSystem) {
                     this.drawingSystem.setToolMode('box');
@@ -1517,7 +1524,7 @@ class VoxelApp {
                 // Exit selection mode when switching tools
                 this.selectionMode = false;
                 if (this.boxSelectionTool) {
-                    this.boxSelectionTool.clearSelection();
+                    this.boxSelectionTool.clearSelection(false); // Don't record undo when switching tools
                 }
                 if (this.drawingSystem) {
                     this.drawingSystem.setToolMode('line');
@@ -1536,7 +1543,7 @@ class VoxelApp {
                 // Exit selection mode when switching tools
                 this.selectionMode = false;
                 if (this.boxSelectionTool) {
-                    this.boxSelectionTool.clearSelection();
+                    this.boxSelectionTool.clearSelection(false); // Don't record undo when switching tools
                 }
                 if (this.drawingSystem) {
                     this.drawingSystem.setToolMode('fill');
@@ -1579,33 +1586,10 @@ class VoxelApp {
                 break;
             case 's':
             case 'S':
-                // Toggle selection mode
+                // Activate selection tool
                 if (!event.ctrlKey && !event.metaKey) {
-                    this.selectionMode = !this.selectionMode;
-                    if (this.boxSelectionTool) {
-                        if (!this.selectionMode) {
-                            this.boxSelectionTool.clearSelection();
-                        }
-                    }
-                    // Hide/show drawing preview based on selection mode
-                    if (this.drawingSystem) {
-                        if (this.selectionMode) {
-                            this.drawingSystem.hidePreview();
-                        } else {
-                            this.drawingSystem.showPreview();
-                        }
-                    }
-                    
-                    // Update cursor for selection mode
-                    const canvas = document.getElementById('canvas') as HTMLCanvasElement;
-                    if (canvas) {
-                        if (this.selectionMode) {
-                            // Set selection cursor
-                            canvas.style.cursor = 'crosshair';
-                        } else if (this.drawingSystem) {
-                            // Restore the tool cursor
-                            this.drawingSystem.setToolMode(this.drawingSystem.toolMode);
-                        }
+                    if (this.toolsPanel) {
+                        this.toolsPanel.selectTool('selection');
                     }
                     
                     console.log('Selection mode:', this.selectionMode ? 'ON' : 'OFF');
@@ -1639,7 +1623,7 @@ class VoxelApp {
                         this.boxSelectionTool.cancelTransform();
                         console.log('Transformation cancelled');
                     } else if (this.boxSelectionTool.hasSelection()) {
-                        this.boxSelectionTool.clearSelection();
+                        this.boxSelectionTool.clearSelection(false); // Don't record undo when switching tools
                         console.log('Selection cleared');
                     }
                 }

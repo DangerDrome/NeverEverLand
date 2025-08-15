@@ -423,6 +423,14 @@ export class DrawingSystem {
             this.lastUpdateHit = hit;
         }
         
+        // Hide preview if in selection mode
+        if (this.toolMode === 'selection') {
+            this.previewGroup.visible = false;
+            this.clearToolPreviews();
+            this.hideFaceHighlight();
+            return;
+        }
+        
         // If we have a constrained position (during drawing), use that
         // Otherwise use the hit position or hide preview
         if (!hit && !constrainedPos) {
@@ -472,6 +480,32 @@ export class DrawingSystem {
         // For brush, eraser, and fill tools, show preview
         if (this.toolMode === 'brush' || this.toolMode === 'eraser' || this.toolMode === 'fill') {
             const voxelSize = this.voxelEngine.getCurrentVoxelSize();
+            
+            // For fill tool, show single voxel preview at the target position
+            if (this.toolMode === 'fill') {
+                // Show preview on the voxel that would be filled/removed
+                const previewPos = (this.toolMode === 'eraser' || this.drawMode === 'remove') ? hit.voxelPos : pos;
+                this.previewTargetPosition.set(
+                    previewPos.x * voxelSize,
+                    previewPos.y * voxelSize,
+                    previewPos.z * voxelSize
+                );
+                
+                // Force single voxel scale for fill tool
+                this.previewGroup.scale.setScalar(1);
+                
+                // Update preview color
+                const voxelType = this.voxelEngine.getVoxelType ? this.voxelEngine.getVoxelType(this.currentVoxelType) : null;
+                if (voxelType && voxelType.color) {
+                    this.previewMaterial.color.setHex(voxelType.color);
+                    this.edgeMaterial.color.setHex(voxelType.color);
+                }
+                this.previewMaterial.opacity = 0.2;
+                this.edgeMaterial.opacity = 0.6;
+                
+                this.previewGroup.visible = true;
+                return;
+            }
             
             // Calculate the center position for the brush preview
             // We need to offset based on brush size to align with actual painting
@@ -581,6 +615,15 @@ export class DrawingSystem {
         if (this.toolMode === 'asset') {
             const pos = mode === 'add' ? hit.adjacentPos : hit.voxelPos;
             this.placeAsset(pos);
+            return;
+        }
+        
+        // Handle fill tool - it's a single click operation
+        if (this.toolMode === 'fill') {
+            // Set draw mode for fill tool
+            this.drawMode = mode;
+            const pos = mode === 'add' ? hit.adjacentPos : hit.voxelPos;
+            this.applyFillTool(pos);
             return;
         }
         
@@ -810,6 +853,14 @@ export class DrawingSystem {
     hidePreview(): void {
         this.previewGroup.visible = false;
         this.clearToolPreviews();
+        this.hideFaceHighlight();
+        
+        // Also ensure all children are hidden
+        this.previewGroup.traverse((child) => {
+            if (child instanceof THREE.Mesh || child instanceof THREE.LineSegments) {
+                child.visible = false;
+            }
+        });
     }
     
     /**
@@ -817,6 +868,13 @@ export class DrawingSystem {
      */
     showPreview(): void {
         this.previewGroup.visible = true;
+        
+        // Re-enable visibility of children
+        this.previewGroup.traverse((child) => {
+            if (child instanceof THREE.Mesh || child instanceof THREE.LineSegments) {
+                child.visible = true;
+            }
+        });
     }
     
     /**
@@ -938,7 +996,8 @@ export class DrawingSystem {
                 'box': 'Box',
                 'line': 'Line',
                 'fill': 'Fill',
-                'asset': 'Asset'
+                'asset': 'Asset',
+                'selection': 'Selection'
             };
             toolElement.textContent = toolNames[mode] || mode;
         }
@@ -967,6 +1026,9 @@ export class DrawingSystem {
         
         // Force preview update with current mouse position
         // This ensures preview colors/styles update immediately
+        if (this.lastUpdateHit) {
+            this.updatePreview(this.lastUpdateHit);
+        }
         this.lastUpdateHit = null; // Force a fresh update
     }
     
@@ -1110,7 +1172,7 @@ export class DrawingSystem {
         this.voxelEngine.endBatch();
     }
     
-    // Fill tool implementation (flood fill)
+    // Fill tool implementation (flood fill based on voxel type/color)
     applyFillTool(startPos: { x: number; y: number; z: number }): void {
         // Get the voxel type to use (may be mapped from custom color)
         let voxelTypeToUse = this.currentVoxelType;
@@ -1122,12 +1184,24 @@ export class DrawingSystem {
         }
         
         const targetType = this.voxelEngine.getVoxel(startPos.x, startPos.y, startPos.z);
-        if (targetType === voxelTypeToUse) return;
         
-        const visited = new Set();
+        // Handle eraser mode - fill removes all connected voxels of the same type
+        if (this.drawMode === 'remove') {
+            // Don't try to remove air
+            if (targetType === VoxelType.AIR) return;
+            voxelTypeToUse = VoxelType.AIR;
+        } else {
+            // Don't fill if clicking on empty space (AIR) in add mode
+            if (targetType === VoxelType.AIR) return;
+            
+            // Don't fill if the target is already the selected type
+            if (targetType === voxelTypeToUse) return;
+        }
+        
+        const visited = new Set<string>();
         const queue = [startPos];
-        const operations = [];
-        const maxFill = 1000; // Limit fill size for performance
+        const operations: { x: number; y: number; z: number }[] = [];
+        const maxFill = 10000; // Increased limit for larger fills
         
         while (queue.length > 0 && operations.length < maxFill) {
             const pos = queue.shift();
@@ -1161,18 +1235,32 @@ export class DrawingSystem {
             }
         }
         
+        // Only proceed if we found voxels to fill
+        if (operations.length === 0) return;
+        
         // Start batch for fill operation
         this.voxelEngine.startBatch();
         
         // Apply all fill operations
         for (const pos of operations) {
-            if (pos) {
-                this.voxelEngine.setVoxel(pos.x, pos.y, pos.z, voxelTypeToUse);
-            }
+            this.voxelEngine.setVoxel(pos.x, pos.y, pos.z, voxelTypeToUse);
         }
         
         // End batch and update
         this.voxelEngine.endBatch();
+        
+        // Finalize undo/redo group
+        this.voxelEngine.finalizePendingOperations();
+        
+        // Log the fill operation
+        import('../ui/ActionLogger').then(({ ActionLogger }) => {
+            const logger = ActionLogger.getInstance();
+            if (this.drawMode === 'remove') {
+                logger.log(ActionLogger.actions.removeVoxel(operations.length));
+            } else {
+                logger.log(ActionLogger.actions.placeVoxel(operations.length));
+            }
+        });
     }
     
     // Update preview for tools

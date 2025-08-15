@@ -188,16 +188,8 @@ export class ColorPickerPopover {
         let left: number;
         let top: number;
         
-        // For voxel brush button, align with tools panel header
-        const toolsPanel = anchorElement.closest('.tools-panel');
-        if (toolsPanel && anchorElement.id === 'voxel-brush-button') {
-            const panelRect = toolsPanel.getBoundingClientRect();
-            // Align with panel header (60px from top of window for panel + header height)
-            top = panelRect.top;
-        } else {
-            // Default: Center vertically with button
-            top = rect.top + rect.height / 2 - popoverHeight / 2;
-        }
+        // Center vertically with button
+        top = rect.top + rect.height / 2 - popoverHeight / 2;
         
         // Determine horizontal position based on preferred direction
         if (preferredDirection === 'right' || (preferredDirection === 'auto' && rect.left < window.innerWidth / 2)) {

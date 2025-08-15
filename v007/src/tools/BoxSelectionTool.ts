@@ -27,6 +27,12 @@ export class BoxSelectionTool {
     private selectedVoxels: SelectedVoxel[] = [];
     private previousSelection: SelectedVoxel[] = [];
     
+    // Screen space selection
+    private isScreenSpaceSelecting: boolean = false;
+    private screenSelectionStart: { x: number; y: number } | null = null;
+    private screenSelectionEnd: { x: number; y: number } | null = null;
+    private screenSelectionBox: HTMLDivElement | null = null;
+    
     // Visual elements
     private selectionBox: THREE.Box3Helper | null = null;
     private selectionOutline: THREE.LineSegments | null = null;
@@ -192,7 +198,7 @@ export class BoxSelectionTool {
     private selectContiguousVoxels(startX: number, startY: number, startZ: number, targetType: VoxelType, addToExisting: boolean = false): void {
         // Clear previous selection unless adding to existing
         if (!addToExisting) {
-            this.clearSelection();
+            this.clearSelection(false); // Don't record undo, we'll record the whole operation
         }
         
         // Create set of already selected voxels to avoid duplicates
@@ -278,7 +284,7 @@ export class BoxSelectionTool {
         
         // Clear previous selection only if not adding
         if (!addToExisting) {
-            this.clearSelection();
+            this.clearSelection(false); // Don't record undo here
         }
         
         // Create initial selection box visual
@@ -1571,7 +1577,7 @@ export class BoxSelectionTool {
     /**
      * Clear selection (with undo recording)
      */
-    clearSelection(): void {
+    clearSelection(recordUndo: boolean = true): void {
         if (this.selectedVoxels.length === 0) return;
         
         // Store previous selection for undo
@@ -1580,8 +1586,10 @@ export class BoxSelectionTool {
         // Clear selection
         this.selectedVoxels = [];
         
-        // Record selection change
-        this.voxelEngine.recordSelectionChange(prevSelection, []);
+        // Only record selection change if requested
+        if (recordUndo) {
+            this.voxelEngine.recordSelectionChange(prevSelection, []);
+        }
         this.previousSelection = [];
         
         // Clear visuals
@@ -1678,7 +1686,7 @@ export class BoxSelectionTool {
         
         // If all voxels were removed, clear the selection
         if (this.selectedVoxels.length === 0) {
-            this.clearSelection();
+            this.clearSelection(false); // Don't record undo, already handled by caller
         } else {
             // Refresh the visual representation
             this.updateSelectionOutline();
@@ -1693,10 +1701,178 @@ export class BoxSelectionTool {
     }
     
     /**
+     * Start screen space selection
+     */
+    startScreenSpaceSelection(screenX: number, screenY: number): void {
+        this.isScreenSpaceSelecting = true;
+        this.screenSelectionStart = { x: screenX, y: screenY };
+        this.screenSelectionEnd = { x: screenX, y: screenY };
+        
+        // Create selection box div
+        if (!this.screenSelectionBox) {
+            this.screenSelectionBox = document.createElement('div');
+            this.screenSelectionBox.style.cssText = `
+                position: fixed;
+                border: 2px dashed rgba(100, 255, 100, 0.8);
+                background: rgba(100, 255, 100, 0.1);
+                pointer-events: none;
+                z-index: 1000;
+            `;
+            document.body.appendChild(this.screenSelectionBox);
+        }
+        
+        this.updateScreenSelectionBox();
+    }
+    
+    /**
+     * Update screen space selection
+     */
+    updateScreenSpaceSelection(screenX: number, screenY: number): void {
+        if (!this.isScreenSpaceSelecting || !this.screenSelectionStart) return;
+        
+        this.screenSelectionEnd = { x: screenX, y: screenY };
+        this.updateScreenSelectionBox();
+    }
+    
+    /**
+     * End screen space selection and select voxels
+     */
+    endScreenSpaceSelection(shiftKey: boolean = false): void {
+        if (!this.isScreenSpaceSelecting || !this.screenSelectionStart || !this.screenSelectionEnd) return;
+        
+        this.isScreenSpaceSelecting = false;
+        
+        // Remove selection box
+        if (this.screenSelectionBox) {
+            this.screenSelectionBox.remove();
+            this.screenSelectionBox = null;
+        }
+        
+        // Calculate selection rectangle
+        const minX = Math.min(this.screenSelectionStart.x, this.screenSelectionEnd.x);
+        const maxX = Math.max(this.screenSelectionStart.x, this.screenSelectionEnd.x);
+        const minY = Math.min(this.screenSelectionStart.y, this.screenSelectionEnd.y);
+        const maxY = Math.max(this.screenSelectionStart.y, this.screenSelectionEnd.y);
+        
+        // Skip tiny selections (likely accidental clicks)
+        if (Math.abs(maxX - minX) < 5 && Math.abs(maxY - minY) < 5) {
+            // This was just a click, not a drag
+            if (!shiftKey) {
+                // Clear selection when clicking on empty space (unless shift is held)
+                this.clearSelection(true); // Record undo for explicit clear action
+            }
+            return;
+        }
+        
+        // Project voxels to screen space and check if they're in the selection box
+        const canvas = document.getElementById('canvas') as HTMLCanvasElement;
+        if (!canvas) return;
+        
+        const rect = canvas.getBoundingClientRect();
+        const selectedVoxels: SelectedVoxel[] = [];
+        
+        // Get all voxels in the scene
+        const allVoxels = this.voxelEngine.getAllVoxels();
+        const voxelSize = this.voxelEngine.getCurrentVoxelSize();
+        
+        // Create a vector for projection
+        const vector = new THREE.Vector3();
+        
+        for (const voxel of allVoxels) {
+            // Get voxel center in world space
+            vector.set(
+                voxel.x * voxelSize + voxelSize * 0.5,
+                voxel.y * voxelSize + voxelSize * 0.5,
+                voxel.z * voxelSize + voxelSize * 0.5
+            );
+            
+            // Project to normalized device coordinates
+            vector.project(this.camera);
+            
+            // Convert to screen coordinates
+            const screenX = (vector.x * 0.5 + 0.5) * canvas.clientWidth + rect.left;
+            const screenY = (-vector.y * 0.5 + 0.5) * canvas.clientHeight + rect.top;
+            
+            // Check if voxel is in selection box and visible (z < 1 means in front of camera)
+            if (screenX >= minX && screenX <= maxX && 
+                screenY >= minY && screenY <= maxY &&
+                vector.z < 1) {
+                selectedVoxels.push({
+                    x: voxel.x,
+                    y: voxel.y,
+                    z: voxel.z,
+                    type: voxel.type
+                });
+            }
+        }
+        
+        // Update selection
+        if (!shiftKey) {
+            // Replace selection - don't record undo for the clear, we'll record the whole operation
+            this.clearSelection(false);
+            this.selectedVoxels = selectedVoxels;
+        } else {
+            // Add to selection
+            for (const voxel of selectedVoxels) {
+                const exists = this.selectedVoxels.some(v => 
+                    v.x === voxel.x && v.y === voxel.y && v.z === voxel.z
+                );
+                if (!exists) {
+                    this.selectedVoxels.push(voxel);
+                }
+            }
+        }
+        
+        // Update visuals
+        if (this.selectedVoxels.length > 0) {
+            this.updateSelectionOutline();
+            this.showSelectedVoxels();
+            const center = this.getSelectionCenter();
+            this.transformGizmo.show(center);
+            
+            // Record selection change
+            this.voxelEngine.recordSelectionChange(this.previousSelection, this.selectedVoxels);
+            this.previousSelection = [...this.selectedVoxels];
+        }
+        
+        console.log(`Selected ${this.selectedVoxels.length} voxels with screen space selection`);
+    }
+    
+    /**
+     * Update screen selection box visual
+     */
+    private updateScreenSelectionBox(): void {
+        if (!this.screenSelectionBox || !this.screenSelectionStart || !this.screenSelectionEnd) return;
+        
+        const minX = Math.min(this.screenSelectionStart.x, this.screenSelectionEnd.x);
+        const maxX = Math.max(this.screenSelectionStart.x, this.screenSelectionEnd.x);
+        const minY = Math.min(this.screenSelectionStart.y, this.screenSelectionEnd.y);
+        const maxY = Math.max(this.screenSelectionStart.y, this.screenSelectionEnd.y);
+        
+        this.screenSelectionBox.style.left = `${minX}px`;
+        this.screenSelectionBox.style.top = `${minY}px`;
+        this.screenSelectionBox.style.width = `${maxX - minX}px`;
+        this.screenSelectionBox.style.height = `${maxY - minY}px`;
+    }
+    
+    /**
+     * Check if currently doing screen space selection
+     */
+    isDoingScreenSpaceSelection(): boolean {
+        return this.isScreenSpaceSelecting;
+    }
+    
+    /**
      * Dispose of all resources
      */
     dispose(): void {
-        this.clearSelection();
+        this.clearSelection(false); // Don't record undo on dispose
         this.transformGizmo.dispose();
+        
+        // Clean up screen selection box if it exists
+        if (this.screenSelectionBox) {
+            this.screenSelectionBox.remove();
+            this.screenSelectionBox = null;
+        }
     }
 }

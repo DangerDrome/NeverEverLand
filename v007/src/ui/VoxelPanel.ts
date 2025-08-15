@@ -8,6 +8,7 @@ import { ModalDialog } from './ModalDialog';
 import { ColorPickerPopover, ColorInfo } from './ColorPickerPopover';
 import { ColorRegistry } from '../engine/ColorRegistry';
 import { settings } from '../main';
+import { ToolsPanel } from './ToolsPanel';
 
 interface VoxelButtonInfo {
     type: VoxelType;
@@ -31,6 +32,7 @@ export class VoxelPanel {
     private assetPopover: AssetPopover;
     private colorPickerPopover: ColorPickerPopover;
     private voxelTypes: VoxelButtonInfo[] = [];
+    private toolsPanel: ToolsPanel | null = null;  // Reference to ToolsPanel for clearing selections
     
     constructor(drawingSystem: DrawingSystem, colorPalette?: ColorInfo[]) {
         this.drawingSystem = drawingSystem;
@@ -1064,15 +1066,14 @@ export class VoxelPanel {
         this.voxelEngine = voxelEngine;
     }
     
+    public setToolsPanel(toolsPanel: ToolsPanel): void {
+        this.toolsPanel = toolsPanel;
+    }
+    
     private onAssetSelected(asset: AssetInfo): void {
-        // Deselect voxel brush button when an asset is selected
-        const voxelBrushButton = document.getElementById('voxel-brush-button');
-        if (voxelBrushButton) {
-            voxelBrushButton.classList.remove('selected');
-            voxelBrushButton.style.borderColor = 'transparent';
-            voxelBrushButton.style.background = 'transparent';
-            voxelBrushButton.style.transform = 'scale(1)';
-            voxelBrushButton.style.boxShadow = 'none';
+        // Clear any active tool selection in ToolsPanel when an asset is selected
+        if (this.toolsPanel) {
+            this.toolsPanel.clearActiveSelection();
         }
         
         // Set the drawing system to asset mode
