@@ -224,6 +224,31 @@ export class VoxelEngine {
         return VoxelType.AIR;
     }
     
+    getVoxelWithLayerInfo(x: number, y: number, z: number): { type: VoxelType; layerId?: string; isBaked?: boolean } {
+        x = Math.floor(x);
+        y = Math.floor(y);
+        z = Math.floor(z);
+        
+        const key = this.positionKey(x, y, z);
+        
+        // Check layers from top to bottom
+        for (let i = this.layers.length - 1; i >= 0; i--) {
+            const layer = this.layers[i];
+            if (layer.visible) {
+                const type = layer.getVoxel(key);
+                if (type !== VoxelType.AIR) {
+                    return {
+                        type,
+                        layerId: layer.id,
+                        isBaked: layer.isBaked
+                    };
+                }
+            }
+        }
+        
+        return { type: VoxelType.AIR };
+    }
+    
     // Update all instance buffers
     updateInstances(): void {
         if (this.batchMode) {
@@ -389,8 +414,8 @@ export class VoxelEngine {
         while (distance < maxDistance) {
             
             // Check if current voxel contains a solid voxel
-            const voxelType = this.getVoxel(currentVoxel.x, currentVoxel.y, currentVoxel.z);
-            if (voxelType !== VoxelType.AIR) {
+            const voxelInfo = this.getVoxelWithLayerInfo(currentVoxel.x, currentVoxel.y, currentVoxel.z);
+            if (voxelInfo.type !== VoxelType.AIR) {
                 // We hit a voxel! Use the DDA traversal info to determine which face
                 const normal = { x: 0, y: 0, z: 0 };
                 let t = 0;
@@ -461,7 +486,9 @@ export class VoxelEngine {
                     adjacentPos: adjacentPos,
                     point: point,
                     normal: new THREE.Vector3(normal.x, normal.y, normal.z),
-                    distance: t
+                    distance: t,
+                    layerId: voxelInfo.layerId,
+                    isBakedLayer: voxelInfo.isBaked
                 };
             }
             

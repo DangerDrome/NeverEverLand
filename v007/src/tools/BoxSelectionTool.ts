@@ -477,7 +477,7 @@ export class BoxSelectionTool {
         if (previewVoxels.length > 0) {
             const geometry = new THREE.BoxGeometry(voxelSize * 1.02, voxelSize * 1.02, voxelSize * 1.02);
             const material = new THREE.MeshBasicMaterial({
-                color: 'rgb(100, 150, 255)',  // Light blue
+                color: 'rgb(100, 255, 100)',  // Light green
                 transparent: true,
                 opacity: 0.3,
                 depthWrite: false
@@ -552,7 +552,7 @@ export class BoxSelectionTool {
         const voxelSize = this.voxelEngine.getVoxelSize();
         const geometry = new THREE.BoxGeometry(voxelSize * 1.02, voxelSize * 1.02, voxelSize * 1.02); // Slightly larger
         const material = new THREE.MeshBasicMaterial({
-            color: 'rgb(100, 150, 255)',  // Light blue
+            color: 'rgb(100, 255, 100)',  // Light green
             transparent: true,
             opacity: 0.5,  // More visible during transformation
             depthWrite: false
@@ -616,7 +616,7 @@ export class BoxSelectionTool {
         outlineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
         
         const outlineMaterial = new THREE.LineBasicMaterial({
-            color: 'rgb(255, 255, 0)',  // Yellow outline for selected voxels
+            color: 'rgb(100, 255, 100)',  // Green outline for selected voxels
             linewidth: 2,
             transparent: true,
             opacity: 0.8
@@ -848,9 +848,9 @@ export class BoxSelectionTool {
         // Update color and make solid when dragging
         const material = this.selectedVoxelsMesh.material as THREE.MeshBasicMaterial;
         if (this.isDuplicating) {
-            material.color.set('rgb(100, 255, 100)'); // Green for duplication
+            material.color.set('rgb(150, 255, 150)'); // Lighter green for duplication
         } else {
-            material.color.set('rgb(100, 150, 255)'); // Blue for normal move
+            material.color.set('rgb(100, 255, 100)'); // Green for normal move
         }
         // Make solid instead of transparent when dragging
         material.transparent = false;
@@ -1087,7 +1087,7 @@ export class BoxSelectionTool {
         const voxelSize = this.voxelEngine.getVoxelSize();
         const geometry = new THREE.BoxGeometry(voxelSize * 0.98, voxelSize * 0.98, voxelSize * 0.98); // Slightly smaller to see gaps
         const material = new THREE.MeshBasicMaterial({
-            color: 'rgb(150, 200, 255)',
+            color: 'rgb(150, 255, 150)',
             transparent: true,
             opacity: 0.6,  // More visible
             depthWrite: false,

@@ -67,6 +67,8 @@ export interface RaycastHit {
     point: THREE.Vector3;
     normal: THREE.Vector3;
     distance: number;
+    layerId?: string;
+    isBakedLayer?: boolean;
 }
 
 export type DrawMode = 'add' | 'remove';

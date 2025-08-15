@@ -336,7 +336,7 @@ export const settings = {
     // Brush Settings
     brush: {
         presetSizes: [1, 2, 4, 6, 8, 10], // Brush sizes (cubic: 1x1x1, 2x2x2, 4x4x4, etc.)
-        defaultSizeIndex: 0,               // Start with single voxel brush
+        defaultSizeIndex: 0,               // Start with single voxel (1x1x1)
         defaultSize: 1                     // Default brush size
     },
     
@@ -1011,6 +1011,12 @@ class VoxelApp {
             return;
         }
         
+        // Handle fill tool selection
+        if (this.drawingSystem && this.drawingSystem.isDoingFillSelection()) {
+            this.drawingSystem.updateFillSelection(event.clientX, event.clientY);
+            return;
+        }
+        
         // Calculate constrained position if we're actively drawing
         let constrainedPos = null;
         
@@ -1177,9 +1183,9 @@ class VoxelApp {
         }
         
         // Track if we're starting a rotation
-        // Left or right button with alt key, or right button in single voxel/asset mode
+        // Left or right button with alt key, or right button in color palette/asset mode
         if ((event.button === 0 && event.altKey) || 
-            (event.button === 2 && (this.voxelPanel?.isInSingleVoxelMode() || 
+            (event.button === 2 && (this.voxelPanel?.isColorPaletteSelected() || 
                                    this.drawingSystem?.selectedAsset !== null))) {
             this.isRotating = true;
         }
@@ -1198,7 +1204,7 @@ class VoxelApp {
                     // Disable orbit controls during transformation
                     if (this.controls) this.controls.enabled = false;
                 } else {
-                    // Try single voxel or contiguous selection first
+                    // Try single or contiguous selection first
                     const hit = this.voxelEngine!.raycast(this.raycaster);
                     if (hit) {
                         // Check if clicking on a voxel (not empty space)
@@ -1209,7 +1215,7 @@ class VoxelApp {
                             // Disable orbit controls during selection
                             if (this.controls) this.controls.enabled = false;
                         } else {
-                            // Single voxel or contiguous selection handled
+                            // Single or contiguous selection handled
                             // Keep controls enabled for now
                         }
                     } else {
@@ -1227,26 +1233,33 @@ class VoxelApp {
         // Left click - add or remove based on tool (unless Alt is held for rotation)
         if (event.button === 0 && !event.altKey) {
             if (this.voxelEngine && this.drawingSystem) {
-                const hit = this.voxelEngine.raycast(this.raycaster);
-                // Left click hit detected
-                if (hit) {
-                    // Check if eraser tool is selected
-                    const mode = this.drawingSystem.toolMode === 'eraser' ? 'remove' : 'add';
-                    // Starting drawing operation
-                    this.drawingSystem.startDrawing(hit, mode);
-                    // Disable orbit controls to prevent rotation while drawing
+                // Handle fill tool with 2D selection
+                if (this.drawingSystem.toolMode === 'fill') {
+                    // Start 2D selection for fill tool
+                    this.drawingSystem.startFillSelection(event.clientX, event.clientY);
                     if (this.controls) this.controls.enabled = false;
+                } else {
+                    const hit = this.voxelEngine.raycast(this.raycaster);
+                    // Left click hit detected
+                    if (hit) {
+                        // Check if eraser tool is selected
+                        const mode = this.drawingSystem.toolMode === 'eraser' ? 'remove' : 'add';
+                        // Starting drawing operation
+                        this.drawingSystem.startDrawing(hit, mode);
+                        // Disable orbit controls to prevent rotation while drawing
+                        if (this.controls) this.controls.enabled = false;
+                    }
                 }
             }
         } 
-        // Right click - remove voxels (unless Alt is held, in single voxel mode, or asset is selected)
+        // Right click - remove voxels (unless Alt is held, in color palette mode, or asset is selected)
         else if (event.button === 2 && !event.altKey) {
-            // Check if we're in single voxel mode or have an asset selected
+            // Check if we're in color palette mode or have an asset selected
             const isAssetMode = this.drawingSystem && this.drawingSystem.selectedAsset !== null;
-            const isSingleVoxelMode = this.voxelPanel && this.voxelPanel.isInSingleVoxelMode();
+            const isColorPaletteMode = this.voxelPanel && this.voxelPanel.isColorPaletteSelected();
             
-            if (isSingleVoxelMode || isAssetMode) {
-                // In single voxel mode or asset mode, right-click enables tumble
+            if (isColorPaletteMode || isAssetMode) {
+                // In color palette mode or asset mode, right-click enables tumble
                 if (this.controls) this.controls.enabled = true;
             } else {
                 // In other modes, right-click removes voxels
@@ -1292,7 +1305,12 @@ class VoxelApp {
         }
         
         if (this.drawingSystem) {
-            this.drawingSystem.stopDrawing();
+            // Handle fill tool selection end
+            if (this.drawingSystem.isDoingFillSelection() && this.camera && this.scene) {
+                this.drawingSystem.endFillSelection(this.camera, this.scene);
+            } else {
+                this.drawingSystem.stopDrawing();
+            }
         }
         // Re-enable controls after drawing
         if (this.controls) this.controls.enabled = true;
@@ -1409,10 +1427,10 @@ class VoxelApp {
         switch(event.key) {
             case 'v':
             case 'V':
-                // Activate voxel brush button
-                const voxelBrushButton = document.getElementById('voxel-brush-button');
-                if (voxelBrushButton) {
-                    voxelBrushButton.click();
+                // Activate color palette button
+                const colorPaletteButton = document.getElementById('color-palette-button');
+                if (colorPaletteButton) {
+                    colorPaletteButton.click();
                 }
                 break;
             case '1':
@@ -1630,7 +1648,7 @@ class VoxelApp {
                 // Also clear asset selection
                 if (this.drawingSystem && this.drawingSystem.selectedAsset) {
                     this.drawingSystem.setSelectedAsset(null);
-                    this.drawingSystem.setToolMode('brush');
+                    // Don't change tool mode - preserve current tool
                     console.log('Asset selection cleared');
                 }
                 break;

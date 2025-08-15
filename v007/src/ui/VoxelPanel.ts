@@ -433,9 +433,9 @@ export class VoxelPanel {
                 return;
             }
             
-            // Clear any asset selection and ensure we're in brush mode
+            // Clear any asset selection but don't change the tool mode
             this.drawingSystem.setSelectedAsset(null);
-            this.drawingSystem.setToolMode('brush');
+            // Don't change tool mode - preserve whatever tool is currently active
             
             // Tool selection handled by ToolsPanel now
             
@@ -944,17 +944,17 @@ export class VoxelPanel {
         this.selectedType = type;
         this.drawingSystem.setVoxelType(type);
         
-        // Update voxel brush button color
-        this.updateVoxelBrushButtonColor();
+        // Update color palette button color
+        this.updateColorPaletteButtonColor();
         
-        // Deselect voxel brush button when selecting a voxel type
-        const voxelBrushButton = document.getElementById('voxel-brush-button');
-        if (voxelBrushButton) {
-            voxelBrushButton.classList.remove('selected');
-            voxelBrushButton.style.borderColor = 'transparent';
-            voxelBrushButton.style.background = 'transparent';
-            voxelBrushButton.style.transform = 'scale(1)';
-            voxelBrushButton.style.boxShadow = 'none';
+        // Deselect color palette button when selecting a voxel type
+        const colorPaletteButton = document.getElementById('color-palette-button');
+        if (colorPaletteButton) {
+            colorPaletteButton.classList.remove('selected');
+            colorPaletteButton.style.borderColor = 'transparent';
+            colorPaletteButton.style.background = 'transparent';
+            colorPaletteButton.style.transform = 'scale(1)';
+            colorPaletteButton.style.boxShadow = 'none';
         }
         
         // Helper to convert hex to RGB
@@ -993,11 +993,11 @@ export class VoxelPanel {
     }
     
     private handleKeyPress(event: KeyboardEvent): void {
-        // V key for voxel brush mode
+        // V key for color palette
         if (event.key === 'v' || event.key === 'V') {
-            const voxelBrushButton = document.getElementById('voxel-brush-button');
-            if (voxelBrushButton) {
-                voxelBrushButton.click();
+            const colorPaletteButton = document.getElementById('color-palette-button');
+            if (colorPaletteButton) {
+                colorPaletteButton.click();
             }
             return;
         }
@@ -1054,7 +1054,7 @@ export class VoxelPanel {
         }
     }
     
-    public updateToolMode(mode: string): void {
+    public updateToolMode(_mode: string): void {
         // Tool mode updates now handled by ToolsPanel
     }
     
@@ -1149,8 +1149,8 @@ export class VoxelPanel {
     }
     
     public getSelectedColorOrType(): { type: VoxelType; isCustomColor: boolean } {
-        // If in single voxel mode with a custom color selected
-        if (this.isInSingleVoxelMode() && this.selectedColor) {
+        // If color palette is selected with a custom color
+        if (this.isColorPaletteSelected() && this.selectedColor) {
             // Use the VoxelType directly from the selected color
             if (this.selectedColor.voxelType !== undefined) {
                 return { type: this.selectedColor.voxelType, isCustomColor: true };
@@ -1214,7 +1214,7 @@ export class VoxelPanel {
             // If the deleted asset was selected, clear selection
             if (this.drawingSystem.selectedAsset?.id === asset.id) {
                 this.drawingSystem.setSelectedAsset(null);
-                this.drawingSystem.setToolMode('brush');
+                // Don't change tool mode - let user stay on their current tool
             }
         } catch (error) {
             console.error('Failed to delete asset:', error);
@@ -1226,16 +1226,21 @@ export class VoxelPanel {
         }
     }
     
-    public isInSingleVoxelMode(): boolean {
-        // Check if the voxel brush button is selected
-        const voxelBrushButton = document.getElementById('voxel-brush-button');
-        return voxelBrushButton ? voxelBrushButton.classList.contains('selected') : false;
+    public isColorPaletteSelected(): boolean {
+        // Check if the color palette button is selected
+        const colorPaletteButton = document.getElementById('color-palette-button');
+        return colorPaletteButton ? colorPaletteButton.classList.contains('selected') : false;
     }
     
-    private updateVoxelBrushButtonColor(): void {
-        const voxelBrushButton = document.getElementById('voxel-brush-button');
-        if (voxelBrushButton) {
-            const iconSpan = voxelBrushButton.querySelector('span');
+    // Legacy method for backward compatibility
+    public isInSingleVoxelMode(): boolean {
+        return this.isColorPaletteSelected();
+    }
+    
+    private updateColorPaletteButtonColor(): void {
+        const colorPaletteButton = document.getElementById('color-palette-button');
+        if (colorPaletteButton) {
+            const iconSpan = colorPaletteButton.querySelector('span');
             if (iconSpan) {
                 // If we have a selected color, use that; otherwise use voxel type color
                 if (this.selectedColor) {

@@ -23,6 +23,18 @@ export class ToolsPanel {
     
     setDrawingSystem(drawingSystem: DrawingSystem): void {
         this.drawingSystem = drawingSystem;
+        
+        // Set the default color (Soft Green) if we have a selected color
+        if (this.selectedColor && this.selectedColor.voxelType !== undefined) {
+            this.drawingSystem.setVoxelType(this.selectedColor.voxelType);
+        }
+        
+        // Select brush tool by default
+        const brushButton = document.getElementById('tool-brush');
+        if (brushButton) {
+            this.setActiveToolButton(brushButton);
+            this.drawingSystem.setToolMode('brush');
+        }
     }
     
     setVoxelEngine(voxelEngine: VoxelEngine): void {
@@ -149,8 +161,8 @@ export class ToolsPanel {
         `;
         this.toolsContainer.appendChild(voxelSeparator);
         
-        // Add voxel brush button at the bottom
-        this.createVoxelBrushButton();
+        // Add color palette button at the bottom
+        this.createColorPaletteButton();
         
         // Add brush size button
         this.createBrushSizeButton();
@@ -323,33 +335,27 @@ export class ToolsPanel {
     }
     
     private setActiveToolButton(button: HTMLElement): void {
+        // Don't set color palette button as active tool
+        if (button.id === 'color-palette-button') {
+            return;
+        }
+        
         // Reset all tool buttons first
         const allToolButtons = this.toolsContainer?.querySelectorAll('button');
         if (allToolButtons) {
             allToolButtons.forEach((btn) => {
-                if (btn instanceof HTMLElement) {
-                    // Remove selected class from voxel brush button
+                if (btn instanceof HTMLElement && btn.id !== 'color-palette-button') {
+                    // Remove selected class
                     btn.classList.remove('selected');
                     
-                    // Reset styles for all buttons
-                    if (btn.id === 'voxel-brush-button') {
-                        btn.style.background = 'transparent';
-                    } else {
-                        btn.style.background = 'rgba(100, 100, 100, 0.2)';
-                        btn.style.borderColor = 'transparent';
-                    }
+                    // Reset styles for tool buttons only
+                    btn.style.background = 'rgba(100, 100, 100, 0.2)';
+                    btn.style.borderColor = 'transparent';
                     btn.style.transform = 'scale(1)';
                     
                     const span = btn.querySelector('span');
                     if (span instanceof HTMLElement) {
-                        // Reset icon color for non-voxel brush buttons
                         span.style.color = 'rgba(255, 255, 255, 0.8)';
-                    }
-                    
-                    // Reset color swatch glow effect
-                    const swatch = btn.querySelector('.voxel-color-swatch');
-                    if (swatch instanceof HTMLElement) {
-                        swatch.style.boxShadow = '0 0 0 1px rgba(0, 0, 0, 0.2)';
                     }
                 }
             });
@@ -357,28 +363,16 @@ export class ToolsPanel {
         
         // Set new active button
         this.activeToolButton = button;
-        if (button.id !== 'voxel-brush-button') {
-            button.style.background = 'rgba(100, 200, 100, 0.3)';
-            button.style.borderColor = 'rgba(100, 200, 100, 0.8)';
+        button.style.background = 'rgba(100, 200, 100, 0.3)';
+        button.style.borderColor = 'rgba(100, 200, 100, 0.8)';
+        
+        // Update icon color for the selected button
+        const newSpan = button.querySelector('span');
+        if (newSpan instanceof HTMLElement) {
+            newSpan.style.color = 'rgba(100, 255, 100, 1)';
         }
         
-        // Special handling for voxel brush button
-        if (button.id === 'voxel-brush-button') {
-            button.classList.add('selected');
-            // Add glow effect to color swatch when active
-            const swatch = button.querySelector('.voxel-color-swatch');
-            if (swatch instanceof HTMLElement) {
-                swatch.style.boxShadow = '0 0 8px rgba(100, 255, 100, 0.5)';
-            }
-        } else {
-            // For other tools, update icon color only for the selected button
-            const newSpan = button.querySelector('span');
-            if (newSpan instanceof HTMLElement) {
-                newSpan.style.color = 'rgba(100, 255, 100, 1)';
-            }
-        }
-        
-        // Debug: Force lucide to update icons after color changes
+        // Force lucide to update icons after color changes
         if ((window as any).lucide) {
             (window as any).lucide.createIcons();
         }
@@ -411,28 +405,18 @@ export class ToolsPanel {
             const allToolButtons = this.toolsContainer?.querySelectorAll('button');
             if (allToolButtons) {
                 allToolButtons.forEach((btn) => {
-                    if (btn instanceof HTMLElement) {
-                        // Remove selected class from voxel brush button
+                    if (btn instanceof HTMLElement && btn.id !== 'color-palette-button') {
+                        // Remove selected class
                         btn.classList.remove('selected');
                         
-                        // Reset styles for all buttons
-                        if (btn.id === 'voxel-brush-button') {
-                            btn.style.background = 'transparent';
-                        } else {
-                            btn.style.background = 'rgba(100, 100, 100, 0.2)';
-                            btn.style.borderColor = 'transparent';
-                        }
+                        // Reset styles for tool buttons only
+                        btn.style.background = 'rgba(100, 100, 100, 0.2)';
+                        btn.style.borderColor = 'transparent';
                         btn.style.transform = 'scale(1)';
                         
                         const span = btn.querySelector('span');
                         if (span instanceof HTMLElement) {
                             span.style.color = 'rgba(255, 255, 255, 0.8)';
-                        }
-                        
-                        // Reset color swatch glow effect
-                        const swatch = btn.querySelector('.voxel-color-swatch');
-                        if (swatch instanceof HTMLElement) {
-                            swatch.style.boxShadow = '0 0 0 1px rgba(0, 0, 0, 0.2)';
                         }
                     }
                 });
@@ -441,11 +425,11 @@ export class ToolsPanel {
         }
     }
     
-    private createVoxelBrushButton(): void {
+    private createColorPaletteButton(): void {
         const button = document.createElement('button');
-        button.id = 'voxel-brush-button';
-        button.className = 'voxel-brush-button';
-        button.title = 'Single Voxel Brush (V)';
+        button.id = 'color-palette-button';
+        button.className = 'color-palette-button';
+        button.title = 'Color Palette (V)';
         
         button.style.cssText = `
             width: 44px;
@@ -476,9 +460,19 @@ export class ToolsPanel {
         `;
         button.appendChild(colorSwatch);
         
-        // Initialize selected color
-        if (firstColor) {
-            this.selectedColor = firstColor;
+        // Initialize with Soft Green color
+        const softGreen: ColorInfo = { name: 'Soft Green', hex: '#A5D6A7' };
+        this.selectedColor = softGreen;
+        this.updateColorPaletteButtonWithColor(softGreen);
+        
+        // Get or create VoxelType for Soft Green
+        const colorRegistry = ColorRegistry.getInstance();
+        const voxelType = colorRegistry.getOrCreateVoxelType(softGreen.hex);
+        if (voxelType) {
+            softGreen.voxelType = voxelType;
+            if (this.drawingSystem) {
+                this.drawingSystem.setVoxelType(voxelType);
+            }
         }
         
         // Hover effect
@@ -496,43 +490,20 @@ export class ToolsPanel {
         
         // Click handler
         button.addEventListener('click', async () => {
-            // If already selected, show color picker
-            if (button === this.activeToolButton) {
-                await this.colorPickerPopover.show(button, (color) => {
-                    this.selectedColor = color;
-                    this.updateVoxelBrushButtonWithColor(color);
-                    
-                    // Get or create a VoxelType for this color
-                    const colorRegistry = ColorRegistry.getInstance();
-                    const voxelType = colorRegistry.getOrCreateVoxelType(color.hex);
-                    
-                    if (voxelType && this.drawingSystem) {
-                        color.voxelType = voxelType;
-                        this.drawingSystem.setVoxelType(voxelType);
-                        console.log(`Selected color: ${color.name} (${color.hex}) -> VoxelType ${voxelType}`);
-                    }
-                }, 'right');
-                return;
-            }
-            
-            // Clear any asset selection and set brush mode
+            // Clear any asset selection but DON'T change the tool mode
             if (this.drawingSystem) {
                 this.drawingSystem.setSelectedAsset(null);
-                this.drawingSystem.setToolMode('brush');
             }
-            
-            // Mark this button as selected
-            this.setActiveToolButton(button);
             
             // Set the voxel type if we have a selected color
             if (this.selectedColor && this.selectedColor.voxelType !== undefined && this.drawingSystem) {
                 this.drawingSystem.setVoxelType(this.selectedColor.voxelType);
             }
             
-            // Show color picker automatically
+            // Show color picker
             await this.colorPickerPopover.show(button, (color) => {
                 this.selectedColor = color;
-                this.updateVoxelBrushButtonWithColor(color);
+                this.updateColorPaletteButtonWithColor(color);
                 
                 const colorRegistry = ColorRegistry.getInstance();
                 const voxelType = colorRegistry.getOrCreateVoxelType(color.hex);
@@ -540,7 +511,6 @@ export class ToolsPanel {
                 if (voxelType && this.drawingSystem) {
                     color.voxelType = voxelType;
                     this.drawingSystem.setVoxelType(voxelType);
-                    console.log(`Selected color: ${color.name} (${color.hex}) -> VoxelType ${voxelType}`);
                 }
             }, 'right');
         });
@@ -564,17 +534,18 @@ export class ToolsPanel {
         this.toolsContainer!.appendChild(button);
     }
     
-    private updateVoxelBrushButtonWithColor(color: ColorInfo): void {
-        const voxelBrushButton = document.getElementById('voxel-brush-button');
-        if (voxelBrushButton) {
-            const colorSwatch = voxelBrushButton.querySelector('.voxel-color-swatch');
+    private updateColorPaletteButtonWithColor(color: ColorInfo): void {
+        const colorPaletteButton = document.getElementById('color-palette-button');
+        if (colorPaletteButton) {
+            const colorSwatch = colorPaletteButton.querySelector('.voxel-color-swatch');
             if (colorSwatch instanceof HTMLElement) {
                 colorSwatch.style.background = color.hex;
                 
-                // Just update the background color, no borders
+                // Add a subtle glow to indicate the color is selected
+                colorSwatch.style.boxShadow = '0 0 4px rgba(255, 255, 255, 0.3)';
             }
             
-            // Don't update button background for voxel brush
+            // Don't update button background or mark as active tool
         }
     }
     

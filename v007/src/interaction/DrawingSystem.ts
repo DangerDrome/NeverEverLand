@@ -19,6 +19,12 @@ export class DrawingSystem {
         basePos: { x: number; y: number; z: number };
         hitPos: { x: number; y: number; z: number };
     } | null;
+    
+    // Fill tool 2D selection properties
+    isFillSelecting: boolean;
+    fillSelectionStart: { x: number; y: number } | null;
+    fillSelectionEnd: { x: number; y: number } | null;
+    fillSelectionBox: HTMLDivElement | null;
     previewMesh: THREE.Mesh | null;
     previewGroup: THREE.Group = new THREE.Group();
     previewEdges: THREE.LineSegments | null = null;
@@ -75,6 +81,12 @@ export class DrawingSystem {
         this.constraintPlane = null; // Visual plane indicator
         this.gridShowTimer = null; // Timer for delayed grid display
         this.gridShown = false; // Track grid visibility
+        
+        // Fill tool 2D selection state
+        this.isFillSelecting = false;
+        this.fillSelectionStart = null;
+        this.fillSelectionEnd = null;
+        this.fillSelectionBox = null;
         
         // Face highlight and normal visualization
         this.faceHighlight = null;
@@ -471,7 +483,7 @@ export class DrawingSystem {
         
         // Handle asset preview
         if (this.toolMode === 'asset' && this.assetData) {
-            // Hide the single voxel preview
+            // Hide the voxel preview
             this.previewGroup.visible = false;
             this.updateAssetPreview(pos);
             return;
@@ -481,29 +493,9 @@ export class DrawingSystem {
         if (this.toolMode === 'brush' || this.toolMode === 'eraser' || this.toolMode === 'fill') {
             const voxelSize = this.voxelEngine.getCurrentVoxelSize();
             
-            // For fill tool, show single voxel preview at the target position
+            // For fill tool, hide preview - it uses 2D selection
             if (this.toolMode === 'fill') {
-                // Show preview on the voxel that would be filled/removed
-                const previewPos = (this.toolMode === 'eraser' || this.drawMode === 'remove') ? hit.voxelPos : pos;
-                this.previewTargetPosition.set(
-                    previewPos.x * voxelSize,
-                    previewPos.y * voxelSize,
-                    previewPos.z * voxelSize
-                );
-                
-                // Force single voxel scale for fill tool
-                this.previewGroup.scale.setScalar(1);
-                
-                // Update preview color
-                const voxelType = this.voxelEngine.getVoxelType ? this.voxelEngine.getVoxelType(this.currentVoxelType) : null;
-                if (voxelType && voxelType.color) {
-                    this.previewMaterial.color.setHex(voxelType.color);
-                    this.edgeMaterial.color.setHex(voxelType.color);
-                }
-                this.previewMaterial.opacity = 0.2;
-                this.edgeMaterial.opacity = 0.6;
-                
-                this.previewGroup.visible = true;
+                this.previewGroup.visible = false;
                 return;
             }
             
@@ -554,7 +546,7 @@ export class DrawingSystem {
                 if (this.voxelPanel) {
                     const colorPickerPopover = (this.voxelPanel as any).getColorPickerPopover?.();
                     const colorInfo = colorPickerPopover?.getSelectedColor();
-                    if (colorInfo && (this.voxelPanel as any).isInSingleVoxelMode()) {
+                    if (colorInfo && (this.voxelPanel as any).isColorPaletteSelected()) {
                         // Use the actual selected color for preview
                         previewColor = new THREE.Color(colorInfo.hex);
                     } else {
@@ -618,12 +610,9 @@ export class DrawingSystem {
             return;
         }
         
-        // Handle fill tool - it's a single click operation
+        // Handle fill tool - don't do anything on startDrawing
+        // Fill tool now uses 2D selection in main.ts
         if (this.toolMode === 'fill') {
-            // Set draw mode for fill tool
-            this.drawMode = mode;
-            const pos = mode === 'add' ? hit.adjacentPos : hit.voxelPos;
-            this.applyFillTool(pos);
             return;
         }
         
@@ -980,6 +969,203 @@ export class DrawingSystem {
         return entry ? entry[0] : 'Unknown';
     }
     
+    // Fill tool 2D selection methods
+    startFillSelection(screenX: number, screenY: number): void {
+        this.isFillSelecting = true;
+        this.fillSelectionStart = { x: screenX, y: screenY };
+        this.fillSelectionEnd = { x: screenX, y: screenY };
+        
+        // Create selection box div
+        if (!this.fillSelectionBox) {
+            this.fillSelectionBox = document.createElement('div');
+            this.fillSelectionBox.style.cssText = `
+                position: fixed;
+                border: 2px dashed rgba(255, 100, 100, 0.8);
+                background: rgba(255, 100, 100, 0.1);
+                pointer-events: none;
+                z-index: 1000;
+            `;
+            document.body.appendChild(this.fillSelectionBox);
+        }
+        
+        this.updateFillSelectionBox();
+    }
+    
+    updateFillSelection(screenX: number, screenY: number): void {
+        if (!this.isFillSelecting || !this.fillSelectionStart) return;
+        
+        this.fillSelectionEnd = { x: screenX, y: screenY };
+        this.updateFillSelectionBox();
+    }
+    
+    endFillSelection(camera: THREE.Camera, scene: THREE.Scene): void {
+        if (!this.isFillSelecting || !this.fillSelectionStart || !this.fillSelectionEnd) return;
+        
+        this.isFillSelecting = false;
+        
+        // Remove selection box
+        if (this.fillSelectionBox) {
+            this.fillSelectionBox.remove();
+            this.fillSelectionBox = null;
+        }
+        
+        // Calculate selection rectangle
+        const minX = Math.min(this.fillSelectionStart.x, this.fillSelectionEnd.x);
+        const maxX = Math.max(this.fillSelectionStart.x, this.fillSelectionEnd.x);
+        const minY = Math.min(this.fillSelectionStart.y, this.fillSelectionEnd.y);
+        const maxY = Math.max(this.fillSelectionStart.y, this.fillSelectionEnd.y);
+        
+        // Skip tiny selections (likely accidental clicks)
+        if (Math.abs(maxX - minX) < 5 && Math.abs(maxY - minY) < 5) {
+            return;
+        }
+        
+        // Apply fill to all voxels in the selection
+        this.applyFillToSelection(minX, maxX, minY, maxY, camera, scene);
+    }
+    
+    private updateFillSelectionBox(): void {
+        if (!this.fillSelectionBox || !this.fillSelectionStart || !this.fillSelectionEnd) return;
+        
+        const minX = Math.min(this.fillSelectionStart.x, this.fillSelectionEnd.x);
+        const maxX = Math.max(this.fillSelectionStart.x, this.fillSelectionEnd.x);
+        const minY = Math.min(this.fillSelectionStart.y, this.fillSelectionEnd.y);
+        const maxY = Math.max(this.fillSelectionStart.y, this.fillSelectionEnd.y);
+        
+        this.fillSelectionBox.style.left = `${minX}px`;
+        this.fillSelectionBox.style.top = `${minY}px`;
+        this.fillSelectionBox.style.width = `${maxX - minX}px`;
+        this.fillSelectionBox.style.height = `${maxY - minY}px`;
+    }
+    
+    isDoingFillSelection(): boolean {
+        return this.isFillSelecting;
+    }
+    
+    private applyFillToSelection(minX: number, maxX: number, minY: number, maxY: number, camera: THREE.Camera, scene: THREE.Scene): void {
+        // Get the voxel type to use
+        let voxelTypeToUse = this.currentVoxelType;
+        // Fill tool always fills with selected color
+        if (this.voxelPanel) {
+            const colorOrType = this.voxelPanel.getSelectedColorOrType();
+            if (colorOrType.isCustomColor) {
+                voxelTypeToUse = colorOrType.type;
+            }
+        }
+        
+        // Create raycaster for projection
+        const raycaster = new THREE.Raycaster();
+        
+        // Collect all voxels that need to be filled
+        const voxelsToFill = new Map<string, VoxelType>();
+        let encounteredBakedLayer = false;
+        
+        // Sample points within the selection rectangle
+        const sampleStep = 10; // Sample every 10 pixels for performance
+        for (let x = minX; x <= maxX; x += sampleStep) {
+            for (let y = minY; y <= maxY; y += sampleStep) {
+                // Convert screen coordinates to normalized device coordinates
+                const ndcX = (x / window.innerWidth) * 2 - 1;
+                const ndcY = -(y / window.innerHeight) * 2 + 1;
+                
+                // Set up ray from camera through screen point
+                raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+                
+                // Check for voxel intersection
+                const hit = this.voxelEngine.raycast(raycaster);
+                if (hit && hit.voxelPos) {
+                    // Skip if this is a baked layer
+                    if (hit.isBakedLayer) {
+                        encounteredBakedLayer = true;
+                        continue;
+                    }
+                    
+                    const pos = hit.voxelPos;
+                    const targetType = this.voxelEngine.getVoxel(pos.x, pos.y, pos.z);
+                    
+                    // Only fill if there's a voxel at this position
+                    if (targetType !== VoxelType.AIR) {
+                        // Find all connected voxels of the same type
+                        this.floodFillCollect(pos.x, pos.y, pos.z, targetType, voxelTypeToUse, voxelsToFill);
+                    }
+                }
+            }
+        }
+        
+        // Apply all fill operations
+        if (voxelsToFill.size > 0) {
+            this.voxelEngine.startBatch();
+            
+            for (const [key, type] of voxelsToFill) {
+                const [x, y, z] = key.split(',').map(Number);
+                this.voxelEngine.setVoxel(x, y, z, type);
+            }
+            
+            this.voxelEngine.endBatch();
+            this.voxelEngine.finalizePendingOperations();
+            
+            // Log the fill operation
+            import('../ui/ActionLogger').then(({ ActionLogger }) => {
+                const logger = ActionLogger.getInstance();
+                logger.log(ActionLogger.actions.placeVoxel(voxelsToFill.size));
+            });
+        } else if (encounteredBakedLayer) {
+            // Log warning about baked layers
+            import('../ui/ActionLogger').then(({ ActionLogger }) => {
+                const logger = ActionLogger.getInstance();
+                logger.log('Cannot fill baked layers - unbake first');
+            });
+        }
+    }
+    
+    private floodFillCollect(
+        startX: number, 
+        startY: number, 
+        startZ: number, 
+        targetType: VoxelType, 
+        fillType: VoxelType,
+        collectedVoxels: Map<string, VoxelType>
+    ): void {
+        const visited = new Set<string>();
+        const queue = [{ x: startX, y: startY, z: startZ }];
+        const maxFill = 10000; // Limit for performance
+        
+        while (queue.length > 0 && collectedVoxels.size < maxFill) {
+            const pos = queue.shift();
+            if (!pos) continue;
+            
+            const key = `${pos.x},${pos.y},${pos.z}`;
+            
+            if (visited.has(key)) continue;
+            visited.add(key);
+            
+            const currentType = this.voxelEngine.getVoxel(pos.x, pos.y, pos.z);
+            if (currentType !== targetType) continue;
+            
+            // Don't fill if already the target type
+            if (currentType === fillType) continue;
+            
+            collectedVoxels.set(key, fillType);
+            
+            // Add adjacent positions
+            const adjacent = [
+                { x: pos.x + 1, y: pos.y, z: pos.z },
+                { x: pos.x - 1, y: pos.y, z: pos.z },
+                { x: pos.x, y: pos.y + 1, z: pos.z },
+                { x: pos.x, y: pos.y - 1, z: pos.z },
+                { x: pos.x, y: pos.y, z: pos.z + 1 },
+                { x: pos.x, y: pos.y, z: pos.z - 1 }
+            ];
+            
+            for (const adj of adjacent) {
+                const adjKey = `${adj.x},${adj.y},${adj.z}`;
+                if (!visited.has(adjKey)) {
+                    queue.push(adj);
+                }
+            }
+        }
+    }
+    
     // Tool mode setters
     setToolMode(mode: string): void {
         this.toolMode = mode;
@@ -1015,7 +1201,7 @@ export class DrawingSystem {
         if (mode !== 'asset') {
             this.selectedAsset = null;
             this.assetData = null;
-            // Show single voxel preview for brush/eraser/fill modes
+            // Show voxel preview for brush/eraser/fill modes
             if (mode === 'brush' || mode === 'eraser' || mode === 'fill') {
                 this.previewGroup.visible = true;
             }
@@ -1062,8 +1248,8 @@ export class DrawingSystem {
             }
         } else {
             this.assetData = null;
-            // No asset selected, default to brush mode
-            this.toolMode = 'brush';
+            // Don't change tool mode when clearing asset selection
+            // Keep whatever tool was previously active
         }
         
         this.clearToolPreviews();
@@ -1188,14 +1374,20 @@ export class DrawingSystem {
         // Handle eraser mode - fill removes all connected voxels of the same type
         if (this.drawMode === 'remove') {
             // Don't try to remove air
-            if (targetType === VoxelType.AIR) return;
+            if (targetType === VoxelType.AIR) {
+                return;
+            }
             voxelTypeToUse = VoxelType.AIR;
         } else {
             // Don't fill if clicking on empty space (AIR) in add mode
-            if (targetType === VoxelType.AIR) return;
+            if (targetType === VoxelType.AIR) {
+                return;
+            }
             
             // Don't fill if the target is already the selected type
-            if (targetType === voxelTypeToUse) return;
+            if (targetType === voxelTypeToUse) {
+                return;
+            }
         }
         
         const visited = new Set<string>();
@@ -1236,7 +1428,9 @@ export class DrawingSystem {
         }
         
         // Only proceed if we found voxels to fill
-        if (operations.length === 0) return;
+        if (operations.length === 0) {
+            return;
+        }
         
         // Start batch for fill operation
         this.voxelEngine.startBatch();

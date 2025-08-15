@@ -65,10 +65,12 @@ export class ColorPickerPopover {
             });
         }
         
-        // Initialize with first color of default palette
+        // Initialize with Soft Green color from default palette
         const defaultPalette = this.palettes.get(this.currentPalette);
         if (defaultPalette && defaultPalette.colors.length > 0) {
-            this.selectedColor = defaultPalette.colors[0];
+            // Find Soft Green (index 5) or fall back to first color
+            const softGreenIndex = defaultPalette.colors.findIndex(c => c.name === 'Soft Green');
+            this.selectedColor = defaultPalette.colors[softGreenIndex >= 0 ? softGreenIndex : 0];
         }
     }
     
@@ -488,9 +490,9 @@ export class ColorPickerPopover {
     
     private handleClickOutside = (e: MouseEvent): void => {
         const target = e.target as HTMLElement;
-        const isVoxelBrushButton = target.closest('#voxel-brush-button');
+        const isColorPaletteButton = target.closest('#color-palette-button');
         
-        if (this.element && !this.element.contains(target) && !isVoxelBrushButton) {
+        if (this.element && !this.element.contains(target) && !isColorPaletteButton) {
             this.hide();
         }
     };
