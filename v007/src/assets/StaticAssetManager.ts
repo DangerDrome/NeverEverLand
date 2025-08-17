@@ -11,12 +11,14 @@ export class StaticAssetManager implements IAssetManager {
     private db: IDBDatabase | null = null;
     private readonly DB_NAME = 'VoxelAssets';
     private readonly DB_VERSION = 1;
+    private discoveredAssets: Map<VoxelType, AssetInfo[]> = new Map();
     
     constructor() {
         this.voxParser = new VoxParser();
         this.voxWriter = new VoxWriter();
         this.assetCache = new Map();
         this.initIndexedDB();
+        this.discoverAssets();
     }
     
     private async initIndexedDB(): Promise<void> {

@@ -194,8 +194,8 @@ export class LayerPanel {
         // Preview canvas
         const preview = document.createElement('canvas');
         preview.className = 'layer-preview';
-        preview.width = 48;
-        preview.height = 48;
+        preview.width = 80;
+        preview.height = 80;
         
         // Refresh preview button
         const refreshButton = document.createElement('button');
@@ -391,12 +391,12 @@ export class LayerPanel {
         
         // Clear canvas with checkerboard pattern for empty layers
         ctx.fillStyle = '#333';
-        ctx.fillRect(0, 0, 48, 48);
+        ctx.fillRect(0, 0, 80, 80);
         ctx.fillStyle = '#444';
-        for (let x = 0; x < 48; x += 8) {
-            for (let y = 0; y < 48; y += 8) {
-                if ((x / 8 + y / 8) % 2 === 0) {
-                    ctx.fillRect(x, y, 8, 8);
+        for (let x = 0; x < 80; x += 10) {
+            for (let y = 0; y < 80; y += 10) {
+                if ((x / 10 + y / 10) % 2 === 0) {
+                    ctx.fillRect(x, y, 10, 10);
                 }
             }
         }
@@ -416,12 +416,12 @@ export class LayerPanel {
         // If layer has voxels, generate preview
         if (assetData.size > 0) {
             this.previewScene.loadAsset(assetData);
-            const dataUrl = this.previewScene.screenshot(48, 48);
+            const dataUrl = this.previewScene.screenshot(80, 80);
             
             // Load the screenshot into canvas
             const img = new Image();
             img.onload = () => {
-                ctx.clearRect(0, 0, 48, 48);
+                ctx.clearRect(0, 0, 80, 80);
                 ctx.drawImage(img, 0, 0);
             };
             img.src = dataUrl;

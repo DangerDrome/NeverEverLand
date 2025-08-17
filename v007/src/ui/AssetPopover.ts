@@ -114,8 +114,8 @@ export class AssetPopover {
         
         // Now we can get the actual height
         const popoverHeight = this.element!.offsetHeight;
-        // Dynamic width based on number of assets (each item is 80px + 12px gap)
-        const popoverWidth = Math.min(assets.length * 92 + 20, window.innerWidth - 40); // Leave margin on sides
+        // Dynamic width based on number of assets (each item is 88px + 12px gap)
+        const popoverWidth = Math.min(assets.length * 100 + 20, window.innerWidth - 40); // Leave margin on sides
         
         // Position popover above the anchor element
         const rect = anchorElement.getBoundingClientRect();
@@ -205,30 +205,31 @@ export class AssetPopover {
             background: rgba(50, 50, 50, 0.5);
             border: none;
             border-radius: 6px;
-            padding: 2px;
+            padding: 4px;
             cursor: pointer;
             transition: all 0.2s ease;
             text-align: center;
-            width: 80px;
-            height: 80px;
+            width: 88px;
+            height: 108px;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start;
             position: relative;
         `;
         
         // Add preview image
         const preview = document.createElement('div');
         preview.style.cssText = `
-            width: 76px;
-            height: 76px;
+            width: 80px;
+            height: 80px;
             background: rgba(0, 0, 0, 0.3);
             border-radius: 4px;
             display: flex;
             align-items: center;
             justify-content: center;
             overflow: hidden;
+            flex-shrink: 0;
         `;
         
         // Generate or get cached preview
@@ -248,6 +249,22 @@ export class AssetPopover {
         }
         
         item.appendChild(preview);
+        
+        // Add asset name
+        const nameLabel = document.createElement('div');
+        nameLabel.style.cssText = `
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 11px;
+            margin-top: 4px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            width: 100%;
+            flex-shrink: 0;
+        `;
+        nameLabel.textContent = asset.name;
+        nameLabel.title = asset.name; // Show full name on hover
+        item.appendChild(nameLabel);
         
         // Add user asset indicator
         if (asset.isUserAsset) {
@@ -478,7 +495,7 @@ export class AssetPopover {
             
             // Generate preview using the preview scene
             this.previewScene.loadAsset(assetData.voxelData);
-            const dataURL = this.previewScene.screenshot(76, 76);
+            const dataURL = this.previewScene.screenshot(80, 80);
             
             // Cache the result
             this.previewCache.set(asset.id, dataURL);
