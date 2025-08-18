@@ -1568,22 +1568,17 @@ export class BoxSelectionTool {
         this.voxelEngine.finalizePendingOperations();
         
         // Update selected voxels list
-        // For continuous creation (shift-drag move), clear the selection
-        // since we've created a trail of voxels
-        if (this.isDuplicating && this.transformMode === 'move') {
-            this.clearSelection(false); // Don't record undo
-        } else {
-            this.selectedVoxels = newVoxels;
-            this.previousSelection = [...newVoxels];
-            
-            // Update selection visuals
-            this.updateSelectionOutline();
-            this.showSelectedVoxels();
-            
-            // Update gizmo position to new center
-            const center = this.getSelectionCenter();
-            this.transformGizmo.setPosition(center);
-        }
+        // Always keep the selection on the new voxels, even when duplicating
+        this.selectedVoxels = newVoxels;
+        this.previousSelection = [...newVoxels];
+        
+        // Update selection visuals
+        this.updateSelectionOutline();
+        this.showSelectedVoxels();
+        
+        // Update gizmo position to new center
+        const center = this.getSelectionCenter();
+        this.transformGizmo.setPosition(center);
         
         console.log(`Transform applied. ${overwrittenVoxels.length > 0 ? `Overwrote ${overwrittenVoxels.length} existing voxels.` : ''}`);
     }
