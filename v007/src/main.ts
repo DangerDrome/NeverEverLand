@@ -61,7 +61,7 @@ export const settings = {
     // Controls Settings
     controls: {
         enableDamping: true,           // Smooth camera movement
-        dampingFactor: 0.05,           // How smooth the damping is
+        dampingFactor: 0.25,           // High damping factor for minimal easing (was 0.05)
         screenSpacePanning: true,      // Pan in screen space
         minZoom: 0.1,                  // Maximum zoom out (smaller = further out)
         maxZoom: 20,                   // Maximum zoom in (larger = closer)
@@ -1159,17 +1159,20 @@ class VoxelApp {
         const isBoxHeightMode = this.drawingSystem!.toolMode === 'box' && 
                                (this.drawingSystem as any).boxState === 'height';
         
-        if (isBoxHeightMode) {
-            // For box height adjustment, use unconstrained position
-            // Pass raycaster to help calculate Y position
-            this.drawingSystem!.updatePreview(hit);
-            // Also need to pass raycaster for height calculation
-            if (hit) {
-                (this.drawingSystem as any).updateToolPreview(hit, this.raycaster);
+        // Skip preview updates during camera rotation
+        if (!this.isRotating) {
+            if (isBoxHeightMode) {
+                // For box height adjustment, use unconstrained position
+                // Pass raycaster to help calculate Y position
+                this.drawingSystem!.updatePreview(hit);
+                // Also need to pass raycaster for height calculation
+                if (hit) {
+                    (this.drawingSystem as any).updateToolPreview(hit, this.raycaster);
+                }
+            } else {
+                // For other tools/modes, use constrained position
+                this.drawingSystem!.updatePreview(hit, constrainedPos || undefined);
             }
-        } else {
-            // For other tools/modes, use constrained position
-            this.drawingSystem!.updatePreview(hit, constrainedPos || undefined);
         }
         
         // Continue drawing if mouse is held down
@@ -1215,6 +1218,10 @@ class VoxelApp {
             (event.button === 2 && (this.voxelPanel?.isColorPaletteSelected() || 
                                    this.drawingSystem?.selectedAsset !== null))) {
             this.isRotating = true;
+            // Hide the drawing preview while rotating
+            if (this.drawingSystem) {
+                this.drawingSystem.hidePreview();
+            }
         }
         
         // Handle selection mode
@@ -1302,8 +1309,9 @@ class VoxelApp {
                     const hit = this.voxelEngine.raycast(this.raycaster);
                     if (hit) {
                         const mode = this.drawingSystem.toolMode === 'eraser' ? 'remove' : 'add';
-                        this.drawingSystem.startDrawing(hit, mode);
-                        // Don't disable controls for box/line tools - they use discrete clicks
+                        this.drawingSystem.startDrawing(hit, mode, event.shiftKey);
+                        // Disable controls during box/line tool usage to prevent accidental tumbling
+                        if (this.controls) this.controls.enabled = false;
                     }
                 } else {
                     const hit = this.voxelEngine.raycast(this.raycaster);
@@ -1312,7 +1320,7 @@ class VoxelApp {
                         // Check if eraser tool is selected
                         const mode = this.drawingSystem.toolMode === 'eraser' ? 'remove' : 'add';
                         // Starting drawing operation
-                        this.drawingSystem.startDrawing(hit, mode);
+                        this.drawingSystem.startDrawing(hit, mode, event.shiftKey);
                         // Disable orbit controls to prevent rotation while drawing
                         if (this.controls) this.controls.enabled = false;
                     }
@@ -1335,11 +1343,13 @@ class VoxelApp {
                     if (this.drawingSystem.toolMode === 'box' && 
                         (this.drawingSystem as any).boxState !== 'idle') {
                         this.drawingSystem.cancelBoxTool();
+                        // Re-enable controls after cancelling box tool
+                        if (this.controls) this.controls.enabled = true;
                     } else {
                         // Otherwise, remove voxels
                         const hit = this.voxelEngine.raycast(this.raycaster);
                         if (hit) {
-                            this.drawingSystem.startDrawing(hit, 'remove');
+                            this.drawingSystem.startDrawing(hit, 'remove', event.shiftKey);
                             // Disable orbit controls to prevent rotation while drawing
                             if (this.controls) this.controls.enabled = false;
                         }
@@ -1363,6 +1373,10 @@ class VoxelApp {
         
         // Stop tracking rotation
         this.isRotating = false;
+        // Show the drawing preview again after rotation
+        if (this.drawingSystem && !this.selectionMode) {
+            this.drawingSystem.showPreview();
+        }
         
         // Handle selection mode
         if (this.selectionMode && this.boxSelectionTool) {
@@ -1602,6 +1616,8 @@ class VoxelApp {
                     this.drawingSystem.setToolMode('brush');
                     this.drawingSystem.showPreview();
                     this.updatePreviewAtCurrentMouse();
+                    // Re-enable controls when switching tools
+                    if (this.controls) this.controls.enabled = true;
                 }
                 if (this.voxelPanel) {
                     this.voxelPanel.updateToolMode('brush');
@@ -1628,6 +1644,8 @@ class VoxelApp {
                         this.drawingSystem.setToolMode('eraser');
                         this.drawingSystem.showPreview();
                         this.updatePreviewAtCurrentMouse();
+                        // Re-enable controls when switching tools
+                        if (this.controls) this.controls.enabled = true;
                     }
                     if (this.voxelPanel) {
                         this.voxelPanel.updateToolMode('eraser');
@@ -1648,6 +1666,8 @@ class VoxelApp {
                     this.drawingSystem.setToolMode('box');
                     // Don't show single voxel preview for box tool
                     this.updatePreviewAtCurrentMouse();
+                    // Re-enable controls when switching tools
+                    if (this.controls) this.controls.enabled = true;
                 }
                 if (this.voxelPanel) {
                     this.voxelPanel.updateToolMode('box');
@@ -1667,6 +1687,8 @@ class VoxelApp {
                     this.drawingSystem.setToolMode('line');
                     // Don't show single voxel preview for line tool
                     this.updatePreviewAtCurrentMouse();
+                    // Re-enable controls when switching tools
+                    if (this.controls) this.controls.enabled = true;
                 }
                 if (this.voxelPanel) {
                     this.voxelPanel.updateToolMode('line');
@@ -1686,6 +1708,8 @@ class VoxelApp {
                     this.drawingSystem.setToolMode('fill');
                     // Don't show single voxel preview for fill tool
                     this.updatePreviewAtCurrentMouse();
+                    // Re-enable controls when switching tools
+                    if (this.controls) this.controls.enabled = true;
                 }
                 if (this.voxelPanel) {
                     this.voxelPanel.updateToolMode('fill');
@@ -2165,8 +2189,10 @@ class VoxelApp {
         this.raycaster.setFromCamera(this.mouse, this.camera!);
         const hit = this.voxelEngine.raycast(this.raycaster);
         
-        // Update preview with the hit
-        this.drawingSystem.updatePreview(hit);
+        // Update preview with the hit (skip during rotation)
+        if (!this.isRotating) {
+            this.drawingSystem.updatePreview(hit);
+        }
     }
     
     animate() {

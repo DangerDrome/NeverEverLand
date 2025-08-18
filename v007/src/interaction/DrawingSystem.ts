@@ -12,6 +12,7 @@ export class DrawingSystem {
     currentVoxelType: VoxelType;
     brushSize: number;
     toolMode: string;
+    isShiftDragging: boolean;
     boxStart: { x: number; y: number; z: number } | null;
     boxEnd: { x: number; y: number; z: number } | null;  // For box tool second click
     boxState: 'idle' | 'base' | 'height';  // Track box tool state
@@ -75,6 +76,7 @@ export class DrawingSystem {
         this.currentVoxelType = VoxelType.GRASS;
         this.brushSize = 1;
         this.toolMode = 'brush'; // 'brush', 'eraser', 'box', 'line', 'fill'
+        this.isShiftDragging = false;
         
         // Tool state
         this.boxStart = null;
@@ -109,7 +111,7 @@ export class DrawingSystem {
         
         // Smooth preview animation
         this.previewTargetPosition = new THREE.Vector3();
-        this.previewLerpFactor = 0.75; // Subtle smoothing
+        this.previewLerpFactor = 1.0; // Instant following (was 0.75)
         this.lastUpdateHit = null;
         
         // Preview
@@ -523,16 +525,45 @@ export class DrawingSystem {
                 offsetY = 0;
             }
             
-            // Set target position for smooth animation
-            const targetX = (pos.x - offsetXZ + this.brushSize / 2) * voxelSize;
-            const targetY = (pos.y - offsetY + this.brushSize / 2) * voxelSize;
-            const targetZ = (pos.z - offsetXZ + this.brushSize / 2) * voxelSize;
-            
-            this.previewTargetPosition.set(targetX, targetY, targetZ);
-            
-            // If preview was just made visible, instantly set position to avoid animation from (0,0,0)
-            if (!this.previewGroup.visible) {
-                this.previewGroup.position.set(targetX, targetY, targetZ);
+            // Use smooth mouse position if available, otherwise snap to grid
+            // Also use smooth position during shift-drag for ultra-tight tracking
+            if (hit && hit.point && (!this.isDrawing || this.isShiftDragging)) {
+                // Follow mouse cursor smoothly when not drawing or during shift-drag
+                const halfSize = this.brushSize * voxelSize / 2;
+                
+                // Align the preview center with the actual hit point
+                // But offset by half brush size to show where voxels will be placed
+                let smoothX = hit.point.x;
+                let smoothY = hit.point.y;
+                let smoothZ = hit.point.z;
+                
+                // Offset based on the face normal to position preview correctly
+                if (hit.normal) {
+                    // Move the preview half a voxel in the normal direction
+                    // so it appears on the surface
+                    smoothX += hit.normal.x * halfSize;
+                    smoothY += hit.normal.y * halfSize;
+                    smoothZ += hit.normal.z * halfSize;
+                }
+                
+                this.previewTargetPosition.set(smoothX, smoothY, smoothZ);
+                
+                // If preview was just made visible, instantly set position
+                if (!this.previewGroup.visible) {
+                    this.previewGroup.position.set(smoothX, smoothY, smoothZ);
+                }
+            } else {
+                // Grid-snapped position for drawing or when no hit point
+                const targetX = (pos.x - offsetXZ + this.brushSize / 2) * voxelSize;
+                const targetY = (pos.y - offsetY + this.brushSize / 2) * voxelSize;
+                const targetZ = (pos.z - offsetXZ + this.brushSize / 2) * voxelSize;
+                
+                this.previewTargetPosition.set(targetX, targetY, targetZ);
+                
+                // If preview was just made visible, instantly set position
+                if (!this.previewGroup.visible) {
+                    this.previewGroup.position.set(targetX, targetY, targetZ);
+                }
             }
             
             // Scale preview to exact brush size
@@ -613,7 +644,7 @@ export class DrawingSystem {
         }
     }
     
-    startDrawing(hit: any, mode: string): void {
+    startDrawing(hit: any, mode: string, shiftKey: boolean = false): void {
         if (!hit) return;
         
         // Handle asset placement
@@ -630,6 +661,7 @@ export class DrawingSystem {
         }
         
         this.isDrawing = true;
+        this.isShiftDragging = shiftKey;
         // If using eraser tool, always remove voxels
         this.drawMode = this.toolMode === 'eraser' ? 'remove' : mode;
         
@@ -824,6 +856,7 @@ export class DrawingSystem {
     
     stopDrawing(): void {
         this.isDrawing = false;
+        this.isShiftDragging = false;
         // Only show preview for brush and eraser tools
         // Box, line, and fill tools have their own preview systems
         if (this.toolMode === 'brush' || this.toolMode === 'eraser') {

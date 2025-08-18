@@ -67,6 +67,9 @@ export class BoxSelectionTool {
     // Duplication state
     private isDuplicating: boolean = false;
     
+    // Continuous voxel creation during shift-drag
+    private lastCreatedPosition: { x: number; y: number; z: number } | null = null;
+    
     // Adding to selection state
     private isAddingToSelection: boolean = false;
     
@@ -683,6 +686,9 @@ export class BoxSelectionTool {
             // Store if this is a duplication (shift+drag)
             this.isDuplicating = shiftKey;
             
+            // Reset continuous creation tracking
+            this.lastCreatedPosition = null;
+            
             // Set the pivot voxel for rotation
             if (hit.operation === 'rotate') {
                 // Calculate the average center in voxel coordinates
@@ -718,8 +724,10 @@ export class BoxSelectionTool {
             }
             
             // Hide original voxels while moving (unless duplicating)
+            // For continuous creation with shift-drag, keep the original voxels visible
             if (!this.isDuplicating) {
                 for (const voxel of this.selectedVoxels) {
+                    // Don't trigger snapshot for temporary removal
                     this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, VoxelType.AIR, false);
                 }
                 this.voxelEngine.updateInstances();
@@ -761,6 +769,50 @@ export class BoxSelectionTool {
             // Always apply the transformation to update the gizmo position smoothly
             // The preview will snap to grid but the gizmo can move smoothly
             console.log(`Applying move transformation with smooth gizmo`);
+            
+            // If shift is held (duplicating), create voxels along the path
+            if (this.isDuplicating) {
+                // Calculate current snapped position
+                const offsetVoxels = {
+                    x: Math.round(this.transformOffset.x / voxelSize),
+                    y: Math.round(this.transformOffset.y / voxelSize),
+                    z: Math.round(this.transformOffset.z / voxelSize)
+                };
+                
+                // Check if we've moved to a new grid position (use first voxel as reference)
+                if (this.originalVoxels.length > 0) {
+                    const firstVoxelPos = {
+                        x: this.originalVoxels[0].x + offsetVoxels.x,
+                        y: this.originalVoxels[0].y + offsetVoxels.y,
+                        z: this.originalVoxels[0].z + offsetVoxels.z
+                    };
+                    
+                    if (!this.lastCreatedPosition || 
+                        firstVoxelPos.x !== this.lastCreatedPosition.x ||
+                        firstVoxelPos.y !== this.lastCreatedPosition.y ||
+                        firstVoxelPos.z !== this.lastCreatedPosition.z) {
+                        
+                        // Create voxels for ALL selected voxels at their new positions
+                        for (let i = 0; i < this.originalVoxels.length; i++) {
+                            const voxel = this.originalVoxels[i];
+                            const currentPos = {
+                                x: voxel.x + offsetVoxels.x,
+                                y: voxel.y + offsetVoxels.y,
+                                z: voxel.z + offsetVoxels.z
+                            };
+                            
+                            // Create voxel at the new position with its original type
+                            this.voxelEngine.setVoxel(currentPos.x, currentPos.y, currentPos.z, voxel.type, true);
+                        }
+                        
+                        // Update the last created position reference
+                        this.lastCreatedPosition = { ...firstVoxelPos };
+                        
+                        // Update instances immediately for visual feedback
+                        this.voxelEngine.updateInstances();
+                    }
+                }
+            }
             
             // Apply transformation in real-time
             // This will update the gizmo position via updateSelectionPreview
@@ -880,6 +932,7 @@ export class BoxSelectionTool {
             this.transformRotation.set(0, 0, 0);
             this.originalVoxels = [];
             this.isDuplicating = false;
+            this.lastCreatedPosition = null;
             this.previousSnappedRotation.set(0, 0, 0);
             this.targetSnappedRotation.set(0, 0, 0);
             this.pivotVoxel = null;
@@ -940,6 +993,7 @@ export class BoxSelectionTool {
                 this.transformRotation.set(0, 0, 0);
                 this.originalVoxels = [];
                 this.isDuplicating = false;
+                this.lastCreatedPosition = null;
                 this.previousSnappedRotation.set(0, 0, 0);
                 this.targetSnappedRotation.set(0, 0, 0);
                 this.pivotVoxel = null;
@@ -1257,6 +1311,9 @@ export class BoxSelectionTool {
     private updateSelectionPreview(previewVoxels: SelectedVoxel[]): void {
         if (!this.selectedVoxelsMesh) return;
         
+        // Always show preview, even during shift-drag
+        this.selectedVoxelsMesh.visible = true;
+        
         // Keep the same transparent overlay appearance during dragging
         const material = this.selectedVoxelsMesh.material as THREE.MeshBasicMaterial;
         if (this.isDuplicating) {
@@ -1473,44 +1530,60 @@ export class BoxSelectionTool {
             }
         }
         
-        // If duplicating (shift+drag), don't clear original voxels
+        // Simple approach: just clear old positions and place at new positions
+        // The snapshot will capture the complete state change
+        
         if (!this.isDuplicating) {
-            // Clear only our original voxel positions
+            // Clear original positions (they were already temporarily hidden)
             for (const voxel of this.originalVoxels) {
-                this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, VoxelType.AIR);
+                // Check if this position will be occupied by a new voxel
+                const willBeOccupied = newVoxels.some(nv => 
+                    nv.x === voxel.x && nv.y === voxel.y && nv.z === voxel.z
+                );
+                
+                // Keep it cleared if not occupied by new position
+                if (!willBeOccupied) {
+                    this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, VoxelType.AIR, false);
+                }
             }
         }
         
         // Place voxels at new positions
-        for (const voxel of newVoxels) {
-            this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, voxel.type);
+        // Skip this if we're duplicating with continuous creation (shift-drag move)
+        // since we've already been creating voxels along the path
+        if (!(this.isDuplicating && this.transformMode === 'move')) {
+            for (const voxel of newVoxels) {
+                // Place voxels - this will trigger snapshot
+                this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, voxel.type, true);
+            }
         }
         
         // Update the engine's visual representation
         this.voxelEngine.updateInstances();
         
-        // For move/rotate operations, we need to record a selection change that maps
-        // the old positions to new positions, so when undoing, selection follows the voxels
-        if (!this.isDuplicating) {
-            // Record selection change from old positions to new positions
-            // When undoing, this will restore selection to the original positions
-            this.voxelEngine.recordSelectionChange(this.originalVoxels, newVoxels);
-        } else {
-            // For duplication, record selection change from original to duplicated
-            this.voxelEngine.recordSelectionChange(this.originalVoxels, newVoxels);
-        }
+        // Update selection for snapshot
+        this.voxelEngine.recordSelectionChange(this.originalVoxels, newVoxels);
+        
+        // Force immediate snapshot for transform operation
+        this.voxelEngine.finalizePendingOperations();
         
         // Update selected voxels list
-        this.selectedVoxels = newVoxels;
-        this.previousSelection = [...newVoxels];
-        
-        // Update selection visuals
-        this.updateSelectionOutline();
-        this.showSelectedVoxels();
-        
-        // Update gizmo position to new center
-        const center = this.getSelectionCenter();
-        this.transformGizmo.setPosition(center);
+        // For continuous creation (shift-drag move), clear the selection
+        // since we've created a trail of voxels
+        if (this.isDuplicating && this.transformMode === 'move') {
+            this.clearSelection(false); // Don't record undo
+        } else {
+            this.selectedVoxels = newVoxels;
+            this.previousSelection = [...newVoxels];
+            
+            // Update selection visuals
+            this.updateSelectionOutline();
+            this.showSelectedVoxels();
+            
+            // Update gizmo position to new center
+            const center = this.getSelectionCenter();
+            this.transformGizmo.setPosition(center);
+        }
         
         console.log(`Transform applied. ${overwrittenVoxels.length > 0 ? `Overwrote ${overwrittenVoxels.length} existing voxels.` : ''}`);
     }
@@ -1530,15 +1603,17 @@ export class BoxSelectionTool {
         const voxelSize = this.voxelEngine.getVoxelSize();
         const geometry = new THREE.BoxGeometry(voxelSize * 0.98, voxelSize * 0.98, voxelSize * 0.98); // Slightly smaller to see gaps
         const material = new THREE.MeshBasicMaterial({
-            color: 'rgb(150, 255, 150)',
+            color: 0x88ff88,  // Bright green
             transparent: true,
-            opacity: 0.6,  // More visible
+            opacity: 0.8,  // More opaque for better visibility
             depthWrite: false,
-            depthTest: true
+            depthTest: true,
+            side: THREE.DoubleSide  // Render both sides
         });
         
         this.ghostVoxels = new THREE.InstancedMesh(geometry, material, this.originalVoxels.length);
-        this.ghostVoxels.renderOrder = 998;
+        this.ghostVoxels.renderOrder = 1000;  // Higher render order to ensure it's on top
+        this.ghostVoxels.frustumCulled = false;  // Always render
         
         // Set initial positions
         this.updateGhostVoxels();
@@ -1651,8 +1726,8 @@ export class BoxSelectionTool {
         
         // Remove old voxels and calculate new positions
         for (const voxel of this.selectedVoxels) {
-            // Remove old voxel
-            this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, VoxelType.AIR);
+            // Remove old voxel with undo recording
+            this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, VoxelType.AIR, true);
             
             // Calculate new position
             let newX = voxel.x;
@@ -1690,7 +1765,8 @@ export class BoxSelectionTool {
         
         // Place voxels at new positions
         for (const voxel of newVoxels) {
-            this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, voxel.type);
+            // Record undo for placing voxels
+            this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, voxel.type, true);
         }
         
         // Update voxel engine
@@ -1754,11 +1830,14 @@ export class BoxSelectionTool {
         
         // Delete each selected voxel
         for (const voxel of this.selectedVoxels) {
-            this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, VoxelType.AIR);
+            this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, VoxelType.AIR, true);
         }
         
         // Update the engine's visual representation
         this.voxelEngine.updateInstances();
+        
+        // Force immediate snapshot
+        this.voxelEngine.finalizePendingOperations();
         
         // Clear the selection after deletion
         this.clearSelection();
@@ -1941,7 +2020,7 @@ export class BoxSelectionTool {
             const z = pasteZ + clipVoxel.relZ;
             
             // Place the voxel
-            this.voxelEngine.setVoxel(x, y, z, clipVoxel.type);
+            this.voxelEngine.setVoxel(x, y, z, clipVoxel.type, true);
             
             // Add to new selection
             newSelection.push({ x, y, z, type: clipVoxel.type });
@@ -1955,6 +2034,9 @@ export class BoxSelectionTool {
         
         // Record selection change
         this.voxelEngine.recordSelectionChange(prevSelection, this.selectedVoxels);
+        
+        // Force immediate snapshot
+        this.voxelEngine.finalizePendingOperations();
         this.previousSelection = [...this.selectedVoxels];
         
         // Update visuals
@@ -2338,12 +2420,7 @@ export class BoxSelectionTool {
         // Calculate new positions
         const newVoxels: SelectedVoxel[] = [];
         
-        // Clear old voxels first
-        for (const voxel of this.selectedVoxels) {
-            this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, VoxelType.AIR, false);
-        }
-        
-        // Apply rotation
+        // Apply rotation to calculate new positions first
         for (const voxel of this.selectedVoxels) {
             // Create position relative to center
             const pos = new THREE.Vector3(
@@ -2363,9 +2440,14 @@ export class BoxSelectionTool {
             newVoxels.push({ x: newX, y: newY, z: newZ, type: voxel.type });
         }
         
+        // Clear old positions
+        for (const voxel of this.selectedVoxels) {
+            this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, VoxelType.AIR, true);
+        }
+        
         // Place voxels at new positions
         for (const voxel of newVoxels) {
-            this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, voxel.type, false);
+            this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, voxel.type, true);
         }
         
         // Update voxel engine visuals
@@ -2377,6 +2459,9 @@ export class BoxSelectionTool {
         // Update selection
         this.selectedVoxels = newVoxels;
         this.previousSelection = [...newVoxels];
+        
+        // Force immediate snapshot
+        this.voxelEngine.finalizePendingOperations();
         
         // Update visuals
         this.updateSelectionOutline();

@@ -16,6 +16,13 @@ export class TransformGizmo {
         z: THREE.Mesh;
     } | null = null;
     
+    // Invisible hit zones for arrows (larger than visual)
+    private moveHitZones: {
+        x: THREE.Mesh;
+        y: THREE.Mesh;
+        z: THREE.Mesh;
+    } | null = null;
+    
     // Rotate gizmo arcs
     private rotateArcs: {
         x: THREE.Mesh;
@@ -31,17 +38,17 @@ export class TransformGizmo {
     } | null = null;
     
     // Store original ring parameters
-    private readonly ringRadius = 4.5;
-    private readonly ringTubeRadius = 0.08;  // Visual thickness
-    private readonly ringTubeRadiusHover = 0.15;   // Thicker on hover
-    private readonly ringTubeRadiusActive = 0.08;  // Same as default when actively rotating
-    private readonly ringHitZoneRadius = 0.25;  // Much larger hit zone
+    private readonly ringRadius = 3.8;  // Reduced from 4.5
+    private readonly ringTubeRadius = 0.06;  // Reduced from 0.08
+    private readonly ringTubeRadiusHover = 0.12;   // Reduced from 0.15
+    private readonly ringTubeRadiusActive = 0.06;  // Same as default when actively rotating
+    private readonly ringHitZoneRadius = 0.25;  // Keep large hit zone
     
     // Arrow parameters
-    private readonly arrowLength = 2;
-    private readonly arrowWidth = 0.08;  // Match visual ring thickness
-    private readonly coneHeight = 0.4;
-    private readonly coneRadius = 0.25;
+    private readonly arrowLength = 1.6;  // Reduced from 2
+    private readonly arrowWidth = 0.06;  // Match visual ring thickness
+    private readonly coneHeight = 0.32;  // Reduced from 0.4
+    private readonly coneRadius = 0.2;  // Reduced from 0.25
     
     // Gizmo state
     private mode: GizmoMode = null;
@@ -91,14 +98,68 @@ export class TransformGizmo {
             z: this.createArrow(this.arrowLength, this.arrowWidth, this.coneHeight, this.coneRadius, this.colors.z)
         };
         
-        // Position and rotate arrows
+        // Create invisible hit zones (larger for easier selection)
+        const hitZoneWidth = 0.3; // Much larger than visual arrow width
+        const hitZoneConeRadius = 0.4; // Much larger than visual cone
+        
+        this.moveHitZones = {
+            x: this.createArrowHitZone(this.arrowLength, hitZoneWidth, this.coneHeight, hitZoneConeRadius),
+            y: this.createArrowHitZone(this.arrowLength, hitZoneWidth, this.coneHeight, hitZoneConeRadius),
+            z: this.createArrowHitZone(this.arrowLength, hitZoneWidth, this.coneHeight, hitZoneConeRadius)
+        };
+        
+        // Position and rotate arrows and hit zones
         this.moveArrows.x.rotation.z = -Math.PI / 2;
         this.moveArrows.x.userData = { axis: 'x' };
+        this.moveHitZones.x.rotation.z = -Math.PI / 2;
+        this.moveHitZones.x.userData = { axis: 'x' };
         
         this.moveArrows.y.userData = { axis: 'y' };
+        this.moveHitZones.y.userData = { axis: 'y' };
         
         this.moveArrows.z.rotation.x = Math.PI / 2;
         this.moveArrows.z.userData = { axis: 'z' };
+        this.moveHitZones.z.rotation.x = Math.PI / 2;
+        this.moveHitZones.z.userData = { axis: 'z' };
+    }
+    
+    /**
+     * Create a material with depth-based fading for orthographic camera
+     */
+    private createDepthFadeMaterial(color: string, baseOpacity: number): THREE.ShaderMaterial {
+        return new THREE.ShaderMaterial({
+            uniforms: {
+                color: { value: new THREE.Color(color) },
+                baseOpacity: { value: baseOpacity }
+            },
+            vertexShader: `
+                varying float vFade;
+                void main() {
+                    // Work in view space for consistent fade
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    
+                    // Simple depth-based fade in view space
+                    // In view space: negative z = in front, positive z = behind
+                    // We want to fade out parts that are behind (positive z)
+                    vFade = smoothstep(0.5, -0.5, mvPosition.z);
+                    
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 color;
+                uniform float baseOpacity;
+                varying float vFade;
+                
+                void main() {
+                    gl_FragColor = vec4(color, baseOpacity * vFade);
+                }
+            `,
+            transparent: true,
+            depthTest: false,
+            depthWrite: false,
+            side: THREE.DoubleSide
+        });
     }
     
     /**
@@ -109,13 +170,7 @@ export class TransformGizmo {
         
         // Shaft
         const shaftGeometry = new THREE.CylinderGeometry(width, width, length, 8);
-        const material = new THREE.MeshBasicMaterial({
-            color: color,
-            transparent: true,
-            opacity: 0.8,
-            depthTest: false,
-            depthWrite: false
-        });
+        const material = this.createDepthFadeMaterial(color, 0.8);
         const shaft = new THREE.Mesh(shaftGeometry, material);
         shaft.position.y = length / 2;
         
@@ -130,6 +185,35 @@ export class TransformGizmo {
         arrowMesh.add(cone);
         
         return arrowMesh;
+    }
+    
+    /**
+     * Create an invisible hit zone for arrow (larger than visual)
+     */
+    private createArrowHitZone(length: number, width: number, coneHeight: number, coneRadius: number): THREE.Mesh {
+        const group = new THREE.Group();
+        
+        // Larger shaft for easier selection
+        const shaftGeometry = new THREE.CylinderGeometry(width, width, length, 8);
+        const material = new THREE.MeshBasicMaterial({
+            visible: false,  // Invisible
+            depthTest: false,
+            depthWrite: false
+        });
+        const shaft = new THREE.Mesh(shaftGeometry, material);
+        shaft.position.y = length / 2;
+        
+        // Larger cone hit zone
+        const coneGeometry = new THREE.ConeGeometry(coneRadius, coneHeight, 8);
+        const cone = new THREE.Mesh(coneGeometry, material.clone());
+        cone.position.y = length + coneHeight / 2;
+        
+        // Combine into arrow hit zone
+        const arrowHitZone = new THREE.Mesh();
+        arrowHitZone.add(shaft);
+        arrowHitZone.add(cone);
+        
+        return arrowHitZone;
     }
     
     /**
@@ -151,20 +235,24 @@ export class TransformGizmo {
         };
         
         // Rotate rings and hit zones to align with axes
-        // X ring (red) - rotates around X axis, so ring is in YZ plane
+        // Torus is created in XY plane by default
+        
+        // X ring (red) - rotates around X axis, so ring should be in YZ plane
+        // Rotate 90° around Y axis to go from XY to YZ plane
         this.rotateArcs.x.rotation.y = Math.PI / 2;
         this.rotateArcs.x.userData = { axis: 'x' };
         this.rotateHitZones.x.rotation.y = Math.PI / 2;
         this.rotateHitZones.x.userData = { axis: 'x' };
         
-        // Y ring (green) - rotates around Y axis, so ring is in XZ plane (default orientation)
+        // Y ring (green) - rotates around Y axis, so ring should be in XZ plane
+        // Rotate 90° around X axis to go from XY to XZ plane
         this.rotateArcs.y.rotation.x = Math.PI / 2;
         this.rotateArcs.y.userData = { axis: 'y' };
         this.rotateHitZones.y.rotation.x = Math.PI / 2;
         this.rotateHitZones.y.userData = { axis: 'y' };
         
-        // Z ring (blue) - rotates around Z axis, so ring is in XY plane
-        // No rotation needed as torus default is in XY plane
+        // Z ring (blue) - rotates around Z axis, so ring should be in XY plane
+        // No rotation needed - torus is already in XY plane
         this.rotateArcs.z.userData = { axis: 'z' };
         this.rotateHitZones.z.userData = { axis: 'z' };
     }
@@ -173,15 +261,8 @@ export class TransformGizmo {
      * Create a rotation ring (torus)
      */
     private createRotateRing(radius: number, tubeRadius: number, color: string): THREE.Mesh {
-        const geometry = new THREE.TorusGeometry(radius, tubeRadius, 8, 32);  // More segments for smoother appearance
-        const material = new THREE.MeshBasicMaterial({
-            color: color,
-            transparent: true,
-            opacity: 0.7,  // Increased opacity for better visibility
-            depthTest: false,
-            depthWrite: false,
-            side: THREE.DoubleSide
-        });
+        const geometry = new THREE.TorusGeometry(radius, tubeRadius, 16, 64);  // Doubled segments for smoother appearance
+        const material = this.createDepthFadeMaterial(color, 0.7);
         
         return new THREE.Mesh(geometry, material);
     }
@@ -190,7 +271,7 @@ export class TransformGizmo {
      * Create an invisible hit zone for rotation
      */
     private createRotateHitZone(radius: number, tubeRadius: number): THREE.Mesh {
-        const geometry = new THREE.TorusGeometry(radius, tubeRadius, 8, 32);
+        const geometry = new THREE.TorusGeometry(radius, tubeRadius, 16, 64);  // Match visual ring segments
         const material = new THREE.MeshBasicMaterial({
             visible: false,  // Invisible
             depthTest: false,
@@ -212,10 +293,15 @@ export class TransformGizmo {
         this.gizmoGroup.position.copy(position);
         
         // Always add move controls
-        if (this.moveArrows) {
+        if (this.moveArrows && this.moveHitZones) {
             this.gizmoGroup.add(this.moveArrows.x);
             this.gizmoGroup.add(this.moveArrows.y);
             this.gizmoGroup.add(this.moveArrows.z);
+            
+            // Add invisible hit zones
+            this.gizmoGroup.add(this.moveHitZones.x);
+            this.gizmoGroup.add(this.moveHitZones.y);
+            this.gizmoGroup.add(this.moveHitZones.z);
         }
         
         // Store showRotation flag for later restoration
@@ -273,7 +359,7 @@ export class TransformGizmo {
         // To maintain constant screen size, we need to scale inversely with zoom
         
         // Base size for the gizmo (when zoom = 1)
-        const baseSize = 0.5; // Reduced from 2.0 to 0.5 (4x smaller)
+        const baseSize = 0.4; // Further reduced for slightly smaller gizmo
         
         // Scale inversely with camera zoom to maintain constant screen size
         // When zoom increases (zooming in), gizmo gets smaller in world space
@@ -292,10 +378,10 @@ export class TransformGizmo {
         // Reset all colors and thicknesses first
         this.resetColors();
         
-        // Check move arrows first (they're in front)
-        if (this.moveArrows) {
-            const arrowObjects = [this.moveArrows.x, this.moveArrows.y, this.moveArrows.z];
-            const arrowIntersects = raycaster.intersectObjects(arrowObjects, true);
+        // Check move hit zones first (they're in front)
+        if (this.moveHitZones) {
+            const hitZoneObjects = [this.moveHitZones.x, this.moveHitZones.y, this.moveHitZones.z];
+            const arrowIntersects = raycaster.intersectObjects(hitZoneObjects, true);
             
             if (arrowIntersects.length > 0) {
                 let object = arrowIntersects[0].object;
@@ -360,11 +446,14 @@ export class TransformGizmo {
         
         // Hide non-active elements during interaction
         if (operation === 'rotate') {
-            // Hide all move arrows when rotating
-            if (this.moveArrows) {
+            // Hide all move arrows and hit zones when rotating
+            if (this.moveArrows && this.moveHitZones) {
                 this.gizmoGroup.remove(this.moveArrows.x);
                 this.gizmoGroup.remove(this.moveArrows.y);
                 this.gizmoGroup.remove(this.moveArrows.z);
+                this.gizmoGroup.remove(this.moveHitZones.x);
+                this.gizmoGroup.remove(this.moveHitZones.y);
+                this.gizmoGroup.remove(this.moveHitZones.z);
             }
             
             // Hide other rotation rings and hit zones
@@ -392,11 +481,20 @@ export class TransformGizmo {
                 this.gizmoGroup.remove(this.rotateArcs.z);
             }
             
-            // Hide other move arrows
-            if (this.moveArrows) {
-                if (axis !== 'x') this.gizmoGroup.remove(this.moveArrows.x);
-                if (axis !== 'y') this.gizmoGroup.remove(this.moveArrows.y);
-                if (axis !== 'z') this.gizmoGroup.remove(this.moveArrows.z);
+            // Hide other move arrows and hit zones
+            if (this.moveArrows && this.moveHitZones) {
+                if (axis !== 'x') {
+                    this.gizmoGroup.remove(this.moveArrows.x);
+                    this.gizmoGroup.remove(this.moveHitZones.x);
+                }
+                if (axis !== 'y') {
+                    this.gizmoGroup.remove(this.moveArrows.y);
+                    this.gizmoGroup.remove(this.moveHitZones.y);
+                }
+                if (axis !== 'z') {
+                    this.gizmoGroup.remove(this.moveArrows.z);
+                    this.gizmoGroup.remove(this.moveHitZones.z);
+                }
             }
         }
     }
@@ -513,9 +611,9 @@ export class TransformGizmo {
             }
             
             arrow.traverse((child) => {
-                if (child instanceof THREE.Mesh) {
-                    (child.material as THREE.MeshBasicMaterial).color.set(arrowColor);
-                    (child.material as THREE.MeshBasicMaterial).opacity = 1.0;
+                if (child instanceof THREE.Mesh && child.material instanceof THREE.ShaderMaterial) {
+                    child.material.uniforms.color.value.set(arrowColor);
+                    child.material.uniforms.baseOpacity.value = 1.0;
                 }
             });
         } else if (operation === 'rotate' && this.rotateArcs) {
@@ -529,14 +627,16 @@ export class TransformGizmo {
             } else {
                 ringColor = this.colors[axis]; // Normal axis color
             }
-            (arc.material as THREE.MeshBasicMaterial).color.set(ringColor);
-            // Increase opacity when highlighted
-            (arc.material as THREE.MeshBasicMaterial).opacity = (selected || isHover) ? 0.9 : 0.7;
+            if (arc.material instanceof THREE.ShaderMaterial) {
+                arc.material.uniforms.color.value.set(ringColor);
+                // Increase opacity when highlighted
+                arc.material.uniforms.baseOpacity.value = (selected || isHover) ? 0.9 : 0.7;
+            }
             
             // Create thicker ring only on hover, not when selected (dragging)
             const shouldThicken = isHover && !selected;
             const newTubeRadius = shouldThicken ? this.ringTubeRadiusHover : this.ringTubeRadius;
-            const newGeometry = new THREE.TorusGeometry(this.ringRadius, newTubeRadius, 8, 32);
+            const newGeometry = new THREE.TorusGeometry(this.ringRadius, newTubeRadius, 16, 64);  // Match segment count
             arc.geometry.dispose();
             arc.geometry = newGeometry;
         }
@@ -557,9 +657,9 @@ export class TransformGizmo {
                 
                 arrows.forEach(({ mesh, color }) => {
                     mesh.traverse((child) => {
-                        if (child instanceof THREE.Mesh) {
-                            (child.material as THREE.MeshBasicMaterial).color.set(color);
-                            (child.material as THREE.MeshBasicMaterial).opacity = 0.8;
+                        if (child instanceof THREE.Mesh && child.material instanceof THREE.ShaderMaterial) {
+                            child.material.uniforms.color.value.set(color);
+                            child.material.uniforms.baseOpacity.value = 0.8;
                         }
                     });
                 });
@@ -573,11 +673,13 @@ export class TransformGizmo {
                 ];
                 
                 arcs.forEach(({ mesh, color }) => {
-                    (mesh.material as THREE.MeshBasicMaterial).color.set(color);
-                    (mesh.material as THREE.MeshBasicMaterial).opacity = 0.7;
+                    if (mesh.material instanceof THREE.ShaderMaterial) {
+                        mesh.material.uniforms.color.value.set(color);
+                        mesh.material.uniforms.baseOpacity.value = 0.7;
+                    }
                     
                     // Reset to thin ring
-                    const newGeometry = new THREE.TorusGeometry(this.ringRadius, this.ringTubeRadius, 8, 32);
+                    const newGeometry = new THREE.TorusGeometry(this.ringRadius, this.ringTubeRadius, 16, 64);  // Match segment count
                     mesh.geometry.dispose();
                     mesh.geometry = newGeometry;
                 });
@@ -702,7 +804,7 @@ export class TransformGizmo {
             color: axisColor,
             transparent: true,
             opacity: 0.6,  // Keep constant opacity regardless of snap
-            side: THREE.DoubleSide,
+            side: THREE.DoubleSide,  // Keep double-sided for rotation indicator
             depthTest: false,
             depthWrite: false
         });
@@ -759,11 +861,14 @@ export class TransformGizmo {
         // Check if we're still in transform mode
         if (this.mode !== 'transform') return;
         
-        // Restore move arrows
-        if (this.moveArrows) {
+        // Restore move arrows and hit zones
+        if (this.moveArrows && this.moveHitZones) {
             this.gizmoGroup.add(this.moveArrows.x);
             this.gizmoGroup.add(this.moveArrows.y);
             this.gizmoGroup.add(this.moveArrows.z);
+            this.gizmoGroup.add(this.moveHitZones.x);
+            this.gizmoGroup.add(this.moveHitZones.y);
+            this.gizmoGroup.add(this.moveHitZones.z);
         }
         
         // Restore rotation rings if we have more than one selected voxel
@@ -799,11 +904,31 @@ export class TransformGizmo {
             });
         }
         
+        // Dispose move hit zones
+        if (this.moveHitZones) {
+            Object.values(this.moveHitZones).forEach(hitZone => {
+                hitZone.traverse((child) => {
+                    if (child instanceof THREE.Mesh) {
+                        child.geometry.dispose();
+                        (child.material as THREE.Material).dispose();
+                    }
+                });
+            });
+        }
+        
         // Dispose rotate arcs
         if (this.rotateArcs) {
             Object.values(this.rotateArcs).forEach(arc => {
                 arc.geometry.dispose();
                 (arc.material as THREE.Material).dispose();
+            });
+        }
+        
+        // Dispose rotate hit zones
+        if (this.rotateHitZones) {
+            Object.values(this.rotateHitZones).forEach(hitZone => {
+                hitZone.geometry.dispose();
+                (hitZone.material as THREE.Material).dispose();
             });
         }
     }

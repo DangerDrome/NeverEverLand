@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { VoxelRenderer } from './VoxelRenderer';
 import { VoxelType, VoxelPosition, RaycastHit } from '../types';
-import { UndoRedoManager } from './UndoRedoManager';
+import { SnapshotUndoManager } from './SnapshotUndoManager';
 import { VoxelLayer } from './VoxelLayer';
 import { BakedMeshWireframe } from './BakedMeshWireframe';
 
@@ -13,7 +13,7 @@ export class VoxelEngine {
     private layers: VoxelLayer[];
     private activeLayerId: string;
     private renderer: VoxelRenderer;
-    private undoRedoManager: UndoRedoManager;
+    private undoRedoManager: SnapshotUndoManager;
     private layerIdCounter: number = 0;
     private bakedMeshes: Map<string, { opaque?: THREE.Mesh; transparent?: THREE.Mesh }> = new Map();
     private bakedWireframe: BakedMeshWireframe;
@@ -41,8 +41,10 @@ export class VoxelEngine {
         this.bakedWireframe = new BakedMeshWireframe();
         this.bakedWireframe.setVisible(showWireframe);
         
-        // Initialize undo/redo manager
-        this.undoRedoManager = new UndoRedoManager(this);
+        // Initialize undo/redo manager with snapshot approach
+        this.undoRedoManager = new SnapshotUndoManager(this);
+        // Take initial snapshot after a short delay
+        setTimeout(() => this.undoRedoManager.saveSnapshot(), 100);
     }
     
     // Getter for voxel size
@@ -182,13 +184,9 @@ export class VoxelEngine {
         // No change needed
         if (oldType === type) return false;
         
-        // Record operation for undo/redo if enabled
+        // Schedule snapshot for undo/redo if enabled
         if (recordUndo) {
-            this.undoRedoManager.recordOperation(
-                { x, y, z },
-                type,
-                oldType
-            );
+            this.undoRedoManager.scheduleSnapshot();
         }
         
         // Update voxel in active layer
@@ -686,7 +684,9 @@ export class VoxelEngine {
         previousSelection: Array<{ x: number; y: number; z: number; type: VoxelType }>,
         newSelection: Array<{ x: number; y: number; z: number; type: VoxelType }>
     ): void {
-        this.undoRedoManager.recordSelectionChange(previousSelection, newSelection);
+        // Update current selection in undo manager and schedule snapshot
+        this.undoRedoManager.updateCurrentSelection(newSelection);
+        this.undoRedoManager.scheduleSnapshot();
     }
     
     setSelectionCallback(callback: (selection: Array<{ x: number; y: number; z: number; type: VoxelType }>) => void): void {
