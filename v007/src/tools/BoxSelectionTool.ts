@@ -153,7 +153,7 @@ export class BoxSelectionTool {
             y * voxelSize + voxelSize * 0.5,
             z * voxelSize + voxelSize * 0.5
         );
-        this.transformGizmo.show(center);
+        this.transformGizmo.show(center, false); // No rotation for single voxel
         
         console.log(`Selected single voxel at (${x}, ${y}, ${z})`);
     }
@@ -181,7 +181,7 @@ export class BoxSelectionTool {
             // Update gizmo position to new center
             if (this.selectedVoxels.length > 0) {
                 const center = this.getSelectionCenter();
-                this.transformGizmo.show(center);
+                this.transformGizmo.show(center, this.selectedVoxels.length > 1);
                 
                 // Record selection change
                 this.voxelEngine.recordSelectionChange(prevSelection, this.selectedVoxels);
@@ -257,7 +257,7 @@ export class BoxSelectionTool {
         // Show gizmo at selection center
         if (this.selectedVoxels.length > 0) {
             const center = this.getSelectionCenter();
-            this.transformGizmo.show(center);
+            this.transformGizmo.show(center, this.selectedVoxels.length > 1);
             
             // Record selection change
             const prevSelection = addToExisting ? [...existingSelection].map(key => {
@@ -384,7 +384,7 @@ export class BoxSelectionTool {
         // Show unified transform gizmo at selection center if voxels were selected
         if (this.selectedVoxels.length > 0) {
             const center = this.getSelectionCenter();
-            this.transformGizmo.show(center);
+            this.transformGizmo.show(center, this.selectedVoxels.length > 1);
             
             // Record selection change
             const prevSelection = this.isAddingToSelection ? [...this.previousSelection] : [];
@@ -477,9 +477,9 @@ export class BoxSelectionTool {
         if (previewVoxels.length > 0) {
             const geometry = new THREE.BoxGeometry(voxelSize * 1.02, voxelSize * 1.02, voxelSize * 1.02);
             const material = new THREE.MeshBasicMaterial({
-                color: 'rgb(100, 255, 100)',  // Light green
+                color: 'rgb(255, 255, 100)',  // Yellow
                 transparent: true,
-                opacity: 0.3,
+                opacity: 0.5,
                 depthWrite: false
             });
             
@@ -552,7 +552,7 @@ export class BoxSelectionTool {
         const voxelSize = this.voxelEngine.getVoxelSize();
         const geometry = new THREE.BoxGeometry(voxelSize * 1.02, voxelSize * 1.02, voxelSize * 1.02); // Slightly larger
         const material = new THREE.MeshBasicMaterial({
-            color: 'rgb(100, 255, 100)',  // Light green
+            color: 'rgb(255, 255, 100)',  // Yellow
             transparent: true,
             opacity: 0.5,  // More visible during transformation
             depthWrite: false
@@ -616,7 +616,7 @@ export class BoxSelectionTool {
         outlineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
         
         const outlineMaterial = new THREE.LineBasicMaterial({
-            color: 'rgb(100, 255, 100)',  // Green outline for selected voxels
+            color: 'rgb(255, 255, 100)',  // Yellow outline for selected voxels
             linewidth: 2,
             transparent: true,
             opacity: 0.8
@@ -699,39 +699,44 @@ export class BoxSelectionTool {
             // Debug: log raw delta
             console.log(`Rotation delta: x=${delta.x.toFixed(4)}, y=${delta.y.toFixed(4)}, z=${delta.z.toFixed(4)}`);
             
-            // Update rotation incrementally
-            this.transformRotation.x += delta.x;
-            this.transformRotation.y += delta.y;
-            this.transformRotation.z += delta.z;
+            // Update rotation incrementally with clamping to ±360 degrees
+            const maxRotation = 2 * Math.PI; // 360 degrees
+            
+            // Apply delta only if it doesn't exceed the limit
+            const clampRotation = (current: number, delta: number): number => {
+                const newValue = current + delta;
+                return Math.max(-maxRotation, Math.min(maxRotation, newValue));
+            };
+            
+            this.transformRotation.x = clampRotation(this.transformRotation.x, delta.x);
+            this.transformRotation.y = clampRotation(this.transformRotation.y, delta.y);
+            this.transformRotation.z = clampRotation(this.transformRotation.z, delta.z);
             
             console.log(`Raw rotation: X=${(this.transformRotation.x * 180 / Math.PI).toFixed(1)}°, Y=${(this.transformRotation.y * 180 / Math.PI).toFixed(1)}°, Z=${(this.transformRotation.z * 180 / Math.PI).toFixed(1)}°`);
             
-            // For now, disable snapping for smoother rotation
-            // Can re-enable with smaller snap angle if needed
-            const useSnapping = false;
-            let newRotX, newRotY, newRotZ;
+            // Snap to 90-degree intervals immediately
+            const snapAngle = Math.PI / 2; // 90 degrees
+            const snappedX = Math.round(this.transformRotation.x / snapAngle) * snapAngle;
+            const snappedY = Math.round(this.transformRotation.y / snapAngle) * snapAngle;
+            const snappedZ = Math.round(this.transformRotation.z / snapAngle) * snapAngle;
             
-            if (useSnapping) {
-                const snapAngle = Math.PI / 36; // 5 degrees (was 15)
-                newRotX = Math.round(this.transformRotation.x / snapAngle) * snapAngle;
-                newRotY = Math.round(this.transformRotation.y / snapAngle) * snapAngle;
-                newRotZ = Math.round(this.transformRotation.z / snapAngle) * snapAngle;
-            } else {
-                // No snapping - use raw values
-                newRotX = this.transformRotation.x;
-                newRotY = this.transformRotation.y;
-                newRotZ = this.transformRotation.z;
-            }
+            // Check if we've crossed to a new snap position
+            const prevSnappedX = Math.round(prevRotation.x / snapAngle) * snapAngle;
+            const prevSnappedY = Math.round(prevRotation.y / snapAngle) * snapAngle;
+            const prevSnappedZ = Math.round(prevRotation.z / snapAngle) * snapAngle;
             
-            // Only update if rotation actually changed
-            if (newRotX !== prevRotation.x || newRotY !== prevRotation.y || newRotZ !== prevRotation.z) {
-                this.transformRotation.x = newRotX;
-                this.transformRotation.y = newRotY;
-                this.transformRotation.z = newRotZ;
+            // Only apply if we've crossed a snap threshold
+            if (snappedX !== prevSnappedX || snappedY !== prevSnappedY || snappedZ !== prevSnappedZ) {
+                // Store the snapped values for display
+                const displayRotation = {
+                    x: snappedX,
+                    y: snappedY,
+                    z: snappedZ
+                };
                 
-                console.log(`Snapped rotation: X=${(newRotX * 180 / Math.PI).toFixed(1)}°, Y=${(newRotY * 180 / Math.PI).toFixed(1)}°, Z=${(newRotZ * 180 / Math.PI).toFixed(1)}°`);
+                console.log(`Snapped to: X=${(snappedX * 180 / Math.PI).toFixed(0)}°, Y=${(snappedY * 180 / Math.PI).toFixed(0)}°, Z=${(snappedZ * 180 / Math.PI).toFixed(0)}°`);
                 
-                // Apply transformation in real-time
+                // Apply transformation with snapped values
                 this.applyTransformRealtime();
             }
         }
@@ -767,11 +772,11 @@ export class BoxSelectionTool {
             this.originalVoxels = [];
             this.isDuplicating = false;
             
-            // Restore transparency to selection after dragging
+            // Keep the same transparency as during selection (no need to change)
             if (this.selectedVoxelsMesh) {
                 const material = this.selectedVoxelsMesh.material as THREE.MeshBasicMaterial;
                 material.transparent = true;
-                material.opacity = 0.3;
+                material.opacity = 0.5;
                 material.depthWrite = false;
             }
         }
@@ -806,13 +811,20 @@ export class BoxSelectionTool {
             let newZ = voxel.z;
             
             if (this.transformMode === 'rotate') {
-                // Apply rotation around center
+                // Apply rotation around center using snapped values
+                const snapAngle = Math.PI / 2; // 90 degrees
+                const snappedRotation = new THREE.Euler(
+                    Math.round(this.transformRotation.x / snapAngle) * snapAngle,
+                    Math.round(this.transformRotation.y / snapAngle) * snapAngle,
+                    Math.round(this.transformRotation.z / snapAngle) * snapAngle
+                );
+                
                 const pos = new THREE.Vector3(
                     voxel.x - centerX,
                     voxel.y - centerY,
                     voxel.z - centerZ
                 );
-                pos.applyEuler(this.transformRotation);
+                pos.applyEuler(snappedRotation);
                 newX = Math.round(pos.x + centerX);
                 newY = Math.round(pos.y + centerY);
                 newZ = Math.round(pos.z + centerZ);
@@ -845,17 +857,17 @@ export class BoxSelectionTool {
     private updateSelectionPreview(previewVoxels: SelectedVoxel[]): void {
         if (!this.selectedVoxelsMesh) return;
         
-        // Update color and make solid when dragging
+        // Keep the same transparent overlay appearance during dragging
         const material = this.selectedVoxelsMesh.material as THREE.MeshBasicMaterial;
         if (this.isDuplicating) {
             material.color.set('rgb(150, 255, 150)'); // Lighter green for duplication
         } else {
-            material.color.set('rgb(100, 255, 100)'); // Green for normal move
+            material.color.set('rgb(255, 255, 100)'); // Yellow for normal move
         }
-        // Make solid instead of transparent when dragging
-        material.transparent = false;
-        material.opacity = 1.0;
-        material.depthWrite = true;
+        // Keep transparent overlay appearance (don't make solid)
+        material.transparent = true;
+        material.opacity = 0.5;
+        material.depthWrite = false;
         
         // Update the positions of the selection preview mesh
         const voxelSize = this.voxelEngine.getVoxelSize();
@@ -936,19 +948,9 @@ export class BoxSelectionTool {
             
             // Apply rotation if in rotate mode
             if (this.transformMode === 'rotate') {
-                // For rotation, use the preview center since rotation doesn't translate
-                let rotSumX = 0, rotSumY = 0, rotSumZ = 0;
-                for (const voxel of previewVoxels) {
-                    rotSumX += voxel.x;
-                    rotSumY += voxel.y;
-                    rotSumZ += voxel.z;
-                }
-                const rotatedCenter = new THREE.Vector3(
-                    (rotSumX / previewVoxels.length) * voxelSize + voxelSize * 0.5,
-                    (rotSumY / previewVoxels.length) * voxelSize + voxelSize * 0.5,
-                    (rotSumZ / previewVoxels.length) * voxelSize + voxelSize * 0.5
-                );
-                this.transformGizmo.setPosition(rotatedCenter);
+                // For rotation, keep the gizmo at the original center
+                // Rotation happens around this fixed point, so the gizmo shouldn't move
+                this.transformGizmo.setPosition(originalCenter);
             } else {
                 // For translation, use smooth unsnapped position
                 this.transformGizmo.setPosition(smoothCenter);
@@ -963,6 +965,18 @@ export class BoxSelectionTool {
         if (!this.transformMode || this.originalVoxels.length === 0) return;
         
         const voxelSize = this.voxelEngine.getVoxelSize();
+        
+        // Snap rotation to 90 degrees for final application
+        const snapAngle = Math.PI / 2; // 90 degrees
+        const snappedRotation = new THREE.Euler(
+            Math.round(this.transformRotation.x / snapAngle) * snapAngle,
+            Math.round(this.transformRotation.y / snapAngle) * snapAngle,
+            Math.round(this.transformRotation.z / snapAngle) * snapAngle
+        );
+        
+        if (this.transformMode === 'rotate') {
+            console.log(`Final rotation: X=${(snappedRotation.x * 180 / Math.PI).toFixed(0)}°, Y=${(snappedRotation.y * 180 / Math.PI).toFixed(0)}°, Z=${(snappedRotation.z * 180 / Math.PI).toFixed(0)}°`);
+        }
         
         // Calculate center for rotation
         let centerX = 0, centerY = 0, centerZ = 0;
@@ -987,13 +1001,13 @@ export class BoxSelectionTool {
             let newZ = voxel.z;
             
             if (this.transformMode === 'rotate') {
-                // Apply rotation around center
+                // Apply rotation around center using snapped values
                 const pos = new THREE.Vector3(
                     voxel.x - centerX,
                     voxel.y - centerY,
                     voxel.z - centerZ
                 );
-                pos.applyEuler(this.transformRotation);
+                pos.applyEuler(snappedRotation);
                 newX = Math.round(pos.x + centerX);
                 newY = Math.round(pos.y + centerY);
                 newZ = Math.round(pos.z + centerZ);
@@ -1287,13 +1301,13 @@ export class BoxSelectionTool {
         // Show unified gizmo if still have selection
         if (this.selectedVoxels.length > 0) {
             const center = this.getSelectionCenter();
-            this.transformGizmo.show(center);
+            this.transformGizmo.show(center, this.selectedVoxels.length > 1);
             
-            // Restore transparency to selection after canceling
+            // Keep consistent transparency after canceling
             if (this.selectedVoxelsMesh) {
                 const material = this.selectedVoxelsMesh.material as THREE.MeshBasicMaterial;
                 material.transparent = true;
-                material.opacity = 0.3;
+                material.opacity = 0.5;
                 material.depthWrite = false;
             }
         } else {
@@ -1350,7 +1364,7 @@ export class BoxSelectionTool {
         // Show gizmo at selection center if voxels were selected
         if (this.selectedVoxels.length > 0) {
             const center = this.getSelectionCenter();
-            this.transformGizmo.show(center);
+            this.transformGizmo.show(center, this.selectedVoxels.length > 1);
         }
         
         console.log(`Selected all ${this.selectedVoxels.length} voxels`);
@@ -1417,7 +1431,7 @@ export class BoxSelectionTool {
         // Show gizmo at selection center if voxels were selected
         if (this.selectedVoxels.length > 0) {
             const center = this.getSelectionCenter();
-            this.transformGizmo.show(center);
+            this.transformGizmo.show(center, this.selectedVoxels.length > 1);
         }
         
         console.log(`Inverted selection: ${this.selectedVoxels.length} voxels selected`);
@@ -1521,7 +1535,7 @@ export class BoxSelectionTool {
         // Show gizmo at paste center
         if (this.selectedVoxels.length > 0) {
             const center = this.getSelectionCenter();
-            this.transformGizmo.show(center);
+            this.transformGizmo.show(center, this.selectedVoxels.length > 1);
         }
         
         console.log(`Pasted ${newSelection.length} voxels at (${pasteX}, ${pasteY}, ${pasteZ})`);
@@ -1652,7 +1666,7 @@ export class BoxSelectionTool {
             
             // Show gizmo at selection center
             const center = this.getSelectionCenter();
-            this.transformGizmo.show(center);
+            this.transformGizmo.show(center, this.selectedVoxels.length > 1);
         }
         
         console.log(`Selection restored: ${this.selectedVoxels.length} voxels`);
@@ -1694,7 +1708,7 @@ export class BoxSelectionTool {
             
             // Update gizmo position
             const center = this.getSelectionCenter();
-            this.transformGizmo.show(center);
+            this.transformGizmo.show(center, this.selectedVoxels.length > 1);
         }
         
         console.log(`Selection refreshed: ${this.selectedVoxels.length} voxels remain`);
@@ -1713,8 +1727,8 @@ export class BoxSelectionTool {
             this.screenSelectionBox = document.createElement('div');
             this.screenSelectionBox.style.cssText = `
                 position: fixed;
-                border: 2px dashed rgba(100, 255, 100, 0.8);
-                background: rgba(100, 255, 100, 0.1);
+                border: 2px dashed rgba(255, 255, 100, 0.8);
+                background: rgba(255, 255, 100, 0.1);
                 pointer-events: none;
                 z-index: 1000;
             `;
@@ -1828,7 +1842,7 @@ export class BoxSelectionTool {
             this.updateSelectionOutline();
             this.showSelectedVoxels();
             const center = this.getSelectionCenter();
-            this.transformGizmo.show(center);
+            this.transformGizmo.show(center, this.selectedVoxels.length > 1);
             
             // Record selection change
             this.voxelEngine.recordSelectionChange(this.previousSelection, this.selectedVoxels);
@@ -1860,6 +1874,88 @@ export class BoxSelectionTool {
      */
     isDoingScreenSpaceSelection(): boolean {
         return this.isScreenSpaceSelecting;
+    }
+    
+    /**
+     * Rotate selection by specified angle around specified axis
+     * @param axis - The axis to rotate around ('x', 'y', or 'z')
+     * @param angle - The angle in radians (use Math.PI/4 for 45 degrees)
+     */
+    rotateSelection(axis: 'x' | 'y' | 'z', angle: number): void {
+        if (this.selectedVoxels.length === 0) {
+            console.log('No voxels selected to rotate');
+            return;
+        }
+        
+        console.log(`Rotating selection ${angle * 180 / Math.PI}° around ${axis} axis`);
+        
+        // Calculate center of selection
+        let centerX = 0, centerY = 0, centerZ = 0;
+        for (const voxel of this.selectedVoxels) {
+            centerX += voxel.x;
+            centerY += voxel.y;
+            centerZ += voxel.z;
+        }
+        centerX /= this.selectedVoxels.length;
+        centerY /= this.selectedVoxels.length;
+        centerZ /= this.selectedVoxels.length;
+        
+        // Create rotation euler
+        const rotation = new THREE.Euler();
+        if (axis === 'x') rotation.x = angle;
+        else if (axis === 'y') rotation.y = angle;
+        else if (axis === 'z') rotation.z = angle;
+        
+        // Calculate new positions
+        const newVoxels: SelectedVoxel[] = [];
+        
+        // Clear old voxels first
+        for (const voxel of this.selectedVoxels) {
+            this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, VoxelType.AIR, false);
+        }
+        
+        // Apply rotation
+        for (const voxel of this.selectedVoxels) {
+            // Create position relative to center
+            const pos = new THREE.Vector3(
+                voxel.x - centerX,
+                voxel.y - centerY,
+                voxel.z - centerZ
+            );
+            
+            // Apply rotation
+            pos.applyEuler(rotation);
+            
+            // Calculate new voxel position
+            const newX = Math.round(pos.x + centerX);
+            const newY = Math.round(pos.y + centerY);
+            const newZ = Math.round(pos.z + centerZ);
+            
+            newVoxels.push({ x: newX, y: newY, z: newZ, type: voxel.type });
+        }
+        
+        // Place voxels at new positions
+        for (const voxel of newVoxels) {
+            this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, voxel.type, false);
+        }
+        
+        // Update voxel engine visuals
+        this.voxelEngine.updateInstances();
+        
+        // Record selection change
+        this.voxelEngine.recordSelectionChange(this.selectedVoxels, newVoxels);
+        
+        // Update selection
+        this.selectedVoxels = newVoxels;
+        this.previousSelection = [...newVoxels];
+        
+        // Update visuals
+        this.updateSelectionOutline();
+        this.showSelectedVoxels();
+        
+        // Update gizmo position
+        const center = this.getSelectionCenter();
+        this.transformGizmo.show(center, this.selectedVoxels.length > 1);
     }
     
     /**

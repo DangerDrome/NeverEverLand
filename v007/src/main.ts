@@ -1015,6 +1015,10 @@ class VoxelApp {
             } else if (event.buttons === 1) {
                 // Handle gizmo dragging
                 this.boxSelectionTool.handleGizmoDrag(this.raycaster);
+            } else if (event.buttons === 0 && this.boxSelectionTool.hasSelection()) {
+                // Update gizmo hover when not dragging
+                const gizmo = this.boxSelectionTool.getTransformGizmo();
+                gizmo.onMouseHover(this.raycaster);
             }
             return;
         }
@@ -1546,7 +1550,13 @@ class VoxelApp {
                     this.voxelPanel.updateBrushSize(parseInt(event.key));
                 }
                 break;
-            // Q/E removed - use voxel panel or number keys 1-9 for voxel selection
+            case 'q':
+            case 'Q':
+                // Rotate selection around Y axis (counter-clockwise)
+                if (this.selectionMode && this.boxSelectionTool && this.boxSelectionTool.hasSelection()) {
+                    this.boxSelectionTool.rotateSelection('y', -Math.PI / 2); // -90 degrees
+                }
+                break;
             case 'g':
             case 'G':
                 this.toggleGrid();
@@ -1602,21 +1612,29 @@ class VoxelApp {
                 break;
             case 'e':
             case 'E':
-                // Exit selection mode when switching tools
-                this.selectionMode = false;
-                if (this.boxSelectionTool) {
-                    this.boxSelectionTool.clearSelection(false); // Don't record undo when switching tools
-                }
-                if (this.drawingSystem) {
-                    this.drawingSystem.setToolMode('eraser');
-                    this.drawingSystem.showPreview();
-                    this.updatePreviewAtCurrentMouse();
-                }
-                if (this.voxelPanel) {
-                    this.voxelPanel.updateToolMode('eraser');
-                }
-                if (this.toolsPanel) {
-                    this.toolsPanel.selectTool('eraser');
+                // Check if Shift is held for rotation
+                if (event.shiftKey) {
+                    // Rotate selection around Y axis (clockwise)
+                    if (this.selectionMode && this.boxSelectionTool && this.boxSelectionTool.hasSelection()) {
+                        this.boxSelectionTool.rotateSelection('y', Math.PI / 2); // 90 degrees
+                    }
+                } else {
+                    // Exit selection mode when switching tools
+                    this.selectionMode = false;
+                    if (this.boxSelectionTool) {
+                        this.boxSelectionTool.clearSelection(false); // Don't record undo when switching tools
+                    }
+                    if (this.drawingSystem) {
+                        this.drawingSystem.setToolMode('eraser');
+                        this.drawingSystem.showPreview();
+                        this.updatePreviewAtCurrentMouse();
+                    }
+                    if (this.voxelPanel) {
+                        this.voxelPanel.updateToolMode('eraser');
+                    }
+                    if (this.toolsPanel) {
+                        this.toolsPanel.selectTool('eraser');
+                    }
                 }
                 break;
             case 'x':
