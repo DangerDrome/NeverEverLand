@@ -3,6 +3,7 @@ import { VoxelEngine } from '../engine/VoxelEngine';
 import { ActionLogger } from './ActionLogger';
 import { ColorPickerPopover, ColorInfo } from './ColorPickerPopover';
 import { ColorRegistry } from '../engine/ColorRegistry';
+import { settings } from '../main';
 
 /**
  * Tools panel - Photoshop-style vertical tool palette on the left side
@@ -17,7 +18,7 @@ export class ToolsPanel {
     private selectedColor: ColorInfo | null = null;
     
     constructor() {
-        this.colorPickerPopover = new ColorPickerPopover();
+        this.colorPickerPopover = new ColorPickerPopover(settings.colorPalettes);
         this.create();
     }
     
@@ -505,12 +506,18 @@ export class ToolsPanel {
                 this.selectedColor = color;
                 this.updateColorPaletteButtonWithColor(color);
                 
-                const colorRegistry = ColorRegistry.getInstance();
-                const voxelType = colorRegistry.getOrCreateVoxelType(color.hex);
-                
-                if (voxelType && this.drawingSystem) {
-                    color.voxelType = voxelType;
-                    this.drawingSystem.setVoxelType(voxelType);
+                // If color already has a VoxelType (from editing), use it
+                if (color.voxelType !== undefined && this.drawingSystem) {
+                    this.drawingSystem.setVoxelType(color.voxelType);
+                } else {
+                    // Otherwise create a new VoxelType for this color
+                    const colorRegistry = ColorRegistry.getInstance();
+                    const voxelType = colorRegistry.getOrCreateVoxelType(color.hex);
+                    
+                    if (voxelType && this.drawingSystem) {
+                        color.voxelType = voxelType;
+                        this.drawingSystem.setVoxelType(voxelType);
+                    }
                 }
             }, 'right');
         });

@@ -52,42 +52,106 @@ kill_port() {
     
     print_status "Checking for existing process on port $port..."
     
-    # Try multiple methods to find and kill the process
+    # Method 1: Try lsof
     if command -v lsof &> /dev/null; then
         local pids=$(lsof -ti:$port 2>/dev/null)
         if [ ! -z "$pids" ]; then
             echo "$pids" | xargs -r kill -9 2>/dev/null
-            print_success "Killed process(es) on port $port"
+            print_success "Killed process(es) on port $port using lsof"
             sleep 1
-        fi
-    elif command -v fuser &> /dev/null; then
-        fuser -k $port/tcp 2>/dev/null && print_success "Killed process on port $port"
-        sleep 1
-    else
-        # Fallback method using netstat or ss
-        local pid=$(netstat -tlnp 2>/dev/null | grep ":$port" | awk '{print $7}' | cut -d'/' -f1)
-        if [ -z "$pid" ]; then
-            pid=$(ss -tlnp 2>/dev/null | grep ":$port" | grep -oP 'pid=\K\d+')
-        fi
-        
-        if [ ! -z "$pid" ]; then
-            kill -9 $pid 2>/dev/null && print_success "Killed process (PID: $pid)"
-            sleep 1
+            return
         fi
     fi
+    
+    # Method 2: Try fuser
+    if command -v fuser &> /dev/null; then
+        fuser -k $port/tcp 2>/dev/null && print_success "Killed process on port $port using fuser"
+        sleep 1
+        return
+    fi
+    
+    # Method 3: Try netstat
+    if command -v netstat &> /dev/null; then
+        local pid=$(netstat -tlnp 2>/dev/null | grep ":$port" | awk '{print $7}' | cut -d'/' -f1)
+        if [ ! -z "$pid" ]; then
+            kill -9 $pid 2>/dev/null && print_success "Killed process (PID: $pid) using netstat"
+            sleep 1
+            return
+        fi
+    fi
+    
+    # Method 4: Try ss
+    if command -v ss &> /dev/null; then
+        local pid=$(ss -tlnp 2>/dev/null | grep ":$port" | grep -oP 'pid=\K\d+')
+        if [ ! -z "$pid" ]; then
+            kill -9 $pid 2>/dev/null && print_success "Killed process (PID: $pid) using ss"
+            sleep 1
+            return
+        fi
+    fi
+    
+    # Method 5: Nuclear option - find any process with the port number
+    print_warning "Using nuclear option to find processes..."
+    ps aux | grep -E "$port" | grep -v grep | grep -v "$0" | awk '{print $2}' | while read pid; do
+        if [ ! -z "$pid" ]; then
+            print_status "Checking PID $pid..."
+            # Check if this process is actually using the port
+            if ls -l /proc/$pid/fd 2>/dev/null | grep -q "socket"; then
+                kill -9 $pid 2>/dev/null && print_success "Killed suspicious process (PID: $pid)"
+            fi
+        fi
+    done
+    sleep 1
 }
 
 # Kill Vite server
 kill_vite_server() {
     print_status "Stopping Vite development server..."
+    
+    # First try to kill using the PID file
+    if [ -f "$PROJECT_DIR/.vite.pid" ]; then
+        local pid=$(cat "$PROJECT_DIR/.vite.pid" 2>/dev/null)
+        if [ ! -z "$pid" ] && ps -p $pid > /dev/null 2>&1; then
+            print_status "Killing process from PID file: $pid"
+            kill -9 $pid 2>/dev/null
+            sleep 1
+        fi
+    fi
+    
+    # Kill processes on the port
     kill_port $VITE_PORT
     
-    # Also kill any npm/node processes that might be hanging
-    pkill -f "vite" 2>/dev/null
-    pkill -f "node.*vite" 2>/dev/null
+    # Kill any npm/node processes related to this project
+    print_status "Cleaning up related processes..."
     
-    # Clean up PID file
+    # Find and kill processes with the project directory in their command
+    ps aux | grep -E "node.*$PROJECT_DIR" | grep -v grep | awk '{print $2}' | xargs -r kill -9 2>/dev/null
+    ps aux | grep -E "npm.*$PROJECT_DIR" | grep -v grep | awk '{print $2}' | xargs -r kill -9 2>/dev/null
+    
+    # Kill vite processes
+    pkill -f "vite.*$VITE_PORT" 2>/dev/null
+    pkill -f "vite.*$PROJECT_DIR" 2>/dev/null
+    pkill -f "node.*vite.*$VITE_PORT" 2>/dev/null
+    
+    # Additional cleanup for processes that might be holding the port
+    # Use fuser if available (more reliable)
+    if command -v fuser &> /dev/null; then
+        fuser -k $VITE_PORT/tcp 2>/dev/null
+    fi
+    
+    # Clean up PID file and logs
     rm -f "$PROJECT_DIR/.vite.pid" 2>/dev/null
+    
+    # Give processes time to fully terminate
+    sleep 1
+    
+    # Verify the port is free
+    if check_port $VITE_PORT; then
+        print_warning "Port $VITE_PORT still in use, attempting forceful cleanup..."
+        # Try one more time with more aggressive approach
+        fuser -k -KILL $VITE_PORT/tcp 2>/dev/null
+        sleep 1
+    fi
     
     print_success "Vite server stopped"
 }
@@ -189,19 +253,38 @@ show_status() {
     
     # Check Vite
     if check_port $VITE_PORT; then
-        print_success "Vite server is running"
+        print_success "Vite server is running on port $VITE_PORT"
         echo "  📍 URL: http://localhost:$VITE_PORT"
+        
+        # Show PID file info
         if [ -f "$PROJECT_DIR/.vite.pid" ]; then
             local pid=$(cat "$PROJECT_DIR/.vite.pid")
-            echo "  🔧 PID: $pid"
+            echo "  🔧 PID from file: $pid"
             # Check if process is actually running
             if ps -p $pid > /dev/null 2>&1; then
                 local mem=$(ps -o rss= -p $pid | awk '{printf "%.1f", $1/1024}')
                 echo "  💾 Memory: ${mem}MB"
+                echo "  ✅ Process verified"
+            else
+                echo "  ⚠️  Process not found (stale PID file)"
             fi
+        else
+            echo "  ⚠️  No PID file found"
+        fi
+        
+        # Try to find actual process
+        echo ""
+        print_info "Searching for Vite processes..."
+        local vite_procs=$(ps aux | grep -E "(vite|node.*$VITE_PORT)" | grep -v grep | grep -v "$0")
+        if [ ! -z "$vite_procs" ]; then
+            echo "$vite_procs" | while read line; do
+                echo "  → $line" | cut -c1-120
+            done
+        else
+            echo "  No Vite processes found"
         fi
     else
-        print_error "Vite server is not running"
+        print_error "Vite server is not running on port $VITE_PORT"
         echo "  Run '$0 start' to start the server"
     fi
     

@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "update-assets": "node tools/watch-assets.cjs",
+    "watch-assets": "node tools/watch-assets.cjs --watch"
   },
   "keywords": [
     "voxel",
@@ -22,6 +24,7 @@
   },
   "devDependencies": {
     "@types/three": "^0.161.0",
+    "chokidar": "^3.6.0",
     "typescript": "^5.3.3",
     "vite": "^5.0.12"
   }

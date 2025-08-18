@@ -28,7 +28,12 @@
       "Bash(touch:*)",
       "Bash(wget:*)",
       "Bash(grep:*)",
-      "WebFetch(domain:blog.coding.kiwi)"
+      "WebFetch(domain:blog.coding.kiwi)",
+      "Bash(npm run typecheck:*)",
+      "Bash(fuser:*)",
+      "Bash(pkill:*)",
+      "Bash(npm run update-assets:*)",
+      "Bash(/home/danger/Documents/GitHub/NeverEverLand/v007/scripts/test-watch.sh:*)"
     ],
     "deny": []
   }

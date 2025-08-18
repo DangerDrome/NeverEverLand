@@ -98,6 +98,40 @@ export class ColorRegistry {
     }
     
     /**
+     * Update the color for an existing VoxelType
+     */
+    updateVoxelTypeColor(voxelType: VoxelType, newHexColor: string): void {
+        const normalizedColor = newHexColor.toUpperCase();
+        
+        // Update the type to color mapping
+        const oldColor = this.typeToColorMap.get(voxelType);
+        if (oldColor) {
+            // Remove old color mapping
+            this.colorToTypeMap.delete(oldColor);
+        }
+        
+        // Add new mappings
+        this.colorToTypeMap.set(normalizedColor, voxelType);
+        this.typeToColorMap.set(voxelType, normalizedColor);
+        
+        // Update VoxelRenderer and AssetPreviewScene with the updated color
+        if ((window as any).VoxelRenderer) {
+            (window as any).VoxelRenderer.updateCustomColors([{
+                hex: normalizedColor,
+                voxelType: voxelType
+            }]);
+        }
+        if ((window as any).AssetPreviewScene) {
+            (window as any).AssetPreviewScene.updateCustomColors([{
+                hex: normalizedColor,
+                voxelType: voxelType
+            }]);
+        }
+        
+        console.log(`Updated VoxelType ${voxelType} to color ${normalizedColor}`);
+    }
+    
+    /**
      * Get statistics about color usage
      */
     getStats(): { totalColors: number; availableSlots: number } {

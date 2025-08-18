@@ -18,7 +18,6 @@ export class StaticAssetManager implements IAssetManager {
         this.voxWriter = new VoxWriter();
         this.assetCache = new Map();
         this.initIndexedDB();
-        this.discoverAssets();
     }
     
     private async initIndexedDB(): Promise<void> {

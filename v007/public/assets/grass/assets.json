@@ -1,38 +1,50 @@
 {
   "grass": [
     {
+      "id": "grass_hill",
+      "name": "Grass Hill",
+      "description": "Grass Hill asset",
+      "file": "grass_hill.vox",
+      "size": {
+        "x": 3,
+        "y": 3,
+        "z": 3
+      },
+      "preview": "grass_hill.png"
+    },
+    {
       "id": "grass_patch",
       "name": "Grass Patch",
-      "description": "A simple 3x3 grass patch",
+      "description": "Grass Patch asset",
       "file": "grass_patch.vox",
       "size": {
         "x": 3,
-        "y": 1,
+        "y": 3,
         "z": 3
       },
       "preview": "grass_patch.png"
     },
     {
-      "id": "grass_hill",
-      "name": "Small Hill",
-      "description": "A small grassy hill",
-      "file": "grass_hill.vox",
+      "id": "grass_patch_01",
+      "name": "Grass Patch 01",
+      "description": "Grass Patch 01 asset",
+      "file": "grass_patch_01.vox",
       "size": {
-        "x": 5,
+        "x": 3,
         "y": 3,
-        "z": 5
+        "z": 3
       },
-      "preview": "grass_hill.png"
+      "preview": "grass_patch_01.png"
     },
     {
       "id": "grass_steps",
       "name": "Grass Steps",
-      "description": "Stepped grass formation",
+      "description": "Grass Steps asset",
       "file": "grass_steps.vox",
       "size": {
-        "x": 4,
+        "x": 3,
         "y": 3,
-        "z": 4
+        "z": 3
       },
       "preview": "grass_steps.png"
     }

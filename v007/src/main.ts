@@ -17,20 +17,21 @@ import { DynamicGrid } from './ui/DynamicGrid';
 import { BoxSelectionTool } from './tools/BoxSelectionTool';
 import { attachPerformanceTest } from './utils/PerformanceTest';
 import { MenuBar } from './ui/MenuBar';
-import { testBaking } from './test/TestBaking';
-import { visualBakingTest } from './test/VisualBakingTest';
-import { debugBaking } from './test/DebugBaking';
-import { testTopFaces } from './test/TestTopFaces';
-import { testPlatformFaces } from './test/TestPlatformFaces';
-import { debugBakedFaces, clearDebugArrows } from './test/DebugBakedFaces';
-import { debugMissingFaces } from './test/DebugMissingFaces';
-import { testBoundaryFaces } from './test/TestBoundaryFaces';
-import { verifyGreedyMeshing } from './test/VerifyGreedyMeshing';
-import { compareBaking } from './test/CompareBaking';
-import { testSeparatedVoxels } from './test/TestSeparatedVoxels';
-import { testBoundaryFix } from './test/TestBoundaryFix';
+import { testBaking } from './debug/TestBaking';
+import { visualBakingTest } from './debug/VisualBakingTest';
+import { debugBaking } from './debug/DebugBaking';
+import { testTopFaces } from './debug/TestTopFaces';
+import { testPlatformFaces } from './debug/TestPlatformFaces';
+import { debugBakedFaces, clearDebugArrows } from './debug/DebugBakedFaces';
+import { debugMissingFaces } from './debug/DebugMissingFaces';
+import { testBoundaryFaces } from './debug/TestBoundaryFaces';
+import { verifyGreedyMeshing } from './debug/VerifyGreedyMeshing';
+import { compareBaking } from './debug/CompareBaking';
+import { testSeparatedVoxels } from './debug/TestSeparatedVoxels';
+import { testBoundaryFix } from './debug/TestBoundaryFix';
 import { ActionLogger } from './ui/ActionLogger';
-import { testAllFaces } from './test/TestAllFaces';
+import { testAllFaces } from './debug/TestAllFaces';
+import { ColorRegistry } from './engine/ColorRegistry';
 
 // =====================================
 // settings - Customize your experience
@@ -244,60 +245,66 @@ export const settings = {
                 { name: 'Dark Blue', hex: '#1565C0' }
             ]
         },
-        pastel: {
-            name: 'Pastel',
+        earth: {
+            name: 'Earth',
             colors: [
-                // Row 1 - Neutrals
-                { name: 'Cloud', hex: '#FAFAFA' },
-                { name: 'Pearl', hex: '#F5F5F5' },
-                { name: 'Ash', hex: '#E0E0E0' },
-                { name: 'Slate', hex: '#B0BEC5' },
+                // Row 1 - Browns
+                { name: 'Dark Soil', hex: '#3E2723' },
+                { name: 'Rich Earth', hex: '#5D4037' },
+                { name: 'Clay', hex: '#795548' },
+                { name: 'Sandy Brown', hex: '#A1887F' },
                 
-                // Row 2 - Warm Pastels
-                { name: 'Blush', hex: '#FFCDD2' },
-                { name: 'Peach', hex: '#FFCCBC' },
-                { name: 'Apricot', hex: '#FFE0B2' },
-                { name: 'Cream', hex: '#FFF9C4' },
+                // Row 2 - Greens
+                { name: 'Deep Forest', hex: '#1B5E20' },
+                { name: 'Pine', hex: '#2E7D32' },
+                { name: 'Moss', hex: '#558B2F' },
+                { name: 'Sage', hex: '#689F38' },
                 
-                // Row 3 - Cool Pastels
-                { name: 'Mint', hex: '#B2DFDB' },
-                { name: 'Sky', hex: '#B3E5FC' },
-                { name: 'Lavender', hex: '#D1C4E9' },
-                { name: 'Lilac', hex: '#E1BEE7' },
+                // Row 3 - Earth Tones
+                { name: 'Terracotta', hex: '#BF360C' },
+                { name: 'Rust', hex: '#D84315' },
+                { name: 'Copper', hex: '#E65100' },
+                { name: 'Ochre', hex: '#F57C00' },
                 
-                // Row 4 - Nature Pastels
-                { name: 'Sage', hex: '#DCEDC8' },
-                { name: 'Sand', hex: '#D7CCC8' },
-                { name: 'Rose', hex: '#F8BBD0' },
-                { name: 'Coral', hex: '#FFAB91' }
+                // Row 4 - Stone
+                { name: 'Granite', hex: '#616161' },
+                { name: 'Limestone', hex: '#9E9E9E' },
+                { name: 'Sandstone', hex: '#BCAAA4' },
+                { name: 'Chalk', hex: '#D7CCC8' }
             ]
         },
-        neon: {
-            name: 'Neon',
+        skin: {
+            name: 'Skin',
             colors: [
-                // Row 1 - Black/White contrast
-                { name: 'White', hex: '#FFFFFF' },
-                { name: 'Light Gray', hex: '#BDBDBD' },
-                { name: 'Dark Gray', hex: '#616161' },
-                { name: 'Black', hex: '#212121' },
+                // Row 1 - Light Tones
+                { name: 'Porcelain', hex: '#FFF5F0' },
+                { name: 'Fair', hex: '#FFE0CC' },
+                { name: 'Light Beige', hex: '#F5DEB3' },
+                { name: 'Warm Beige', hex: '#E8C5A0' },
                 
-                // Row 2 - Neon Warm
-                { name: 'Hot Pink', hex: '#FF1744' },
-                { name: 'Electric Orange', hex: '#FF6D00' },
-                { name: 'Laser Yellow', hex: '#FFEA00' },
-                { name: 'Neon Lime', hex: '#C6FF00' },
+                // Row 2 - Medium Tones
+                { name: 'Natural', hex: '#D4A574' },
+                { name: 'Golden', hex: '#C19A6B' },
+                { name: 'Tan', hex: '#B08D57' },
+                { name: 'Bronze', hex: '#9C7A3C' },
                 
-                // Row 3 - Neon Cool
-                { name: 'Cyber Green', hex: '#00E676' },
-                { name: 'Electric Blue', hex: '#00B0FF' },
-                { name: 'Ultra Violet', hex: '#651FFF' },
-                { name: 'Neon Purple', hex: '#D500F9' },
+                // Row 3 - Deep Tones
+                { name: 'Caramel', hex: '#8D5524' },
+                { name: 'Honey', hex: '#7B4B3A' },
+                { name: 'Chocolate', hex: '#5D4037' },
+                { name: 'Coffee', hex: '#4E342E' },
                 
-                // Row 4 - Neon Mix
-                { name: 'Acid Green', hex: '#76FF03' },
-                { name: 'Cyan Glow', hex: '#00E5FF' },
-                { name: 'Magenta', hex: '#F50057' },
-                { name: 'Electric Indigo', hex: '#3D5AFE' }
+                // Row 4 - Dark Tones
+                { name: 'Mahogany', hex: '#3E2723' },
+                { name: 'Ebony', hex: '#2C1810' },
+                { name: 'Deep Brown', hex: '#1A0E08' },
+                { name: 'Onyx', hex: '#0D0605' }
+            ]
+        },
+        user: {
+            name: 'User',
+            colors: [
+                { name: 'Custom 1', hex: '#FF6B6B' }
             ]
         }
     },
@@ -646,10 +653,11 @@ class VoxelApp {
         // Setup post-processing
         this.setupPostProcessing();
         
-        // Make VoxelRenderer and AssetPreviewScene globally available
+        // Make VoxelRenderer, AssetPreviewScene, and ColorRegistry globally available
         // Colors are now managed by ColorRegistry on demand
         (window as any).VoxelRenderer = VoxelRenderer;
         (window as any).AssetPreviewScene = AssetPreviewScene;
+        (window as any).ColorRegistry = ColorRegistry;
         
         // Initialize systems
         // Always use 0.1m voxel size for high detail

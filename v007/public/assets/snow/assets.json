@@ -3,38 +3,38 @@
     {
       "id": "snow_pile",
       "name": "Snow Pile",
-      "description": "Placeholder snow asset",
+      "description": "Snow Pile asset",
       "file": "snow_pile.vox",
       "size": {
         "x": 3,
-        "y": 2,
+        "y": 3,
         "z": 3
       },
       "preview": "snow_pile.png"
     },
     {
-      "id": "snowman",
-      "name": "Snowman",
-      "description": "Placeholder snow asset",
-      "file": "snowman.vox",
-      "size": {
-        "x": 2,
-        "y": 3,
-        "z": 2
-      },
-      "preview": "snowman.png"
-    },
-    {
       "id": "snow_wall",
       "name": "Snow Wall",
-      "description": "Placeholder snow asset",
+      "description": "Snow Wall asset",
       "file": "snow_wall.vox",
       "size": {
-        "x": 4,
-        "y": 2,
-        "z": 1
+        "x": 3,
+        "y": 3,
+        "z": 3
       },
       "preview": "snow_wall.png"
+    },
+    {
+      "id": "snowman",
+      "name": "Snowman",
+      "description": "Snowman asset",
+      "file": "snowman.vox",
+      "size": {
+        "x": 3,
+        "y": 3,
+        "z": 3
+      },
+      "preview": "snowman.png"
     }
   ]
 }

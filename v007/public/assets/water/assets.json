@@ -1,13 +1,25 @@
 {
   "water": [
     {
+      "id": "water_fall",
+      "name": "Water Fall",
+      "description": "Water Fall asset",
+      "file": "water_fall.vox",
+      "size": {
+        "x": 3,
+        "y": 3,
+        "z": 3
+      },
+      "preview": "water_fall.png"
+    },
+    {
       "id": "water_pool",
       "name": "Water Pool",
-      "description": "Placeholder water asset",
+      "description": "Water Pool asset",
       "file": "water_pool.vox",
       "size": {
         "x": 3,
-        "y": 1,
+        "y": 3,
         "z": 3
       },
       "preview": "water_pool.png"
@@ -15,26 +27,14 @@
     {
       "id": "water_stream",
       "name": "Water Stream",
-      "description": "Placeholder water asset",
+      "description": "Water Stream asset",
       "file": "water_stream.vox",
       "size": {
-        "x": 5,
-        "y": 1,
-        "z": 1
+        "x": 3,
+        "y": 3,
+        "z": 3
       },
       "preview": "water_stream.png"
-    },
-    {
-      "id": "water_fall",
-      "name": "Water Fall",
-      "description": "Placeholder water asset",
-      "file": "water_fall.vox",
-      "size": {
-        "x": 1,
-        "y": 4,
-        "z": 1
-      },
-      "preview": "water_fall.png"
     }
   ]
 }

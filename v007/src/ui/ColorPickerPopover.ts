@@ -1,4 +1,5 @@
 import { VoxelType } from '../types';
+import { CustomColorPicker } from './CustomColorPicker';
 
 export interface ColorInfo {
     name: string;
@@ -19,6 +20,7 @@ export class ColorPickerPopover {
     private currentPalette: string = 'default';
     private tabContainer: HTMLElement | null = null;
     private colorContainer: HTMLElement | null = null;
+    private isEditingColor: boolean = false;
     
     constructor(colorPalettes?: any) {
         // Initialize with provided palettes or default
@@ -65,6 +67,9 @@ export class ColorPickerPopover {
             });
         }
         
+        // Load saved user palette
+        this.loadUserPalette();
+        
         // Initialize with Soft Green color from default palette
         const defaultPalette = this.palettes.get(this.currentPalette);
         if (defaultPalette && defaultPalette.colors.length > 0) {
@@ -98,24 +103,28 @@ export class ColorPickerPopover {
         this.tabContainer = document.createElement('div');
         this.tabContainer.style.cssText = `
             display: flex;
-            gap: 4px;
-            margin-bottom: 12px;
+            gap: 6px;
+            margin-bottom: 16px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            padding-bottom: 8px;
+            padding-bottom: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
         `;
         
         // Create tabs
         for (const [key, palette] of this.palettes) {
             const tab = document.createElement('button');
             tab.style.cssText = `
-                padding: 4px 12px;
-                background: ${key === this.currentPalette ? 'rgba(100, 200, 255, 0.2)' : 'transparent'};
-                border: 1px solid ${key === this.currentPalette ? 'rgba(100, 200, 255, 0.5)' : 'transparent'};
+                padding: 5px 12px;
+                background: ${key === this.currentPalette ? 'rgba(76, 175, 80, 0.2)' : 'transparent'};
+                border: 1px solid ${key === this.currentPalette ? 'rgba(76, 175, 80, 0.5)' : 'transparent'};
                 border-radius: 4px;
                 color: ${key === this.currentPalette ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.6)'};
-                font-size: 12px;
+                font-size: 13px;
+                font-weight: 500;
                 cursor: pointer;
                 transition: all 0.2s ease;
+                white-space: nowrap;
             `;
             tab.textContent = palette.name;
             
@@ -184,7 +193,7 @@ export class ColorPickerPopover {
         
         
         const popoverHeight = this.element!.offsetHeight;
-        const popoverWidth = 200; // Fixed width for color picker
+        const popoverWidth = 260; // Reduced width for 4 tabs
         
         const rect = anchorElement.getBoundingClientRect();
         let left: number;
@@ -379,7 +388,7 @@ export class ColorPickerPopover {
             background: rgba(30, 30, 30, 0.95);
             border: 1px solid rgba(255, 255, 255, 0.15);
             border-radius: 8px;
-            padding: 16px;
+            padding: 20px;
             z-index: 10000;
             display: none;
             backdrop-filter: blur(10px);
@@ -389,11 +398,11 @@ export class ColorPickerPopover {
         document.body.appendChild(this.element);
     }
     
-    private createColorSwatch(color: ColorInfo): HTMLElement {
+    private createColorSwatch(color: ColorInfo, isEditable: boolean = false): HTMLElement {
         const swatch = document.createElement('div');
         swatch.style.cssText = `
-            width: 36px;
-            height: 36px;
+            width: 42px;
+            height: 42px;
             border-radius: 50%;
             cursor: pointer;
             position: relative;
@@ -403,6 +412,11 @@ export class ColorPickerPopover {
             overflow: hidden;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         `;
+        
+        // Add class for styling if editable
+        if (isEditable) {
+            swatch.classList.add('user-color-swatch');
+        }
         
         // Inner color div
         const colorDiv = document.createElement('div');
@@ -466,15 +480,29 @@ export class ColorPickerPopover {
         // Click handler
         swatch.addEventListener('click', (e) => {
             e.stopPropagation();
-            this.selectedColor = color;
-            if (this.onSelectCallback) {
-                this.onSelectCallback(color);
+            if (isEditable && e.shiftKey) {
+                // Shift+click to delete color
+                this.deleteColor(color);
+            } else {
+                this.selectedColor = color;
+                if (this.onSelectCallback) {
+                    this.onSelectCallback(color);
+                }
+                this.hide();
             }
-            this.hide();
         });
         
+        // Right-click handler for editing (User palette only)
+        if (isEditable) {
+            swatch.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.editColor(color, e);
+            });
+        }
+        
         // Tooltip
-        swatch.title = color.name;
+        swatch.title = isEditable ? `${color.name}\nRight-click to edit\nShift+click to delete` : color.name;
         
         return swatch;
     }
@@ -491,8 +519,9 @@ export class ColorPickerPopover {
     private handleClickOutside = (e: MouseEvent): void => {
         const target = e.target as HTMLElement;
         const isColorPaletteButton = target.closest('#color-palette-button');
+        const isCustomColorPicker = target.closest('.custom-color-picker');
         
-        if (this.element && !this.element.contains(target) && !isColorPaletteButton) {
+        if (this.element && !this.element.contains(target) && !isColorPaletteButton && !isCustomColorPicker && !this.isEditingColor) {
             this.hide();
         }
     };
@@ -515,9 +544,10 @@ export class ColorPickerPopover {
         const grid = document.createElement('div');
         grid.style.cssText = `
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 8px;
+            grid-template-columns: repeat(4, 42px);
+            gap: 24px;
             padding: 0;
+            justify-content: center;
         `;
         
         // Get current palette
@@ -526,8 +556,14 @@ export class ColorPickerPopover {
         
         // Add color swatches
         for (const color of currentPalette.colors) {
-            const swatch = this.createColorSwatch(color);
+            const swatch = this.createColorSwatch(color, this.currentPalette === 'user');
             grid.appendChild(swatch);
+        }
+        
+        // Add + button for user palette
+        if (this.currentPalette === 'user' && currentPalette.colors.length < 16) {
+            const addButton = this.createAddButton();
+            grid.appendChild(addButton);
         }
         
         this.colorContainer.appendChild(grid);
@@ -549,8 +585,8 @@ export class ColorPickerPopover {
             tabs.forEach((tab, index) => {
                 const key = Array.from(this.palettes.keys())[index];
                 if (key === paletteKey) {
-                    tab.style.background = 'rgba(100, 200, 255, 0.2)';
-                    tab.style.border = '1px solid rgba(100, 200, 255, 0.5)';
+                    tab.style.background = 'rgba(76, 175, 80, 0.2)';
+                    tab.style.border = '1px solid rgba(76, 175, 80, 0.5)';
                     tab.style.color = 'rgba(255, 255, 255, 0.9)';
                 } else {
                     tab.style.background = 'transparent';
@@ -565,5 +601,222 @@ export class ColorPickerPopover {
         
         // DON'T update VoxelRenderer or AssetPreviewScene colors
         // This ensures existing voxels keep their original colors
+    }
+    
+    private createAddButton(): HTMLElement {
+        const addButton = document.createElement('div');
+        addButton.style.cssText = `
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.2s ease;
+            border: 2px dashed rgba(255, 255, 255, 0.3);
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 24px;
+            font-weight: 300;
+        `;
+        
+        addButton.innerHTML = '+';
+        addButton.title = 'Add new color';
+        
+        // Hover effect
+        addButton.addEventListener('mouseenter', () => {
+            addButton.style.borderColor = 'rgba(255, 255, 255, 0.6)';
+            addButton.style.color = 'rgba(255, 255, 255, 0.9)';
+            addButton.style.transform = 'scale(1.1)';
+        });
+        
+        addButton.addEventListener('mouseleave', () => {
+            addButton.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+            addButton.style.color = 'rgba(255, 255, 255, 0.6)';
+            addButton.style.transform = 'scale(1)';
+        });
+        
+        // Click handler
+        addButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.addNewColor();
+        });
+        
+        return addButton;
+    }
+    
+    private addNewColor(): void {
+        const userPalette = this.palettes.get('user');
+        if (!userPalette) return;
+        
+        // Generate a random color
+        const randomColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+        const newColor: ColorInfo = {
+            name: `Custom ${userPalette.colors.length + 1}`,
+            hex: randomColor
+        };
+        
+        // Get VoxelType for this new color
+        const colorRegistry = (window as any).ColorRegistry?.getInstance();
+        if (colorRegistry) {
+            const voxelType = colorRegistry.getOrCreateVoxelType(randomColor);
+            if (voxelType) {
+                newColor.voxelType = voxelType;
+            }
+        }
+        
+        // Add to palette
+        userPalette.colors.push(newColor);
+        
+        // Refresh display
+        this.displayPalette();
+        
+        // Save to localStorage
+        this.saveUserPalette();
+    }
+    
+    private editColor(color: ColorInfo, event?: MouseEvent): void {
+        if (!event || !(event.target instanceof HTMLElement)) return;
+        
+        this.isEditingColor = true;
+        const picker = new CustomColorPicker(color.hex);
+        
+        picker.show(event.target, (newColor) => {
+            // Store the old VoxelType before changing the color
+            const oldVoxelType = color.voxelType;
+            color.hex = newColor;
+            
+            // Keep the same VoxelType when editing
+            if (oldVoxelType !== undefined) {
+                color.voxelType = oldVoxelType;
+                
+                // Update the ColorRegistry with the new color for this VoxelType
+                const colorRegistry = (window as any).ColorRegistry?.getInstance();
+                if (colorRegistry) {
+                    colorRegistry.updateVoxelTypeColor(oldVoxelType, newColor);
+                    
+                    // Trigger voxel engine update to re-render with new colors
+                    const app = (window as any).app;
+                    if (app && app.getVoxelEngine()) {
+                        app.getVoxelEngine().updateInstances();
+                    }
+                }
+            }
+            
+            // If this is the currently selected color, update it and notify
+            if (this.selectedColor === color && this.onSelectCallback) {
+                this.onSelectCallback(color);
+            }
+            
+            // Refresh display
+            this.displayPalette();
+            
+            // Save to localStorage
+            this.saveUserPalette();
+        });
+        
+        // Add a listener to know when the picker is closed
+        const checkPickerClosed = setInterval(() => {
+            const pickerElement = document.querySelector('.custom-color-picker');
+            if (!pickerElement) {
+                this.isEditingColor = false;
+                clearInterval(checkPickerClosed);
+            }
+        }, 100);
+    }
+    
+    private deleteColor(color: ColorInfo): void {
+        const userPalette = this.palettes.get('user');
+        if (!userPalette) return;
+        
+        // Don't allow deleting the last color
+        if (userPalette.colors.length <= 1) {
+            alert('Cannot delete the last color. The User palette must have at least one color.');
+            return;
+        }
+        
+        // Check if we're deleting the currently selected color
+        const isDeletingSelected = this.selectedColor === color;
+        
+        // Find and remove the color
+        const index = userPalette.colors.findIndex(c => c === color);
+        if (index !== -1) {
+            userPalette.colors.splice(index, 1);
+            
+            // Rename remaining colors to maintain sequential numbering
+            userPalette.colors.forEach((c, i) => {
+                if (c.name.startsWith('Custom ')) {
+                    c.name = `Custom ${i + 1}`;
+                }
+            });
+            
+            // If we deleted the selected color, select the first available color
+            if (isDeletingSelected && userPalette.colors.length > 0) {
+                this.selectedColor = userPalette.colors[0];
+                if (this.onSelectCallback) {
+                    this.onSelectCallback(this.selectedColor);
+                }
+            }
+            
+            // Refresh display
+            this.displayPalette();
+            
+            // Save to localStorage
+            this.saveUserPalette();
+        }
+    }
+    
+    private saveUserPalette(): void {
+        const userPalette = this.palettes.get('user');
+        if (userPalette) {
+            // Save colors with their VoxelTypes
+            const colorsToSave = userPalette.colors.map(color => ({
+                name: color.name,
+                hex: color.hex,
+                voxelType: color.voxelType
+            }));
+            localStorage.setItem('userColorPalette', JSON.stringify(colorsToSave));
+        }
+    }
+    
+    private loadUserPalette(): void {
+        const saved = localStorage.getItem('userColorPalette');
+        if (saved) {
+            try {
+                const colors = JSON.parse(saved);
+                const userPalette = this.palettes.get('user');
+                if (userPalette) {
+                    // Load colors and re-establish VoxelTypes
+                    userPalette.colors = colors.map((color: any) => {
+                        const colorInfo: ColorInfo = {
+                            name: color.name,
+                            hex: color.hex
+                        };
+                        
+                        // If the color had a VoxelType saved, try to get or recreate it
+                        if (color.voxelType !== undefined) {
+                            const colorRegistry = (window as any).ColorRegistry?.getInstance();
+                            if (colorRegistry) {
+                                // Try to get existing VoxelType for this color
+                                let voxelType = colorRegistry.getVoxelType(color.hex);
+                                if (!voxelType) {
+                                    // If not found, create a new one
+                                    voxelType = colorRegistry.getOrCreateVoxelType(color.hex);
+                                }
+                                if (voxelType) {
+                                    colorInfo.voxelType = voxelType;
+                                }
+                            }
+                        }
+                        
+                        return colorInfo;
+                    });
+                }
+            } catch (e) {
+                console.error('Failed to load user palette:', e);
+            }
+        }
     }
 }
