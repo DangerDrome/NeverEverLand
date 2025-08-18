@@ -1285,8 +1285,10 @@ export class DrawingSystem {
             this.boxState = 'idle';
             this.boxPreviewY = 0;
             this.clearToolPreviews();
-            const logger = ActionLogger.getInstance();
-            logger.log('Box tool cancelled');
+            import('../ui/ActionLogger').then(({ ActionLogger }) => {
+                const logger = ActionLogger.getInstance();
+                logger.log('Box tool cancelled');
+            });
         }
     }
     

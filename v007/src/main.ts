@@ -1308,7 +1308,7 @@ class VoxelApp {
                     // Box and Line tools handle their own clicks
                     const hit = this.voxelEngine.raycast(this.raycaster);
                     if (hit) {
-                        const mode = this.drawingSystem.toolMode === 'eraser' ? 'remove' : 'add';
+                        const mode = 'add'; // Box and line tools always add
                         this.drawingSystem.startDrawing(hit, mode, event.shiftKey);
                         // Disable controls during box/line tool usage to prevent accidental tumbling
                         if (this.controls) this.controls.enabled = false;
@@ -1413,7 +1413,7 @@ class VoxelApp {
                         this.drawingSystem.endFillSelection(this.camera, this.scene);
                         
                         // Perform single voxel fill
-                        const hit = this.voxelEngine.raycast(this.raycaster);
+                        const hit = this.voxelEngine?.raycast(this.raycaster);
                         if (hit && hit.voxelPos) {
                             // Fill the voxel we're hovering over, not the adjacent position
                             const pos = hit.voxelPos;

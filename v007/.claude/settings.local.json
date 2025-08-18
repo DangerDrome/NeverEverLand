@@ -33,7 +33,9 @@
       "Bash(fuser:*)",
       "Bash(pkill:*)",
       "Bash(npm run update-assets:*)",
-      "Bash(/home/danger/Documents/GitHub/NeverEverLand/v007/scripts/test-watch.sh:*)"
+      "Bash(/home/danger/Documents/GitHub/NeverEverLand/v007/scripts/test-watch.sh:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": []
   }
