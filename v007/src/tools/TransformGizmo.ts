@@ -23,15 +23,23 @@ export class TransformGizmo {
         z: THREE.Mesh;
     } | null = null;
     
+    // Invisible hit zones for rotation (larger than visual)
+    private rotateHitZones: {
+        x: THREE.Mesh;
+        y: THREE.Mesh;
+        z: THREE.Mesh;
+    } | null = null;
+    
     // Store original ring parameters
     private readonly ringRadius = 4.5;
-    private readonly ringTubeRadius = 0.06;  // Slightly thicker for better hit detection
-    private readonly ringTubeRadiusHover = 0.15;
-    private readonly ringTubeRadiusActive = 0.06;  // Same as default when actively rotating
+    private readonly ringTubeRadius = 0.08;  // Visual thickness
+    private readonly ringTubeRadiusHover = 0.15;   // Thicker on hover
+    private readonly ringTubeRadiusActive = 0.08;  // Same as default when actively rotating
+    private readonly ringHitZoneRadius = 0.25;  // Much larger hit zone
     
     // Arrow parameters
     private readonly arrowLength = 2;
-    private readonly arrowWidth = 0.06;  // Match ring thickness exactly
+    private readonly arrowWidth = 0.08;  // Match visual ring thickness
     private readonly coneHeight = 0.4;
     private readonly coneRadius = 0.25;
     
@@ -48,6 +56,10 @@ export class TransformGizmo {
     // Rotation indicator
     private rotationIndicator: THREE.Mesh | null = null;
     private currentRotation: number = 0;
+    private displayRotation: number = 0;
+    private rotationAnimationStart: number = 0;
+    private rotationAnimationTarget: number = 0;
+    private rotationAnimationTime: number = 0;
     
     // Colors for axes
     private readonly colors = {
@@ -124,25 +136,37 @@ export class TransformGizmo {
      * Create rotate gizmo with circular arcs
      */
     private createRotateGizmo(): void {
-        // Create torus for each axis
+        // Create visible torus for each axis
         this.rotateArcs = {
             x: this.createRotateRing(this.ringRadius, this.ringTubeRadius, this.colors.x),
             y: this.createRotateRing(this.ringRadius, this.ringTubeRadius, this.colors.y),
             z: this.createRotateRing(this.ringRadius, this.ringTubeRadius, this.colors.z)
         };
         
-        // Rotate rings to align with axes
+        // Create invisible hit zones (larger)
+        this.rotateHitZones = {
+            x: this.createRotateHitZone(this.ringRadius, this.ringHitZoneRadius),
+            y: this.createRotateHitZone(this.ringRadius, this.ringHitZoneRadius),
+            z: this.createRotateHitZone(this.ringRadius, this.ringHitZoneRadius)
+        };
+        
+        // Rotate rings and hit zones to align with axes
         // X ring (red) - rotates around X axis, so ring is in YZ plane
         this.rotateArcs.x.rotation.y = Math.PI / 2;
         this.rotateArcs.x.userData = { axis: 'x' };
+        this.rotateHitZones.x.rotation.y = Math.PI / 2;
+        this.rotateHitZones.x.userData = { axis: 'x' };
         
         // Y ring (green) - rotates around Y axis, so ring is in XZ plane (default orientation)
         this.rotateArcs.y.rotation.x = Math.PI / 2;
         this.rotateArcs.y.userData = { axis: 'y' };
+        this.rotateHitZones.y.rotation.x = Math.PI / 2;
+        this.rotateHitZones.y.userData = { axis: 'y' };
         
         // Z ring (blue) - rotates around Z axis, so ring is in XY plane
         // No rotation needed as torus default is in XY plane
         this.rotateArcs.z.userData = { axis: 'z' };
+        this.rotateHitZones.z.userData = { axis: 'z' };
     }
     
     /**
@@ -153,7 +177,22 @@ export class TransformGizmo {
         const material = new THREE.MeshBasicMaterial({
             color: color,
             transparent: true,
-            opacity: 0.5,
+            opacity: 0.7,  // Increased opacity for better visibility
+            depthTest: false,
+            depthWrite: false,
+            side: THREE.DoubleSide
+        });
+        
+        return new THREE.Mesh(geometry, material);
+    }
+    
+    /**
+     * Create an invisible hit zone for rotation
+     */
+    private createRotateHitZone(radius: number, tubeRadius: number): THREE.Mesh {
+        const geometry = new THREE.TorusGeometry(radius, tubeRadius, 8, 32);
+        const material = new THREE.MeshBasicMaterial({
+            visible: false,  // Invisible
             depthTest: false,
             depthWrite: false,
             side: THREE.DoubleSide
@@ -183,16 +222,22 @@ export class TransformGizmo {
         this.gizmoGroup.userData.showRotation = showRotation;
         
         // Only add rotation handles if requested
-        if (showRotation && this.rotateArcs) {
+        if (showRotation && this.rotateArcs && this.rotateHitZones) {
             // Make rotate arcs slightly larger to surround arrows
             const scale = 1.0;
             this.rotateArcs.x.scale.setScalar(scale);
             this.rotateArcs.y.scale.setScalar(scale);
             this.rotateArcs.z.scale.setScalar(scale);
             
+            // Add visible rings
             this.gizmoGroup.add(this.rotateArcs.x);
             this.gizmoGroup.add(this.rotateArcs.y);
             this.gizmoGroup.add(this.rotateArcs.z);
+            
+            // Add invisible hit zones
+            this.gizmoGroup.add(this.rotateHitZones.x);
+            this.gizmoGroup.add(this.rotateHitZones.y);
+            this.gizmoGroup.add(this.rotateHitZones.z);
         }
         
         this.scene.add(this.gizmoGroup);
@@ -260,16 +305,16 @@ export class TransformGizmo {
                 
                 if (object && object.userData.axis) {
                     const axis = object.userData.axis as GizmoAxis;
-                    this.highlightAxis(axis, 'move');
+                    this.highlightAxis(axis, 'move', false, true); // Pass true for hover
                     return { axis, operation: 'move' };
                 }
             }
         }
         
-        // Check rotate arcs
-        if (this.rotateArcs) {
-            const arcObjects = [this.rotateArcs.x, this.rotateArcs.y, this.rotateArcs.z];
-            const arcIntersects = raycaster.intersectObjects(arcObjects, false);
+        // Check rotate hit zones (not visible arcs)
+        if (this.rotateHitZones) {
+            const hitZoneObjects = [this.rotateHitZones.x, this.rotateHitZones.y, this.rotateHitZones.z];
+            const arcIntersects = raycaster.intersectObjects(hitZoneObjects, false);
             
             if (arcIntersects.length > 0) {
                 const object = arcIntersects[0].object;
@@ -322,11 +367,20 @@ export class TransformGizmo {
                 this.gizmoGroup.remove(this.moveArrows.z);
             }
             
-            // Hide other rotation rings
-            if (this.rotateArcs) {
-                if (axis !== 'x') this.gizmoGroup.remove(this.rotateArcs.x);
-                if (axis !== 'y') this.gizmoGroup.remove(this.rotateArcs.y);
-                if (axis !== 'z') this.gizmoGroup.remove(this.rotateArcs.z);
+            // Hide other rotation rings and hit zones
+            if (this.rotateArcs && this.rotateHitZones) {
+                if (axis !== 'x') {
+                    this.gizmoGroup.remove(this.rotateArcs.x);
+                    this.gizmoGroup.remove(this.rotateHitZones.x);
+                }
+                if (axis !== 'y') {
+                    this.gizmoGroup.remove(this.rotateArcs.y);
+                    this.gizmoGroup.remove(this.rotateHitZones.y);
+                }
+                if (axis !== 'z') {
+                    this.gizmoGroup.remove(this.rotateArcs.z);
+                    this.gizmoGroup.remove(this.rotateHitZones.z);
+                }
             }
             
             this.showRotationIndicator(axis);
@@ -391,7 +445,7 @@ export class TransformGizmo {
             } else if (this.selectedAxis === 'y') {
                 // Y-axis rotation (green ring) - rotates in XZ plane
                 // Use the component perpendicular to the axis
-                angle = (delta.x - delta.z) * sensitivity;
+                angle = -(delta.x - delta.z) * sensitivity;  // Inverted
                 rotationDelta.y = angle;
             } else if (this.selectedAxis === 'z') {
                 // Z-axis rotation (blue ring) - rotates in XY plane
@@ -414,6 +468,7 @@ export class TransformGizmo {
                 rotationDelta.z = 0;
             }
             
+            // Update rotation indicator with current angle (it will snap internally)
             this.updateRotationIndicator(this.currentRotation);
             
             console.log(`TransformGizmo rotation: axis=${this.selectedAxis}, delta=${rotationDelta.x.toFixed(4)}, ${rotationDelta.y.toFixed(4)}, ${rotationDelta.z.toFixed(4)}`);
@@ -475,8 +530,8 @@ export class TransformGizmo {
                 ringColor = this.colors[axis]; // Normal axis color
             }
             (arc.material as THREE.MeshBasicMaterial).color.set(ringColor);
-            // Increase opacity slightly when highlighted
-            (arc.material as THREE.MeshBasicMaterial).opacity = (selected || isHover) ? 0.8 : 0.5;
+            // Increase opacity when highlighted
+            (arc.material as THREE.MeshBasicMaterial).opacity = (selected || isHover) ? 0.9 : 0.7;
             
             // Create thicker ring only on hover, not when selected (dragging)
             const shouldThicken = isHover && !selected;
@@ -519,7 +574,7 @@ export class TransformGizmo {
                 
                 arcs.forEach(({ mesh, color }) => {
                     (mesh.material as THREE.MeshBasicMaterial).color.set(color);
-                    (mesh.material as THREE.MeshBasicMaterial).opacity = 0.5;
+                    (mesh.material as THREE.MeshBasicMaterial).opacity = 0.7;
                     
                     // Reset to thin ring
                     const newGeometry = new THREE.TorusGeometry(this.ringRadius, this.ringTubeRadius, 8, 32);
@@ -561,6 +616,27 @@ export class TransformGizmo {
     updateRotationIndicator(angle: number): void {
         if (!this.selectedAxis) return;
         
+        this.currentRotation = angle;
+        
+        // Just update the visual directly with the current angle
+        this.updateRotationIndicatorVisual(angle);
+    }
+    
+    
+    /**
+     * Update rotation indicator visual
+     */
+    updateRotationIndicatorVisual(displayAngle: number): void {
+        if (!this.selectedAxis) return;
+        
+        // Skip update if angle hasn't changed significantly (increase threshold for smoother dragging)
+        // Use larger threshold to prevent flicker during fast dragging
+        if (this.rotationIndicator && Math.abs(displayAngle - this.displayRotation) < 0.05) {
+            return;
+        }
+        
+        this.displayRotation = displayAngle;
+        
         // Remove old indicator
         if (this.rotationIndicator) {
             this.gizmoGroup.remove(this.rotationIndicator);
@@ -569,32 +645,48 @@ export class TransformGizmo {
             this.rotationIndicator = null;
         }
         
-        // Snap to 90-degree intervals
-        const snapAngle = Math.PI / 2; // 90 degrees
-        const snappedAngle = Math.round(angle / snapAngle) * snapAngle;
+        // Calculate starting angle based on camera orientation (12 o'clock)
+        let startAngle = 0;
+        if (this.selectedAxis === 'x') {
+            // For X axis (red ring in YZ plane), 12 o'clock is +Y direction
+            startAngle = Math.PI / 2;
+        } else if (this.selectedAxis === 'y') {
+            // For Y axis (green ring in XZ plane), 12 o'clock is -Z direction  
+            startAngle = Math.PI;
+        } else if (this.selectedAxis === 'z') {
+            // For Z axis (blue ring in XY plane), 12 o'clock is +Y direction
+            startAngle = Math.PI / 2;
+        }
         
-        // Create pie slice geometry - use snapped angle for the indicator
+        // Create pie slice geometry
         const shape = new THREE.Shape();
         const centerRadius = this.ringRadius * 0.3;
         const outerRadius = this.ringRadius * 0.85;
         
-        // Start from 0 degrees
-        shape.moveTo(centerRadius, 0);
-        shape.lineTo(outerRadius, 0);
+        // Start from camera's 12 o'clock position
+        const startX = Math.cos(startAngle) * centerRadius;
+        const startY = Math.sin(startAngle) * centerRadius;
+        shape.moveTo(startX, startY);
         
-        // Draw arc
-        const segments = Math.max(16, Math.floor(Math.abs(snappedAngle) / (Math.PI / 8)));
+        const outerStartX = Math.cos(startAngle) * outerRadius;
+        const outerStartY = Math.sin(startAngle) * outerRadius;
+        shape.lineTo(outerStartX, outerStartY);
+        
+        // Draw arc from start angle to end angle
+        const endAngle = startAngle + displayAngle;
+        const segments = Math.max(16, Math.floor(Math.abs(displayAngle) / (Math.PI / 16)));
+        
         for (let i = 1; i <= segments; i++) {
-            const a = (snappedAngle / segments) * i;
+            const a = startAngle + (displayAngle / segments) * i;
             shape.lineTo(Math.cos(a) * outerRadius, Math.sin(a) * outerRadius);
         }
         
         // Complete the pie slice
-        shape.lineTo(Math.cos(snappedAngle) * centerRadius, Math.sin(snappedAngle) * centerRadius);
+        shape.lineTo(Math.cos(endAngle) * centerRadius, Math.sin(endAngle) * centerRadius);
         
         // Draw inner arc back to start
         for (let i = segments - 1; i >= 0; i--) {
-            const a = (snappedAngle / segments) * i;
+            const a = startAngle + (displayAngle / segments) * i;
             shape.lineTo(Math.cos(a) * centerRadius, Math.sin(a) * centerRadius);
         }
         
@@ -603,12 +695,13 @@ export class TransformGizmo {
         // Create geometry from shape
         const geometry = new THREE.ShapeGeometry(shape);
         
-        // Use axis color instead of generic colors
+        // Use axis color with snap indication
         const axisColor = this.colors[this.selectedAxis];
+        const isSnapped = Math.abs(displayAngle % (Math.PI / 2)) < 0.01;
         const material = new THREE.MeshBasicMaterial({
             color: axisColor,
             transparent: true,
-            opacity: 0.6,
+            opacity: 0.6,  // Keep constant opacity regardless of snap
             side: THREE.DoubleSide,
             depthTest: false,
             depthWrite: false
@@ -626,7 +719,6 @@ export class TransformGizmo {
         // Z axis needs no rotation
         
         this.gizmoGroup.add(this.rotationIndicator);
-        this.currentRotation = angle;
     }
     
     /**
@@ -639,6 +731,11 @@ export class TransformGizmo {
             (this.rotationIndicator.material as THREE.Material).dispose();
             this.rotationIndicator = null;
         }
+        
+        // Reset animation state
+        this.displayRotation = 0;
+        this.rotationAnimationStart = 0;
+        this.rotationAnimationTarget = 0;
     }
     
     /**
@@ -646,6 +743,13 @@ export class TransformGizmo {
      */
     getCurrentRotation(): number {
         return this.currentRotation;
+    }
+    
+    /**
+     * Get selected axis for external use
+     */
+    getSelectedAxis(): GizmoAxis {
+        return this.selectedAxis;
     }
     
     /**
@@ -664,10 +768,15 @@ export class TransformGizmo {
         
         // Restore rotation rings if we have more than one selected voxel
         const showRotation = this.gizmoGroup.userData.showRotation ?? true;
-        if (showRotation && this.rotateArcs) {
+        if (showRotation && this.rotateArcs && this.rotateHitZones) {
             this.gizmoGroup.add(this.rotateArcs.x);
             this.gizmoGroup.add(this.rotateArcs.y);
             this.gizmoGroup.add(this.rotateArcs.z);
+            
+            // Also restore hit zones
+            this.gizmoGroup.add(this.rotateHitZones.x);
+            this.gizmoGroup.add(this.rotateHitZones.y);
+            this.gizmoGroup.add(this.rotateHitZones.z);
         }
     }
     

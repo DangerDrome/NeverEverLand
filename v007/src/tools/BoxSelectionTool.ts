@@ -46,6 +46,16 @@ export class BoxSelectionTool {
     private transformOffset: THREE.Vector3 = new THREE.Vector3();
     private transformRotation: THREE.Euler = new THREE.Euler();
     
+    // Animation state for rotation
+    private animationStartTime: number = 0;
+    private animationDuration: number = 300; // milliseconds - slower for smoother feel
+    private animatingRotation: boolean = false;
+    private previousSnappedRotation: THREE.Euler = new THREE.Euler();
+    private targetSnappedRotation: THREE.Euler = new THREE.Euler();
+    
+    // Pivot voxel for rotation (the one that stays fixed)
+    private pivotVoxel: { x: number; y: number; z: number } | null = null;
+    
     // Click detection for single/double click
     private lastClickTime: number = 0;
     private lastClickedVoxel: { x: number; y: number; z: number } | null = null;
@@ -396,7 +406,7 @@ export class BoxSelectionTool {
     }
     
     /**
-     * Get the center of selected voxels
+     * Get the center of selected voxels - snapped to nearest voxel position
      */
     private getSelectionCenter(): THREE.Vector3 {
         if (this.selectedVoxels.length === 0) {
@@ -404,18 +414,39 @@ export class BoxSelectionTool {
         }
         
         const voxelSize = this.voxelEngine.getVoxelSize();
-        let sumX = 0, sumY = 0, sumZ = 0;
+        
+        // Calculate the average center in voxel coordinates
+        let avgX = 0, avgY = 0, avgZ = 0;
+        for (const voxel of this.selectedVoxels) {
+            avgX += voxel.x;
+            avgY += voxel.y;
+            avgZ += voxel.z;
+        }
+        avgX /= this.selectedVoxels.length;
+        avgY /= this.selectedVoxels.length;
+        avgZ /= this.selectedVoxels.length;
+        
+        // Find the voxel closest to this average center
+        let closestVoxel = this.selectedVoxels[0];
+        let minDistance = Infinity;
         
         for (const voxel of this.selectedVoxels) {
-            sumX += voxel.x;
-            sumY += voxel.y;
-            sumZ += voxel.z;
+            const dx = voxel.x - avgX;
+            const dy = voxel.y - avgY;
+            const dz = voxel.z - avgZ;
+            const distance = dx * dx + dy * dy + dz * dz;
+            
+            if (distance < minDistance) {
+                minDistance = distance;
+                closestVoxel = voxel;
+            }
         }
         
+        // Return the world position of the closest voxel's center
         return new THREE.Vector3(
-            (sumX / this.selectedVoxels.length) * voxelSize + voxelSize * 0.5,
-            (sumY / this.selectedVoxels.length) * voxelSize + voxelSize * 0.5,
-            (sumZ / this.selectedVoxels.length) * voxelSize + voxelSize * 0.5
+            closestVoxel.x * voxelSize + voxelSize * 0.5,
+            closestVoxel.y * voxelSize + voxelSize * 0.5,
+            closestVoxel.z * voxelSize + voxelSize * 0.5
         );
     }
     
@@ -641,11 +672,50 @@ export class BoxSelectionTool {
             this.transformOffset.set(0, 0, 0);
             this.transformRotation.set(0, 0, 0);
             
+            // Reset animation state
+            this.animatingRotation = false;
+            this.previousSnappedRotation.set(0, 0, 0);
+            this.targetSnappedRotation.set(0, 0, 0);
+            
             // Store original voxel positions for transformation
             this.originalVoxels = [...this.selectedVoxels];
             
             // Store if this is a duplication (shift+drag)
             this.isDuplicating = shiftKey;
+            
+            // Set the pivot voxel for rotation
+            if (hit.operation === 'rotate') {
+                // Calculate the average center in voxel coordinates
+                let avgX = 0, avgY = 0, avgZ = 0;
+                for (const voxel of this.selectedVoxels) {
+                    avgX += voxel.x;
+                    avgY += voxel.y;
+                    avgZ += voxel.z;
+                }
+                avgX /= this.selectedVoxels.length;
+                avgY /= this.selectedVoxels.length;
+                avgZ /= this.selectedVoxels.length;
+                
+                // Find the voxel closest to this average center
+                let closestVoxel = this.selectedVoxels[0];
+                let minDistance = Infinity;
+                
+                for (const voxel of this.selectedVoxels) {
+                    const dx = voxel.x - avgX;
+                    const dy = voxel.y - avgY;
+                    const dz = voxel.z - avgZ;
+                    const distance = dx * dx + dy * dy + dz * dz;
+                    
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closestVoxel = voxel;
+                    }
+                }
+                
+                // Set the pivot voxel
+                this.pivotVoxel = { x: closestVoxel.x, y: closestVoxel.y, z: closestVoxel.z };
+                console.log(`Pivot voxel set to: (${this.pivotVoxel.x}, ${this.pivotVoxel.y}, ${this.pivotVoxel.z})`);
+            }
             
             // Hide original voxels while moving (unless duplicating)
             if (!this.isDuplicating) {
@@ -708,38 +778,120 @@ export class BoxSelectionTool {
                 return Math.max(-maxRotation, Math.min(maxRotation, newValue));
             };
             
-            this.transformRotation.x = clampRotation(this.transformRotation.x, delta.x);
-            this.transformRotation.y = clampRotation(this.transformRotation.y, delta.y);
-            this.transformRotation.z = clampRotation(this.transformRotation.z, delta.z);
+            // Apply rotation with resistance near snap points
+            const snapAngleInterval = Math.PI / 2; // 90 degrees
+            const resistanceRange = Math.PI / 36; // 5 degrees
+            const resistanceStrength = 0.3; // How much to slow down near snap points
+            
+            // Calculate resistance factor for each axis
+            const getResistance = (currentAngle: number): number => {
+                const nearestSnap = Math.round(currentAngle / snapAngleInterval) * snapAngleInterval;
+                const distance = Math.abs(currentAngle - nearestSnap);
+                
+                if (distance < resistanceRange) {
+                    // Apply resistance (slow down movement near snap points)
+                    return 1.0 - (resistanceStrength * (1.0 - distance / resistanceRange));
+                }
+                return 1.0;
+            };
+            
+            // Apply rotation with resistance
+            this.transformRotation.x = clampRotation(this.transformRotation.x, delta.x * getResistance(this.transformRotation.x));
+            this.transformRotation.y = clampRotation(this.transformRotation.y, delta.y * getResistance(this.transformRotation.y));
+            this.transformRotation.z = clampRotation(this.transformRotation.z, delta.z * getResistance(this.transformRotation.z));
             
             console.log(`Raw rotation: X=${(this.transformRotation.x * 180 / Math.PI).toFixed(1)}°, Y=${(this.transformRotation.y * 180 / Math.PI).toFixed(1)}°, Z=${(this.transformRotation.z * 180 / Math.PI).toFixed(1)}°`);
             
-            // Snap to 90-degree intervals immediately
+            // Calculate snapped positions for tracking
             const snapAngle = Math.PI / 2; // 90 degrees
             const snappedX = Math.round(this.transformRotation.x / snapAngle) * snapAngle;
             const snappedY = Math.round(this.transformRotation.y / snapAngle) * snapAngle;
             const snappedZ = Math.round(this.transformRotation.z / snapAngle) * snapAngle;
             
-            // Check if we've crossed to a new snap position
+            // Show preview with CURRENT rotation for smooth animation
+            // But we'll show the positions where they'll snap to
+            const currentRotation = new THREE.Euler(
+                this.transformRotation.x,
+                this.transformRotation.y,
+                this.transformRotation.z
+            );
+            
+            // Apply the current rotation for smooth animation
+            this.applyTransformRealtimeWithRotation(currentRotation);
+            
+            // Always update the target snap position for when we release
+            this.targetSnappedRotation.set(snappedX, snappedY, snappedZ);
+            
+            // Log when we cross snap boundaries
             const prevSnappedX = Math.round(prevRotation.x / snapAngle) * snapAngle;
             const prevSnappedY = Math.round(prevRotation.y / snapAngle) * snapAngle;
             const prevSnappedZ = Math.round(prevRotation.z / snapAngle) * snapAngle;
             
-            // Only apply if we've crossed a snap threshold
             if (snappedX !== prevSnappedX || snappedY !== prevSnappedY || snappedZ !== prevSnappedZ) {
-                // Store the snapped values for display
-                const displayRotation = {
-                    x: snappedX,
-                    y: snappedY,
-                    z: snappedZ
-                };
-                
-                console.log(`Snapped to: X=${(snappedX * 180 / Math.PI).toFixed(0)}°, Y=${(snappedY * 180 / Math.PI).toFixed(0)}°, Z=${(snappedZ * 180 / Math.PI).toFixed(0)}°`);
-                
-                // Apply transformation with snapped values
-                this.applyTransformRealtime();
+                console.log(`Will snap to: X=${(snappedX * 180 / Math.PI).toFixed(0)}°, Y=${(snappedY * 180 / Math.PI).toFixed(0)}°, Z=${(snappedZ * 180 / Math.PI).toFixed(0)}°`);
             }
         }
+    }
+    
+    /**
+     * Animate rotation transition to snap point
+     */
+    private animateRotation(): void {
+        if (!this.animatingRotation) return;
+        
+        const currentTime = Date.now();
+        const elapsed = currentTime - this.animationStartTime;
+        const progress = Math.min(elapsed / this.animationDuration, 1);
+        
+        // Use easing function for smooth animation
+        const easeProgress = this.easeInOutCubic(progress);
+        
+        // Interpolate between previous and target rotation
+        const animatedRotation = new THREE.Euler(
+            this.previousSnappedRotation.x + (this.targetSnappedRotation.x - this.previousSnappedRotation.x) * easeProgress,
+            this.previousSnappedRotation.y + (this.targetSnappedRotation.y - this.previousSnappedRotation.y) * easeProgress,
+            this.previousSnappedRotation.z + (this.targetSnappedRotation.z - this.previousSnappedRotation.z) * easeProgress
+        );
+        
+        // Apply the animated rotation
+        this.applyTransformRealtimeWithRotation(animatedRotation);
+        
+        // Don't update the rotation indicator during animation
+        // The pie is already being updated by the dragging system in TransformGizmo
+        // which uses the raw angle. Updating it here with the snapped angle
+        // causes flicker between raw and snapped positions.
+        
+        if (progress < 1) {
+            // Continue animation
+            requestAnimationFrame(() => this.animateRotation());
+        } else {
+            // Animation complete - apply final transformation with grid snapping
+            this.animatingRotation = false;
+            
+            // Set the final rotation to the snapped target
+            this.transformRotation.copy(this.targetSnappedRotation);
+            
+            // Apply the final transformation which will snap to grid
+            this.applyTransformOnRelease();
+            
+            // Now reset everything after transformation is complete
+            this.transformMode = null;
+            this.transformOffset.set(0, 0, 0);
+            this.transformRotation.set(0, 0, 0);
+            this.originalVoxels = [];
+            this.isDuplicating = false;
+            this.previousSnappedRotation.set(0, 0, 0);
+            this.targetSnappedRotation.set(0, 0, 0);
+            this.pivotVoxel = null;
+        }
+    }
+    
+    /**
+     * Easing function for smooth animation
+     */
+    private easeInOutCubic(t: number): number {
+        // Smoother ease-in-out quartic function
+        return t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2;
     }
     
     /**
@@ -747,30 +899,51 @@ export class BoxSelectionTool {
      */
     handleGizmoMouseUp(): void {
         if (this.transformGizmo.isDraggingGizmo()) {
+            const operation = this.transformGizmo.getCurrentOperation();
             this.transformGizmo.endDrag();
             
-            // Apply the actual transformation when releasing
-            if (this.transformMode && (this.transformOffset.length() > 0.01 || 
-                Math.abs(this.transformRotation.x) > 0.01 || 
+            // For rotation, animate to snap position on release
+            if (operation === 'rotate' && (Math.abs(this.transformRotation.x) > 0.01 || 
                 Math.abs(this.transformRotation.y) > 0.01 || 
                 Math.abs(this.transformRotation.z) > 0.01)) {
-                this.applyTransformOnRelease();
+                
+                // Start animation from current rotation to snapped target
+                this.previousSnappedRotation.copy(this.transformRotation);
+                this.animationStartTime = Date.now();
+                this.animatingRotation = true;
+                
+                // Start animation loop to snap position
+                this.animateRotation();
             } else {
-                // No significant transformation, restore original voxels
-                if (!this.isDuplicating && this.originalVoxels.length > 0) {
-                    for (const voxel of this.originalVoxels) {
-                        this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, voxel.type, false);
+                // For move operations or no significant transformation
+                if (this.transformMode && (this.transformOffset.length() > 0.01 || 
+                    Math.abs(this.transformRotation.x) > 0.01 || 
+                    Math.abs(this.transformRotation.y) > 0.01 || 
+                    Math.abs(this.transformRotation.z) > 0.01)) {
+                    this.applyTransformOnRelease();
+                } else {
+                    // No significant transformation, restore original voxels
+                    if (!this.isDuplicating && this.originalVoxels.length > 0) {
+                        for (const voxel of this.originalVoxels) {
+                            this.voxelEngine.setVoxel(voxel.x, voxel.y, voxel.z, voxel.type, false);
+                        }
+                        this.voxelEngine.updateInstances();
                     }
-                    this.voxelEngine.updateInstances();
                 }
             }
             
-            // Reset for next transformation
-            this.transformMode = null;
-            this.transformOffset.set(0, 0, 0);
-            this.transformRotation.set(0, 0, 0);
-            this.originalVoxels = [];
-            this.isDuplicating = false;
+            // Only reset if we're not animating
+            if (!this.animatingRotation) {
+                // Reset for next transformation
+                this.transformMode = null;
+                this.transformOffset.set(0, 0, 0);
+                this.transformRotation.set(0, 0, 0);
+                this.originalVoxels = [];
+                this.isDuplicating = false;
+                this.previousSnappedRotation.set(0, 0, 0);
+                this.targetSnappedRotation.set(0, 0, 0);
+                this.pivotVoxel = null;
+            }
             
             // Keep the same transparency as during selection (no need to change)
             if (this.selectedVoxelsMesh) {
@@ -783,24 +956,19 @@ export class BoxSelectionTool {
     }
     
     /**
-     * Apply transformation in real-time during dragging (visual only)
+     * Apply transformation in real-time with specific rotation (for animation)
      */
-    private applyTransformRealtime(): void {
+    private applyTransformRealtimeWithRotation(rotation: THREE.Euler): void {
         if (!this.transformMode || this.originalVoxels.length === 0) return;
         
         const voxelSize = this.voxelEngine.getVoxelSize();
         
-        // Calculate center for rotation
+        // Use pivot voxel coordinates as rotation center
         let centerX = 0, centerY = 0, centerZ = 0;
-        if (this.transformMode === 'rotate') {
-            for (const voxel of this.originalVoxels) {
-                centerX += voxel.x;
-                centerY += voxel.y;
-                centerZ += voxel.z;
-            }
-            centerX /= this.originalVoxels.length;
-            centerY /= this.originalVoxels.length;
-            centerZ /= this.originalVoxels.length;
+        if (this.transformMode === 'rotate' && this.pivotVoxel) {
+            centerX = this.pivotVoxel.x;
+            centerY = this.pivotVoxel.y;
+            centerZ = this.pivotVoxel.z;
         }
         
         // Calculate new positions for PREVIEW only (don't modify actual voxels)
@@ -811,7 +979,63 @@ export class BoxSelectionTool {
             let newZ = voxel.z;
             
             if (this.transformMode === 'rotate') {
-                // Apply rotation around center using snapped values
+                // Check if this is the pivot voxel - if so, don't rotate it
+                if (this.pivotVoxel && 
+                    voxel.x === this.pivotVoxel.x && 
+                    voxel.y === this.pivotVoxel.y && 
+                    voxel.z === this.pivotVoxel.z) {
+                    // Keep pivot voxel at its original position
+                    newX = voxel.x;
+                    newY = voxel.y;
+                    newZ = voxel.z;
+                } else {
+                    // Apply rotation around pivot for other voxels
+                    const pos = new THREE.Vector3(
+                        voxel.x - centerX,
+                        voxel.y - centerY,
+                        voxel.z - centerZ
+                    );
+                    pos.applyEuler(rotation);
+                    // Don't round during rotation - keep smooth animation
+                    newX = pos.x + centerX;
+                    newY = pos.y + centerY;
+                    newZ = pos.z + centerZ;
+                }
+            }
+            
+            previewVoxels.push({ x: newX, y: newY, z: newZ, type: voxel.type });
+        }
+        
+        // Update ONLY the selection visual highlight to show new positions
+        // Don't touch actual voxels
+        this.updateSelectionPreviewAnimated(previewVoxels, rotation);
+    }
+    
+    /**
+     * Apply transformation in real-time during dragging (visual only)
+     */
+    private applyTransformRealtime(): void {
+        if (!this.transformMode || this.originalVoxels.length === 0) return;
+        
+        const voxelSize = this.voxelEngine.getVoxelSize();
+        
+        // Use pivot voxel coordinates as rotation center
+        let centerX = 0, centerY = 0, centerZ = 0;
+        if (this.transformMode === 'rotate' && this.pivotVoxel) {
+            centerX = this.pivotVoxel.x;
+            centerY = this.pivotVoxel.y;
+            centerZ = this.pivotVoxel.z;
+        }
+        
+        // Calculate new positions for PREVIEW only (don't modify actual voxels)
+        const previewVoxels: SelectedVoxel[] = [];
+        for (const voxel of this.originalVoxels) {
+            let newX = voxel.x;
+            let newY = voxel.y;
+            let newZ = voxel.z;
+            
+            if (this.transformMode === 'rotate') {
+                // Apply rotation around center using snapped values (same math as final placement)
                 const snapAngle = Math.PI / 2; // 90 degrees
                 const snappedRotation = new THREE.Euler(
                     Math.round(this.transformRotation.x / snapAngle) * snapAngle,
@@ -852,6 +1076,182 @@ export class BoxSelectionTool {
     }
     
     /**
+     * Update the visual preview with animated rotation
+     */
+    private updateSelectionPreviewAnimated(previewVoxels: SelectedVoxel[], animatedRotation: THREE.Euler): void {
+        if (!this.selectedVoxelsMesh) return;
+        
+        // Keep the same transparent overlay appearance during dragging
+        const material = this.selectedVoxelsMesh.material as THREE.MeshBasicMaterial;
+        material.color.set('rgb(255, 255, 100)'); // Yellow for rotation
+        material.transparent = true;
+        material.opacity = 0.5;
+        material.depthWrite = false;
+        
+        // Update the positions of the selection preview mesh
+        const voxelSize = this.voxelEngine.getVoxelSize();
+        const matrix = new THREE.Matrix4();
+        
+        // Use pivot voxel as center for rotation (consistent with final placement)
+        let centerX = 0, centerY = 0, centerZ = 0;
+        if (this.pivotVoxel) {
+            centerX = this.pivotVoxel.x;
+            centerY = this.pivotVoxel.y;
+            centerZ = this.pivotVoxel.z;
+        } else if (this.originalVoxels.length > 0) {
+            // Fallback to average if no pivot (shouldn't happen during rotation)
+            for (const voxel of this.originalVoxels) {
+                centerX += voxel.x;
+                centerY += voxel.y;
+                centerZ += voxel.z;
+            }
+            centerX /= this.originalVoxels.length;
+            centerY /= this.originalVoxels.length;
+            centerZ /= this.originalVoxels.length;
+        }
+        
+        for (let i = 0; i < previewVoxels.length && i < this.originalVoxels.length; i++) {
+            // Get original position IN VOXEL COORDINATES
+            const originalVoxel = this.originalVoxels[i];
+            
+            let smoothX, smoothY, smoothZ;
+            
+            // Check if this is the pivot voxel - if so, don't rotate it
+            if (this.pivotVoxel && 
+                originalVoxel.x === this.pivotVoxel.x && 
+                originalVoxel.y === this.pivotVoxel.y && 
+                originalVoxel.z === this.pivotVoxel.z) {
+                // Keep pivot voxel at its original position
+                smoothX = originalVoxel.x;
+                smoothY = originalVoxel.y;
+                smoothZ = originalVoxel.z;
+            } else {
+                // Apply rotation for non-pivot voxels
+                const originalPos = new THREE.Vector3(
+                    originalVoxel.x - centerX,
+                    originalVoxel.y - centerY,
+                    originalVoxel.z - centerZ
+                );
+                
+                // Apply animated rotation
+                originalPos.applyEuler(animatedRotation);
+                
+                // Don't round during animation - keep smooth positions
+                smoothX = originalPos.x + centerX;
+                smoothY = originalPos.y + centerY;
+                smoothZ = originalPos.z + centerZ;
+            }
+            
+            // Convert to world coordinates for display (smooth, not snapped)
+            const worldX = smoothX * voxelSize + voxelSize * 0.5;
+            const worldY = smoothY * voxelSize + voxelSize * 0.5;
+            const worldZ = smoothZ * voxelSize + voxelSize * 0.5;
+            
+            // Create matrix with smooth world position
+            matrix.makeTranslation(worldX, worldY, worldZ);
+            
+            this.selectedVoxelsMesh.setMatrixAt(i, matrix);
+        }
+        
+        this.selectedVoxelsMesh.instanceMatrix.needsUpdate = true;
+        
+        // Update outline to match animated positions
+        this.updateSelectionOutlineAnimated(animatedRotation);
+    }
+    
+    /**
+     * Update selection outline with animated rotation
+     */
+    private updateSelectionOutlineAnimated(animatedRotation: THREE.Euler): void {
+        if (!this.selectionOutline || !this.originalVoxels || this.originalVoxels.length === 0) return;
+        
+        // Remove old outline
+        this.scene.remove(this.selectionOutline);
+        const oldMaterial = (this.selectionOutline.material as THREE.Material);
+        this.selectionOutline.geometry.dispose();
+        
+        // Create new outline geometry for animated positions
+        const voxelSize = this.voxelEngine.getVoxelSize();
+        const boxGeometry = new THREE.BoxGeometry(voxelSize, voxelSize, voxelSize);
+        const edges = new THREE.EdgesGeometry(boxGeometry);
+        
+        // Use pivot voxel as center for rotation (consistent with other methods)
+        let centerX = 0, centerY = 0, centerZ = 0;
+        if (this.pivotVoxel) {
+            centerX = this.pivotVoxel.x;
+            centerY = this.pivotVoxel.y;
+            centerZ = this.pivotVoxel.z;
+        } else {
+            // Fallback to average if no pivot
+            for (const voxel of this.originalVoxels) {
+                centerX += voxel.x;
+                centerY += voxel.y;
+                centerZ += voxel.z;
+            }
+            centerX /= this.originalVoxels.length;
+            centerY /= this.originalVoxels.length;
+            centerZ /= this.originalVoxels.length;
+        }
+        
+        const positions: number[] = [];
+        
+        for (const voxel of this.originalVoxels) {
+            let smoothX, smoothY, smoothZ;
+            
+            // Check if this is the pivot voxel - if so, don't rotate it
+            if (this.pivotVoxel && 
+                voxel.x === this.pivotVoxel.x && 
+                voxel.y === this.pivotVoxel.y && 
+                voxel.z === this.pivotVoxel.z) {
+                // Keep pivot voxel at its original position
+                smoothX = voxel.x;
+                smoothY = voxel.y;
+                smoothZ = voxel.z;
+            } else {
+                // Apply rotation for non-pivot voxels
+                const originalPos = new THREE.Vector3(
+                    voxel.x - centerX,
+                    voxel.y - centerY,
+                    voxel.z - centerZ
+                );
+                
+                // Apply animated rotation
+                originalPos.applyEuler(animatedRotation);
+                
+                // Don't round during animation - keep smooth positions
+                smoothX = originalPos.x + centerX;
+                smoothY = originalPos.y + centerY;
+                smoothZ = originalPos.z + centerZ;
+            }
+            
+            // Convert to world coordinates for display (smooth, not snapped)
+            const worldX = smoothX * voxelSize + voxelSize * 0.5;
+            const worldY = smoothY * voxelSize + voxelSize * 0.5;
+            const worldZ = smoothZ * voxelSize + voxelSize * 0.5;
+            
+            // Add edge positions for this voxel
+            const edgePositions = edges.attributes.position.array;
+            for (let i = 0; i < edgePositions.length; i += 3) {
+                positions.push(edgePositions[i] + worldX);
+                positions.push(edgePositions[i + 1] + worldY);
+                positions.push(edgePositions[i + 2] + worldZ);
+            }
+        }
+        
+        // Create new line segments with updated positions
+        const outlineGeometry = new THREE.BufferGeometry();
+        outlineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        
+        this.selectionOutline = new THREE.LineSegments(outlineGeometry, oldMaterial);
+        this.selectionOutline.renderOrder = 999;
+        this.scene.add(this.selectionOutline);
+        
+        // Clean up temporary geometry
+        boxGeometry.dispose();
+        edges.dispose();
+    }
+    
+    /**
      * Update the visual preview of where selected voxels will be placed
      */
     private updateSelectionPreview(previewVoxels: SelectedVoxel[]): void {
@@ -875,11 +1275,16 @@ export class BoxSelectionTool {
         
         for (let i = 0; i < previewVoxels.length; i++) {
             const voxel = previewVoxels[i];
-            matrix.makeTranslation(
-                voxel.x * voxelSize + voxelSize * 0.5,  // Add center offset like in showSelectedVoxels
+            // The preview voxels already have the correct positions calculated
+            // Just convert to world coordinates for display
+            const worldPos = new THREE.Vector3(
+                voxel.x * voxelSize + voxelSize * 0.5,
                 voxel.y * voxelSize + voxelSize * 0.5,
                 voxel.z * voxelSize + voxelSize * 0.5
             );
+            
+            matrix.makeTranslation(worldPos.x, worldPos.y, worldPos.z);
+            
             this.selectedVoxelsMesh.setMatrixAt(i, matrix);
         }
         
@@ -929,19 +1334,30 @@ export class BoxSelectionTool {
         // Update gizmo position smoothly (not snapped)
         if (this.originalVoxels && this.originalVoxels.length > 0) {
             // Calculate the original center
-            let sumX = 0, sumY = 0, sumZ = 0;
-            for (const voxel of this.originalVoxels) {
-                sumX += voxel.x;
-                sumY += voxel.y;
-                sumZ += voxel.z;
-            }
-            
             const voxelSize = this.voxelEngine.getVoxelSize();
-            const originalCenter = new THREE.Vector3(
-                (sumX / this.originalVoxels.length) * voxelSize + voxelSize * 0.5,
-                (sumY / this.originalVoxels.length) * voxelSize + voxelSize * 0.5,
-                (sumZ / this.originalVoxels.length) * voxelSize + voxelSize * 0.5
-            );
+            let originalCenter: THREE.Vector3;
+            
+            // For rotation, use pivot voxel as center
+            if (this.transformMode === 'rotate' && this.pivotVoxel) {
+                originalCenter = new THREE.Vector3(
+                    this.pivotVoxel.x * voxelSize + voxelSize * 0.5,
+                    this.pivotVoxel.y * voxelSize + voxelSize * 0.5,
+                    this.pivotVoxel.z * voxelSize + voxelSize * 0.5
+                );
+            } else {
+                // For translation or if no pivot, use average center
+                let sumX = 0, sumY = 0, sumZ = 0;
+                for (const voxel of this.originalVoxels) {
+                    sumX += voxel.x;
+                    sumY += voxel.y;
+                    sumZ += voxel.z;
+                }
+                originalCenter = new THREE.Vector3(
+                    (sumX / this.originalVoxels.length) * voxelSize + voxelSize * 0.5,
+                    (sumY / this.originalVoxels.length) * voxelSize + voxelSize * 0.5,
+                    (sumZ / this.originalVoxels.length) * voxelSize + voxelSize * 0.5
+                );
+            }
             
             // Add the unsnapped transform offset for smooth movement
             const smoothCenter = originalCenter.clone().add(this.transformOffset);
@@ -968,6 +1384,8 @@ export class BoxSelectionTool {
         
         // Snap rotation to 90 degrees for final application
         const snapAngle = Math.PI / 2; // 90 degrees
+        
+        // Always use the current transformRotation which should already be set to the target
         const snappedRotation = new THREE.Euler(
             Math.round(this.transformRotation.x / snapAngle) * snapAngle,
             Math.round(this.transformRotation.y / snapAngle) * snapAngle,
@@ -978,22 +1396,19 @@ export class BoxSelectionTool {
             console.log(`Final rotation: X=${(snappedRotation.x * 180 / Math.PI).toFixed(0)}°, Y=${(snappedRotation.y * 180 / Math.PI).toFixed(0)}°, Z=${(snappedRotation.z * 180 / Math.PI).toFixed(0)}°`);
         }
         
-        // Calculate center for rotation
+        // Use pivot voxel as rotation center
         let centerX = 0, centerY = 0, centerZ = 0;
-        if (this.transformMode === 'rotate') {
-            for (const voxel of this.originalVoxels) {
-                centerX += voxel.x;
-                centerY += voxel.y;
-                centerZ += voxel.z;
-            }
-            centerX /= this.originalVoxels.length;
-            centerY /= this.originalVoxels.length;
-            centerZ /= this.originalVoxels.length;
+        if (this.transformMode === 'rotate' && this.pivotVoxel) {
+            centerX = this.pivotVoxel.x;
+            centerY = this.pivotVoxel.y;
+            centerZ = this.pivotVoxel.z;
         }
         
         // Calculate new positions first (without clearing anything)
         const newVoxels: SelectedVoxel[] = [];
         const positionsToCheck = new Set<string>();
+        
+        console.log(`Applying transform: ${this.originalVoxels.length} voxels, mode=${this.transformMode}`);
         
         for (const voxel of this.originalVoxels) {
             let newX = voxel.x;
@@ -1001,16 +1416,30 @@ export class BoxSelectionTool {
             let newZ = voxel.z;
             
             if (this.transformMode === 'rotate') {
-                // Apply rotation around center using snapped values
-                const pos = new THREE.Vector3(
-                    voxel.x - centerX,
-                    voxel.y - centerY,
-                    voxel.z - centerZ
-                );
-                pos.applyEuler(snappedRotation);
-                newX = Math.round(pos.x + centerX);
-                newY = Math.round(pos.y + centerY);
-                newZ = Math.round(pos.z + centerZ);
+                // Check if this is the pivot voxel - if so, don't rotate it
+                if (this.pivotVoxel && 
+                    voxel.x === this.pivotVoxel.x && 
+                    voxel.y === this.pivotVoxel.y && 
+                    voxel.z === this.pivotVoxel.z) {
+                    // Keep pivot voxel at its original position
+                    newX = voxel.x;
+                    newY = voxel.y;
+                    newZ = voxel.z;
+                    console.log(`Pivot voxel: (${voxel.x},${voxel.y},${voxel.z}) stays fixed`);
+                } else {
+                    // Apply rotation around pivot for other voxels
+                    const pos = new THREE.Vector3(
+                        voxel.x - centerX,
+                        voxel.y - centerY,
+                        voxel.z - centerZ
+                    );
+                    pos.applyEuler(snappedRotation);
+                    newX = Math.round(pos.x + centerX);
+                    newY = Math.round(pos.y + centerY);
+                    newZ = Math.round(pos.z + centerZ);
+                    
+                    console.log(`Rotated voxel: (${voxel.x},${voxel.y},${voxel.z}) -> (${newX},${newY},${newZ})`);
+                }
             }
             
             if (this.transformMode === 'move') {
