@@ -68,13 +68,21 @@ export class TransformGizmo {
     private rotationAnimationTarget: number = 0;
     private rotationAnimationTime: number = 0;
     
-    // Colors for axes
+    // Colors for axes - brighter desaturated colors
     private readonly colors = {
-        x: 'rgb(255, 100, 100)',  // Red
-        y: 'rgb(100, 255, 100)',  // Green
-        z: 'rgb(100, 100, 255)',  // Blue
-        hover: 'rgb(255, 255, 100)',  // Yellow
-        selected: 'rgb(255, 255, 255)'  // White
+        x: '#8fb4ff',    // Bright muted blue for X (swapped with Z)
+        y: '#8fff8f',    // Bright muted green for Y  
+        z: '#ff8f8f',    // Bright muted red for Z (swapped with X)
+        hover: '#ffff8f',  // Bright muted yellow for hover
+        selected: '#ffbf8f'  // Bright muted orange for selected
+    };
+    
+    // Full opacity values
+    private readonly opacities = {
+        arrow: 0.8,       // Nearly full opacity
+        ring: 0.7,        // Slightly less for rings
+        hoverArrow: 1.0,  // Full opacity when hovering
+        hoverRing: 0.9    // Nearly full when hovering
     };
     
     constructor(scene: THREE.Scene, camera: THREE.OrthographicCamera) {
@@ -85,6 +93,47 @@ export class TransformGizmo {
         
         this.createMoveGizmo();
         this.createRotateGizmo();
+    }
+    
+    /**
+     * Force refresh of gizmo materials (useful for debugging)
+     */
+    refreshMaterials(): void {
+        console.log('TransformGizmo: Refreshing materials with colors:', this.colors);
+        // Dispose old geometries and materials
+        if (this.moveArrows) {
+            Object.values(this.moveArrows).forEach(arrow => {
+                arrow.traverse((child) => {
+                    if (child instanceof THREE.Mesh) {
+                        child.geometry.dispose();
+                        if (child.material instanceof THREE.Material) {
+                            child.material.dispose();
+                        }
+                    }
+                });
+            });
+        }
+        
+        if (this.rotateArcs) {
+            Object.values(this.rotateArcs).forEach(arc => {
+                arc.geometry.dispose();
+                if (arc.material instanceof THREE.Material) {
+                    arc.material.dispose();
+                }
+            });
+        }
+        
+        // Recreate gizmos with new materials
+        this.createMoveGizmo();
+        this.createRotateGizmo();
+        
+        // If currently showing, refresh the display
+        if (this.mode === 'transform') {
+            const pos = this.position.clone();
+            const showRotation = this.gizmoGroup.userData.showRotation ?? true;
+            this.hide();
+            this.show(pos, showRotation);
+        }
     }
     
     /**
@@ -127,16 +176,19 @@ export class TransformGizmo {
      * Create a material with depth-based fading for orthographic camera
      */
     private createDepthFadeMaterial(color: string, baseOpacity: number): THREE.ShaderMaterial {
-        return new THREE.ShaderMaterial({
+        const material = new THREE.ShaderMaterial({
             uniforms: {
                 color: { value: new THREE.Color(color) },
-                baseOpacity: { value: baseOpacity }
+                baseOpacity: { value: baseOpacity },
+                glowIntensity: { value: 1.2 }
             },
             vertexShader: `
                 varying float vFade;
+                varying vec3 vViewPosition;
                 void main() {
                     // Work in view space for consistent fade
                     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    vViewPosition = mvPosition.xyz;
                     
                     // Simple depth-based fade in view space
                     // In view space: negative z = in front, positive z = behind
@@ -149,10 +201,22 @@ export class TransformGizmo {
             fragmentShader: `
                 uniform vec3 color;
                 uniform float baseOpacity;
+                uniform float glowIntensity;
                 varying float vFade;
+                varying vec3 vViewPosition;
                 
                 void main() {
-                    gl_FragColor = vec4(color, baseOpacity * vFade);
+                    // Calculate edge glow based on view angle
+                    float edgeGlow = 1.0 - abs(normalize(vViewPosition).z);
+                    edgeGlow = pow(edgeGlow, 2.0) * 0.5;
+                    
+                    // Boost color brightness with glow
+                    vec3 glowColor = color * glowIntensity + vec3(edgeGlow * 0.3);
+                    
+                    // Add slight emission effect
+                    vec3 finalColor = glowColor + color * 0.2;
+                    
+                    gl_FragColor = vec4(finalColor, baseOpacity * vFade);
                 }
             `,
             transparent: true,
@@ -160,6 +224,11 @@ export class TransformGizmo {
             depthWrite: false,
             side: THREE.DoubleSide
         });
+        
+        // Log material creation for debugging
+        console.log(`Created material with color: ${color}, opacity: ${baseOpacity}`);
+        
+        return material;
     }
     
     /**
@@ -170,7 +239,7 @@ export class TransformGizmo {
         
         // Shaft
         const shaftGeometry = new THREE.CylinderGeometry(width, width, length, 8);
-        const material = this.createDepthFadeMaterial(color, 0.8);
+        const material = this.createDepthFadeMaterial(color, this.opacities.arrow);
         const shaft = new THREE.Mesh(shaftGeometry, material);
         shaft.position.y = length / 2;
         
@@ -262,7 +331,7 @@ export class TransformGizmo {
      */
     private createRotateRing(radius: number, tubeRadius: number, color: string): THREE.Mesh {
         const geometry = new THREE.TorusGeometry(radius, tubeRadius, 16, 64);  // Doubled segments for smoother appearance
-        const material = this.createDepthFadeMaterial(color, 0.7);
+        const material = this.createDepthFadeMaterial(color, this.opacities.ring);
         
         return new THREE.Mesh(geometry, material);
     }
@@ -287,6 +356,9 @@ export class TransformGizmo {
      */
     show(position: THREE.Vector3, showRotation: boolean = true): void {
         this.hide();
+        
+        // Refresh materials to ensure colors are up to date
+        this.refreshMaterials();
         
         this.mode = 'transform';
         this.position.copy(position);
@@ -613,7 +685,11 @@ export class TransformGizmo {
             arrow.traverse((child) => {
                 if (child instanceof THREE.Mesh && child.material instanceof THREE.ShaderMaterial) {
                     child.material.uniforms.color.value.set(arrowColor);
-                    child.material.uniforms.baseOpacity.value = 1.0;
+                    child.material.uniforms.baseOpacity.value = (selected || isHover) ? this.opacities.hoverArrow : this.opacities.arrow;
+                    // Increase glow on hover
+                    if (child.material.uniforms.glowIntensity) {
+                        child.material.uniforms.glowIntensity.value = (selected || isHover) ? 1.5 : 1.2;
+                    }
                 }
             });
         } else if (operation === 'rotate' && this.rotateArcs) {
@@ -630,7 +706,11 @@ export class TransformGizmo {
             if (arc.material instanceof THREE.ShaderMaterial) {
                 arc.material.uniforms.color.value.set(ringColor);
                 // Increase opacity when highlighted
-                arc.material.uniforms.baseOpacity.value = (selected || isHover) ? 0.9 : 0.7;
+                arc.material.uniforms.baseOpacity.value = (selected || isHover) ? this.opacities.hoverRing : this.opacities.ring;
+                // Increase glow on hover
+                if (arc.material.uniforms.glowIntensity) {
+                    arc.material.uniforms.glowIntensity.value = (selected || isHover) ? 1.5 : 1.2;
+                }
             }
             
             // Create thicker ring only on hover, not when selected (dragging)
@@ -659,7 +739,11 @@ export class TransformGizmo {
                     mesh.traverse((child) => {
                         if (child instanceof THREE.Mesh && child.material instanceof THREE.ShaderMaterial) {
                             child.material.uniforms.color.value.set(color);
-                            child.material.uniforms.baseOpacity.value = 0.8;
+                            child.material.uniforms.baseOpacity.value = this.opacities.arrow;
+                            // Reset glow
+                            if (child.material.uniforms.glowIntensity) {
+                                child.material.uniforms.glowIntensity.value = 1.2;
+                            }
                         }
                     });
                 });
@@ -675,7 +759,11 @@ export class TransformGizmo {
                 arcs.forEach(({ mesh, color }) => {
                     if (mesh.material instanceof THREE.ShaderMaterial) {
                         mesh.material.uniforms.color.value.set(color);
-                        mesh.material.uniforms.baseOpacity.value = 0.7;
+                        mesh.material.uniforms.baseOpacity.value = this.opacities.ring;
+                        // Reset glow
+                        if (mesh.material.uniforms.glowIntensity) {
+                            mesh.material.uniforms.glowIntensity.value = 1.2;
+                        }
                     }
                     
                     // Reset to thin ring
