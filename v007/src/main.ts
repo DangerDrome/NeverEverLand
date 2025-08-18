@@ -1151,7 +1151,22 @@ class VoxelApp {
         }
         
         // Update preview with constrained position during drawing
-        this.drawingSystem!.updatePreview(hit, constrainedPos || undefined);
+        // But don't constrain if we're in box tool height adjustment mode
+        const isBoxHeightMode = this.drawingSystem!.toolMode === 'box' && 
+                               (this.drawingSystem as any).boxState === 'height';
+        
+        if (isBoxHeightMode) {
+            // For box height adjustment, use unconstrained position
+            // Pass raycaster to help calculate Y position
+            this.drawingSystem!.updatePreview(hit);
+            // Also need to pass raycaster for height calculation
+            if (hit) {
+                (this.drawingSystem as any).updateToolPreview(hit, this.raycaster);
+            }
+        } else {
+            // For other tools/modes, use constrained position
+            this.drawingSystem!.updatePreview(hit, constrainedPos || undefined);
+        }
         
         // Continue drawing if mouse is held down
         // event.buttons: 1 = left, 2 = right, 4 = middle
@@ -1243,9 +1258,49 @@ class VoxelApp {
             if (this.voxelEngine && this.drawingSystem) {
                 // Handle fill tool with 2D selection
                 if (this.drawingSystem.toolMode === 'fill') {
-                    // Start 2D selection for fill tool
-                    this.drawingSystem.startFillSelection(event.clientX, event.clientY);
-                    if (this.controls) this.controls.enabled = false;
+                    // Check for double click
+                    const now = Date.now();
+                    const lastClickTime = (this.drawingSystem as any).lastFillClickTime || 0;
+                    const lastClickPos = (this.drawingSystem as any).lastFillClickPos || { x: 0, y: 0 };
+                    const timeSinceLastClick = now - lastClickTime;
+                    
+                    // Check if it's a double click (within 300ms and at roughly the same position)
+                    const dx = Math.abs(event.clientX - lastClickPos.x);
+                    const dy = Math.abs(event.clientY - lastClickPos.y);
+                    const isDoubleClick = timeSinceLastClick < 300 && dx < 5 && dy < 5;
+                    
+                    if (isDoubleClick) {
+                        // Perform flood fill
+                        const hit = this.voxelEngine.raycast(this.raycaster);
+                        if (hit && hit.voxelPos) {
+                            console.log('Double click detected - performing flood fill');
+                            this.drawingSystem.applyFillTool(hit.voxelPos);
+                        }
+                        // Reset click time to prevent triple clicks
+                        (this.drawingSystem as any).lastFillClickTime = 0;
+                        (this.drawingSystem as any).lastFillClickPos = null;
+                        (this.drawingSystem as any).isDoubleClickProcessed = true;
+                        // Don't start selection
+                        return;
+                    } else {
+                        // Store current click for next double-click detection
+                        (this.drawingSystem as any).lastFillClickTime = now;
+                        (this.drawingSystem as any).lastFillClickPos = { x: event.clientX, y: event.clientY };
+                        
+                        // Start 2D selection for fill tool
+                        this.drawingSystem.startFillSelection(event.clientX, event.clientY);
+                        // Store the click position to detect single clicks
+                        (this.drawingSystem as any).fillClickStart = { x: event.clientX, y: event.clientY };
+                        if (this.controls) this.controls.enabled = false;
+                    }
+                } else if (this.drawingSystem.toolMode === 'box' || this.drawingSystem.toolMode === 'line') {
+                    // Box and Line tools handle their own clicks
+                    const hit = this.voxelEngine.raycast(this.raycaster);
+                    if (hit) {
+                        const mode = this.drawingSystem.toolMode === 'eraser' ? 'remove' : 'add';
+                        this.drawingSystem.startDrawing(hit, mode);
+                        // Don't disable controls for box/line tools - they use discrete clicks
+                    }
                 } else {
                     const hit = this.voxelEngine.raycast(this.raycaster);
                     // Left click hit detected
@@ -1270,13 +1325,20 @@ class VoxelApp {
                 // In color palette mode or asset mode, right-click enables tumble
                 if (this.controls) this.controls.enabled = true;
             } else {
-                // In other modes, right-click removes voxels
+                // In other modes, right-click removes voxels or cancels box tool
                 if (this.voxelEngine && this.drawingSystem) {
-                    const hit = this.voxelEngine.raycast(this.raycaster);
-                    if (hit) {
-                        this.drawingSystem.startDrawing(hit, 'remove');
-                        // Disable orbit controls to prevent rotation while drawing
-                        if (this.controls) this.controls.enabled = false;
+                    // Cancel box tool if in progress
+                    if (this.drawingSystem.toolMode === 'box' && 
+                        (this.drawingSystem as any).boxState !== 'idle') {
+                        this.drawingSystem.cancelBoxTool();
+                    } else {
+                        // Otherwise, remove voxels
+                        const hit = this.voxelEngine.raycast(this.raycaster);
+                        if (hit) {
+                            this.drawingSystem.startDrawing(hit, 'remove');
+                            // Disable orbit controls to prevent rotation while drawing
+                            if (this.controls) this.controls.enabled = false;
+                        }
                     }
                 }
             }
@@ -1315,7 +1377,38 @@ class VoxelApp {
         if (this.drawingSystem) {
             // Handle fill tool selection end
             if (this.drawingSystem.isDoingFillSelection() && this.camera && this.scene) {
-                this.drawingSystem.endFillSelection(this.camera, this.scene);
+                // Check if this was a single click (no drag)
+                const fillClickStart = (this.drawingSystem as any).fillClickStart;
+                const isDoubleClickProcessed = (this.drawingSystem as any).isDoubleClickProcessed;
+                
+                // Skip if we just processed a double click
+                if (isDoubleClickProcessed) {
+                    (this.drawingSystem as any).isDoubleClickProcessed = false;
+                    this.drawingSystem.endFillSelection(this.camera, this.scene);
+                } else if (fillClickStart) {
+                    const dx = Math.abs(event.clientX - fillClickStart.x);
+                    const dy = Math.abs(event.clientY - fillClickStart.y);
+                    
+                    // If the mouse didn't move much, treat it as a single click
+                    if (dx < 5 && dy < 5) {
+                        // Cancel the fill selection
+                        this.drawingSystem.endFillSelection(this.camera, this.scene);
+                        
+                        // Perform single voxel fill
+                        const hit = this.voxelEngine.raycast(this.raycaster);
+                        if (hit && hit.voxelPos) {
+                            // Fill the voxel we're hovering over, not the adjacent position
+                            const pos = hit.voxelPos;
+                            this.drawingSystem.fillSingleVoxel(pos.x, pos.y, pos.z);
+                        }
+                    } else {
+                        // Normal fill selection
+                        this.drawingSystem.endFillSelection(this.camera, this.scene);
+                    }
+                    
+                    // Clear the click start position
+                    (this.drawingSystem as any).fillClickStart = null;
+                }
             } else {
                 this.drawingSystem.stopDrawing();
             }
@@ -1535,7 +1628,7 @@ class VoxelApp {
                 }
                 if (this.drawingSystem) {
                     this.drawingSystem.setToolMode('box');
-                    this.drawingSystem.showPreview();
+                    // Don't show single voxel preview for box tool
                     this.updatePreviewAtCurrentMouse();
                 }
                 if (this.voxelPanel) {
@@ -1554,7 +1647,7 @@ class VoxelApp {
                 }
                 if (this.drawingSystem) {
                     this.drawingSystem.setToolMode('line');
-                    this.drawingSystem.showPreview();
+                    // Don't show single voxel preview for line tool
                     this.updatePreviewAtCurrentMouse();
                 }
                 if (this.voxelPanel) {
@@ -1573,7 +1666,7 @@ class VoxelApp {
                 }
                 if (this.drawingSystem) {
                     this.drawingSystem.setToolMode('fill');
-                    this.drawingSystem.showPreview();
+                    // Don't show single voxel preview for fill tool
                     this.updatePreviewAtCurrentMouse();
                 }
                 if (this.voxelPanel) {

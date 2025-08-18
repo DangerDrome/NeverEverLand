@@ -13,6 +13,10 @@ export class DrawingSystem {
     brushSize: number;
     toolMode: string;
     boxStart: { x: number; y: number; z: number } | null;
+    boxEnd: { x: number; y: number; z: number } | null;  // For box tool second click
+    boxState: 'idle' | 'base' | 'height';  // Track box tool state
+    boxHeightStartMouseY: number;  // Track mouse Y when height adjustment starts
+    boxPreviewY: number;  // Store the Y position from preview for third click
     lineStart: { x: number; y: number; z: number } | null;
     drawingSurface: {
         normal: THREE.Vector3;
@@ -74,6 +78,10 @@ export class DrawingSystem {
         
         // Tool state
         this.boxStart = null;
+        this.boxEnd = null;
+        this.boxState = 'idle';
+        this.boxHeightStartMouseY = 0;
+        this.boxPreviewY = 0;
         this.lineStart = null;
         this.drawingSurface = null; // Store the surface we're drawing on
         this.lastBrushPosition = null; // Track last brush position to avoid duplicates
@@ -435,6 +443,7 @@ export class DrawingSystem {
             this.lastUpdateHit = hit;
         }
         
+        
         // Hide preview if in selection mode
         if (this.toolMode === 'selection') {
             this.previewGroup.visible = false;
@@ -478,7 +487,10 @@ export class DrawingSystem {
         
         // Update tool previews
         if (hit) {
-            this.updateToolPreview(hit);
+            // Get raycaster from voxelEngine's scene (if available)
+            const raycaster = (this.voxelEngine.scene as any).raycaster || 
+                            (window as any).app?.raycaster;
+            this.updateToolPreview(hit, raycaster);
         }
         
         // Handle asset preview
@@ -489,12 +501,13 @@ export class DrawingSystem {
             return;
         }
         
-        // For brush, eraser, and fill tools, show preview
-        if (this.toolMode === 'brush' || this.toolMode === 'eraser' || this.toolMode === 'fill') {
+        // For brush, eraser, fill, box, and line tools, show preview appropriately
+        if (this.toolMode === 'brush' || this.toolMode === 'eraser' || this.toolMode === 'fill' || 
+            this.toolMode === 'box' || this.toolMode === 'line') {
             const voxelSize = this.voxelEngine.getCurrentVoxelSize();
             
-            // For fill tool, hide preview - it uses 2D selection
-            if (this.toolMode === 'fill') {
+            // For fill, box, and line tools, hide regular preview - they have their own
+            if (this.toolMode === 'fill' || this.toolMode === 'box' || this.toolMode === 'line') {
                 this.previewGroup.visible = false;
                 return;
             }
@@ -768,11 +781,29 @@ export class DrawingSystem {
                 }
                 break;
             case 'box':
-                if (!this.boxStart) {
+                if (this.boxState === 'idle') {
+                    // First click: set the X/Z base dimensions
                     this.boxStart = pos;
-                } else {
-                    this.applyBoxTool(this.boxStart, pos);
+                    this.boxEnd = pos;
+                    this.boxState = 'base';
+                    // Make sure we're in add mode for box tool (unless explicitly removing)
+                    if (this.drawMode !== 'remove') {
+                        this.drawMode = 'add';
+                    }
+                } else if (this.boxState === 'base') {
+                    // Second click: lock X/Z dimensions and start Y height adjustment
+                    this.boxEnd = { x: pos.x, y: this.boxStart!.y, z: pos.z };
+                    this.boxState = 'height';
+                } else if (this.boxState === 'height') {
+                    // Third click: confirm with final Y height and apply
+                    // Use the Y position calculated during preview instead of hit position
+                    this.boxEnd!.y = this.boxPreviewY;
+                    console.log('Applying box tool:', this.boxStart, this.boxEnd, 'drawMode:', this.drawMode);
+                    this.applyBoxTool(this.boxStart!, this.boxEnd!);
                     this.boxStart = null;
+                    this.boxEnd = null;
+                    this.boxState = 'idle';
+                    this.boxPreviewY = 0;
                     this.clearToolPreviews();
                 }
                 break;
@@ -793,8 +824,9 @@ export class DrawingSystem {
     
     stopDrawing(): void {
         this.isDrawing = false;
-        // Only show preview for non-asset tools
-        if (this.toolMode !== 'asset') {
+        // Only show preview for brush and eraser tools
+        // Box, line, and fill tools have their own preview systems
+        if (this.toolMode === 'brush' || this.toolMode === 'eraser') {
             this.previewGroup.visible = true;
         }
         this.drawingSurface = null;
@@ -975,18 +1007,39 @@ export class DrawingSystem {
         this.fillSelectionStart = { x: screenX, y: screenY };
         this.fillSelectionEnd = { x: screenX, y: screenY };
         
+        // Get the current selected color
+        let selectionColor = new THREE.Color(0xff6464); // Default red
+        if (this.voxelPanel) {
+            const colorPickerPopover = (this.voxelPanel as any).getColorPickerPopover?.();
+            const colorInfo = colorPickerPopover?.getSelectedColor();
+            if (colorInfo && (this.voxelPanel as any).isColorPaletteSelected()) {
+                // Use the actual selected color
+                selectionColor = new THREE.Color(colorInfo.hex);
+            } else {
+                // Use the voxel type color
+                selectionColor = this.getVoxelColor(this.currentVoxelType);
+            }
+        }
+        
+        // Convert color to CSS string
+        const r = Math.floor(selectionColor.r * 255);
+        const g = Math.floor(selectionColor.g * 255);
+        const b = Math.floor(selectionColor.b * 255);
+        
         // Create selection box div
         if (!this.fillSelectionBox) {
             this.fillSelectionBox = document.createElement('div');
-            this.fillSelectionBox.style.cssText = `
-                position: fixed;
-                border: 2px dashed rgba(255, 100, 100, 0.8);
-                background: rgba(255, 100, 100, 0.1);
-                pointer-events: none;
-                z-index: 1000;
-            `;
             document.body.appendChild(this.fillSelectionBox);
         }
+        
+        // Update styles with current color
+        this.fillSelectionBox.style.cssText = `
+            position: fixed;
+            border: 2px dashed rgba(${r}, ${g}, ${b}, 0.8);
+            background: rgba(${r}, ${g}, ${b}, 0.1);
+            pointer-events: none;
+            z-index: 1000;
+        `;
         
         this.updateFillSelectionBox();
     }
@@ -1032,10 +1085,34 @@ export class DrawingSystem {
         const minY = Math.min(this.fillSelectionStart.y, this.fillSelectionEnd.y);
         const maxY = Math.max(this.fillSelectionStart.y, this.fillSelectionEnd.y);
         
+        // Update position and size
         this.fillSelectionBox.style.left = `${minX}px`;
         this.fillSelectionBox.style.top = `${minY}px`;
         this.fillSelectionBox.style.width = `${maxX - minX}px`;
         this.fillSelectionBox.style.height = `${maxY - minY}px`;
+        
+        // Update color if needed
+        let selectionColor = new THREE.Color(0xff6464); // Default red
+        if (this.voxelPanel) {
+            const colorPickerPopover = (this.voxelPanel as any).getColorPickerPopover?.();
+            const colorInfo = colorPickerPopover?.getSelectedColor();
+            if (colorInfo && (this.voxelPanel as any).isColorPaletteSelected()) {
+                // Use the actual selected color
+                selectionColor = new THREE.Color(colorInfo.hex);
+            } else {
+                // Use the voxel type color
+                selectionColor = this.getVoxelColor(this.currentVoxelType);
+            }
+        }
+        
+        // Convert color to CSS string
+        const r = Math.floor(selectionColor.r * 255);
+        const g = Math.floor(selectionColor.g * 255);
+        const b = Math.floor(selectionColor.b * 255);
+        
+        // Update border and background colors
+        this.fillSelectionBox.style.borderColor = `rgba(${r}, ${g}, ${b}, 0.8)`;
+        this.fillSelectionBox.style.backgroundColor = `rgba(${r}, ${g}, ${b}, 0.1)`;
     }
     
     isDoingFillSelection(): boolean {
@@ -1061,7 +1138,7 @@ export class DrawingSystem {
         let encounteredBakedLayer = false;
         
         // Sample points within the selection rectangle
-        const sampleStep = 10; // Sample every 10 pixels for performance
+        const sampleStep = 5; // Sample every 5 pixels for better coverage
         for (let x = minX; x <= maxX; x += sampleStep) {
             for (let y = minY; y <= maxY; y += sampleStep) {
                 // Convert screen coordinates to normalized device coordinates
@@ -1083,10 +1160,11 @@ export class DrawingSystem {
                     const pos = hit.voxelPos;
                     const targetType = this.voxelEngine.getVoxel(pos.x, pos.y, pos.z);
                     
-                    // Only fill if there's a voxel at this position
-                    if (targetType !== VoxelType.AIR) {
-                        // Find all connected voxels of the same type
-                        this.floodFillCollect(pos.x, pos.y, pos.z, targetType, voxelTypeToUse, voxelsToFill);
+                    // Only fill if there's a voxel at this position and it's not already the target type
+                    if (targetType !== VoxelType.AIR && targetType !== voxelTypeToUse) {
+                        // Just add this single voxel to the fill list (no flood fill)
+                        const key = `${pos.x},${pos.y},${pos.z}`;
+                        voxelsToFill.set(key, voxelTypeToUse);
                     }
                 }
             }
@@ -1166,11 +1244,27 @@ export class DrawingSystem {
         }
     }
     
+    // Cancel box tool (for right-click)
+    cancelBoxTool(): void {
+        if (this.toolMode === 'box' && this.boxState !== 'idle') {
+            this.boxStart = null;
+            this.boxEnd = null;
+            this.boxState = 'idle';
+            this.boxPreviewY = 0;
+            this.clearToolPreviews();
+            const logger = ActionLogger.getInstance();
+            logger.log('Box tool cancelled');
+        }
+    }
+    
     // Tool mode setters
     setToolMode(mode: string): void {
         this.toolMode = mode;
         this.clearToolPreviews();
         this.boxStart = null;
+        this.boxEnd = null;
+        this.boxState = 'idle';
+        this.boxPreviewY = 0;
         this.lineStart = null;
         
         // Update current tool display in info bar
@@ -1201,9 +1295,13 @@ export class DrawingSystem {
         if (mode !== 'asset') {
             this.selectedAsset = null;
             this.assetData = null;
-            // Show voxel preview for brush/eraser/fill modes
-            if (mode === 'brush' || mode === 'eraser' || mode === 'fill') {
+            // Show voxel preview only for brush and eraser modes
+            // Box, line, and fill have their own preview systems
+            if (mode === 'brush' || mode === 'eraser') {
                 this.previewGroup.visible = true;
+            } else {
+                // Hide for box, line, fill, and selection tools
+                this.previewGroup.visible = false;
             }
         } else {
             // Hide single voxel preview when switching to asset mode
@@ -1293,6 +1391,8 @@ export class DrawingSystem {
         const minZ = Math.min(start.z, end.z);
         const maxZ = Math.max(start.z, end.z);
         
+        console.log('applyBoxTool called - bounds:', {minX, maxX, minY, maxY, minZ, maxZ}, 'drawMode:', this.drawMode);
+        
         // Get the voxel type to use (may be mapped from custom color)
         let voxelTypeToUse = this.currentVoxelType;
         if (this.voxelPanel && this.drawMode === 'add') {
@@ -1319,6 +1419,19 @@ export class DrawingSystem {
         
         // End batch and update
         this.voxelEngine.endBatch();
+        
+        const voxelCount = (maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1);
+        console.log(`Box tool completed - ${voxelCount} voxels ${this.drawMode === 'add' ? 'added' : 'removed'}`);
+        
+        // Log the action
+        import('../ui/ActionLogger').then(({ ActionLogger }) => {
+            const logger = ActionLogger.getInstance();
+            if (this.drawMode === 'add') {
+                logger.log(ActionLogger.actions.placeVoxel(voxelCount));
+            } else {
+                logger.log(ActionLogger.actions.removeVoxel(voxelCount));
+            }
+        });
     }
     
     // Line tool implementation
@@ -1360,9 +1473,12 @@ export class DrawingSystem {
     
     // Fill tool implementation (flood fill based on voxel type/color)
     applyFillTool(startPos: { x: number; y: number; z: number }): void {
+        // Fill tool is always in 'add' mode (replacing colors)
+        this.drawMode = 'add';
+        
         // Get the voxel type to use (may be mapped from custom color)
         let voxelTypeToUse = this.currentVoxelType;
-        if (this.voxelPanel && this.drawMode === 'add') {
+        if (this.voxelPanel) {
             const colorOrType = this.voxelPanel.getSelectedColorOrType();
             if (colorOrType.isCustomColor) {
                 voxelTypeToUse = colorOrType.type;
@@ -1371,23 +1487,14 @@ export class DrawingSystem {
         
         const targetType = this.voxelEngine.getVoxel(startPos.x, startPos.y, startPos.z);
         
-        // Handle eraser mode - fill removes all connected voxels of the same type
-        if (this.drawMode === 'remove') {
-            // Don't try to remove air
-            if (targetType === VoxelType.AIR) {
-                return;
-            }
-            voxelTypeToUse = VoxelType.AIR;
-        } else {
-            // Don't fill if clicking on empty space (AIR) in add mode
-            if (targetType === VoxelType.AIR) {
-                return;
-            }
-            
-            // Don't fill if the target is already the selected type
-            if (targetType === voxelTypeToUse) {
-                return;
-            }
+        // Don't fill if clicking on empty space (AIR)
+        if (targetType === VoxelType.AIR) {
+            return;
+        }
+        
+        // Don't fill if the target is already the selected type
+        if (targetType === voxelTypeToUse) {
+            return;
         }
         
         const visited = new Set<string>();
@@ -1449,16 +1556,12 @@ export class DrawingSystem {
         // Log the fill operation
         import('../ui/ActionLogger').then(({ ActionLogger }) => {
             const logger = ActionLogger.getInstance();
-            if (this.drawMode === 'remove') {
-                logger.log(ActionLogger.actions.removeVoxel(operations.length));
-            } else {
-                logger.log(ActionLogger.actions.placeVoxel(operations.length));
-            }
+            logger.log(ActionLogger.actions.placeVoxel(operations.length));
         });
     }
     
     // Update preview for tools
-    updateToolPreview(hit: any): void {
+    updateToolPreview(hit: any, raycaster?: THREE.Raycaster): void {
         this.clearToolPreviews();
         
         if (!hit) return;
@@ -1468,8 +1571,51 @@ export class DrawingSystem {
             ? hit.voxelPos 
             : hit.adjacentPos;
         
-        if (this.toolMode === 'box' && this.boxStart) {
-            this.previewBoxTool(this.boxStart, pos);
+        if (this.toolMode === 'box') {
+            if (this.boxState === 'base' && this.boxStart) {
+                // First click done, preview X/Z box at current position
+                this.previewBoxTool(this.boxStart, { ...pos, y: this.boxStart.y });
+            } else if (this.boxState === 'height' && this.boxStart && this.boxEnd && raycaster) {
+                // Second click done, preview Y height adjustment
+                // Create a vertical plane at the box center to intersect with the ray
+                const voxelSize = this.voxelEngine.getCurrentVoxelSize();
+                const centerX = (this.boxStart.x + this.boxEnd.x) / 2 * voxelSize + voxelSize / 2;
+                const centerZ = (this.boxStart.z + this.boxEnd.z) / 2 * voxelSize + voxelSize / 2;
+                
+                // Create a vertical plane facing the camera
+                const plane = new THREE.Plane();
+                const planeNormal = new THREE.Vector3(0, 0, 1); // Default to Z plane
+                
+                // Use camera direction to determine best plane orientation
+                if (raycaster.ray.direction.x * raycaster.ray.direction.x > 
+                    raycaster.ray.direction.z * raycaster.ray.direction.z) {
+                    // X direction is more dominant, use X plane
+                    planeNormal.set(1, 0, 0);
+                }
+                
+                const planePoint = new THREE.Vector3(centerX, 0, centerZ);
+                plane.setFromNormalAndCoplanarPoint(planeNormal, planePoint);
+                
+                // Find intersection with plane
+                const intersection = new THREE.Vector3();
+                raycaster.ray.intersectPlane(plane, intersection);
+                
+                let endY: number;
+                if (intersection) {
+                    // Convert world Y to voxel Y
+                    endY = Math.floor(intersection.y / voxelSize);
+                    
+                    // Clamp to reasonable values
+                    endY = Math.max(0, Math.min(50, endY)); // Limit to 50 blocks high
+                } else {
+                    // Fallback to hit-based calculation
+                    endY = hit.adjacentPos.y;
+                }
+                
+                console.log('Box height preview - start.y:', this.boxStart.y, 'endY:', endY, 'intersection.y:', intersection?.y);
+                this.boxPreviewY = endY;  // Store the preview Y for use in third click
+                this.previewBoxTool(this.boxStart, { ...this.boxEnd, y: endY });
+            }
         } else if (this.toolMode === 'line' && this.lineStart) {
             this.previewLineTool(this.lineStart, pos);
         }
@@ -1477,6 +1623,7 @@ export class DrawingSystem {
     
     // Preview box tool
     previewBoxTool(start: { x: number; y: number; z: number }, end: { x: number; y: number; z: number }): void {
+        
         const minX = Math.min(start.x, end.x);
         const maxX = Math.max(start.x, end.x);
         const minY = Math.min(start.y, end.y);
@@ -1495,13 +1642,58 @@ export class DrawingSystem {
         // Create a group for mesh and edges
         const group = new THREE.Group();
         
+        // Create new materials with the selected color
+        let previewColor: THREE.Color;
+        if (this.voxelPanel && this.drawMode === 'add') {
+            const colorPickerPopover = (this.voxelPanel as any).getColorPickerPopover?.();
+            const colorInfo = colorPickerPopover?.getSelectedColor();
+            if (colorInfo && (this.voxelPanel as any).isColorPaletteSelected()) {
+                // Use the actual selected color for preview
+                previewColor = new THREE.Color(colorInfo.hex);
+            } else {
+                // Use the voxel type color
+                previewColor = this.getVoxelColor(this.currentVoxelType);
+            }
+        } else {
+            // Use the voxel type color or red for remove mode
+            previewColor = this.drawMode === 'add' ? 
+                this.getVoxelColor(this.currentVoxelType) : 
+                new THREE.Color(0xff0000);
+        }
+        
+        // Create material for this specific preview
+        const boxPreviewMaterial = new THREE.MeshBasicMaterial({
+            color: previewColor,
+            opacity: 0.1,
+            transparent: true,
+            depthWrite: false
+        });
+        
+        // Create edge material with appropriate color
+        let edgeColor = previewColor.clone();
+        if (this.drawMode === 'add') {
+            const brightness = previewColor.r * 0.299 + previewColor.g * 0.587 + previewColor.b * 0.114;
+            if (brightness < 0.3) {
+                // For very dark colors, lighten them up a bit
+                edgeColor.r = Math.min(1, edgeColor.r + 0.3);
+                edgeColor.g = Math.min(1, edgeColor.g + 0.3);
+                edgeColor.b = Math.min(1, edgeColor.b + 0.3);
+            }
+        }
+        
+        const boxEdgeMaterial = new THREE.LineBasicMaterial({
+            color: edgeColor,
+            opacity: 0.4,
+            transparent: true
+        });
+        
         // Add solid mesh
-        const mesh = new THREE.Mesh(geometry, this.previewMaterial);
+        const mesh = new THREE.Mesh(geometry, boxPreviewMaterial);
         group.add(mesh);
         
         // Add edge outline
         const edges = new THREE.EdgesGeometry(geometry);
-        const edgeLines = new THREE.LineSegments(edges, this.edgeMaterial);
+        const edgeLines = new THREE.LineSegments(edges, boxEdgeMaterial);
         group.add(edgeLines);
         
         group.position.set(
@@ -1522,6 +1714,37 @@ export class DrawingSystem {
         
         const steps = Math.max(dx, dy, dz);
         
+        // Get the preview color once for all voxels in the line
+        let previewColor: THREE.Color;
+        if (this.voxelPanel && this.drawMode === 'add') {
+            const colorPickerPopover = (this.voxelPanel as any).getColorPickerPopover?.();
+            const colorInfo = colorPickerPopover?.getSelectedColor();
+            if (colorInfo && (this.voxelPanel as any).isColorPaletteSelected()) {
+                // Use the actual selected color for preview
+                previewColor = new THREE.Color(colorInfo.hex);
+            } else {
+                // Use the voxel type color
+                previewColor = this.getVoxelColor(this.currentVoxelType);
+            }
+        } else {
+            // Use the voxel type color or red for remove mode
+            previewColor = this.drawMode === 'add' ? 
+                this.getVoxelColor(this.currentVoxelType) : 
+                new THREE.Color(0xff0000);
+        }
+        
+        // Create edge color
+        let edgeColor = previewColor.clone();
+        if (this.drawMode === 'add') {
+            const brightness = previewColor.r * 0.299 + previewColor.g * 0.587 + previewColor.b * 0.114;
+            if (brightness < 0.3) {
+                // For very dark colors, lighten them up a bit
+                edgeColor.r = Math.min(1, edgeColor.r + 0.3);
+                edgeColor.g = Math.min(1, edgeColor.g + 0.3);
+                edgeColor.b = Math.min(1, edgeColor.b + 0.3);
+            }
+        }
+        
         for (let i = 0; i <= steps; i++) {
             const t = steps === 0 ? 0 : i / steps;
             const x = Math.round(start.x + (end.x - start.x) * t);
@@ -1535,16 +1758,30 @@ export class DrawingSystem {
                 voxelSize
             );
             
+            // Create materials for this voxel
+            const linePreviewMaterial = new THREE.MeshBasicMaterial({
+                color: previewColor,
+                opacity: 0.1,
+                transparent: true,
+                depthWrite: false
+            });
+            
+            const lineEdgeMaterial = new THREE.LineBasicMaterial({
+                color: edgeColor,
+                opacity: 0.4,
+                transparent: true
+            });
+            
             // Create a group for mesh and edges
             const group = new THREE.Group();
             
             // Add solid mesh
-            const mesh = new THREE.Mesh(geometry, this.previewMaterial);
+            const mesh = new THREE.Mesh(geometry, linePreviewMaterial);
             group.add(mesh);
             
             // Add edge outline
             const edges = new THREE.EdgesGeometry(geometry);
-            const edgeLines = new THREE.LineSegments(edges, this.edgeMaterial);
+            const edgeLines = new THREE.LineSegments(edges, lineEdgeMaterial);
             group.add(edgeLines);
             
             group.position.set(
@@ -1764,13 +2001,13 @@ export class DrawingSystem {
         const canvas = document.getElementById('canvas') as HTMLCanvasElement;
         if (!canvas) return;
         
-        // Create cursor styles based on tool - hotspot at bottom-left (0 24)
+        // Create cursor styles based on tool - hotspot at bottom-left (0 24) except fill tool
         const cursors: { [key: string]: string } = {
             'brush': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M17 3l4 4L7.5 20.5L2 22l1.5-5.5L17 3z"/></svg>') 0 24, crosshair`,
             'eraser': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>') 0 24, crosshair`,
             'box': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>') 0 24, crosshair`,
             'line': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><line x1="5" y1="19" x2="19" y2="5"/></svg>') 0 24, crosshair`,
-            'fill': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 13h15"/><path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z"/></svg>') 0 24, crosshair`,
+            'fill': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 13h15"/><path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z"/></svg>') 24 24, crosshair`,
             'asset': 'grab',
             'selection': 'crosshair'
         };
@@ -1914,5 +2151,40 @@ export class DrawingSystem {
     
     setCustomColor(color: THREE.Color): void {
         this.customColor = color;
+    }
+    
+    // Fill a single voxel (for single click with fill tool)
+    fillSingleVoxel(x: number, y: number, z: number): void {
+        // Check if there's a voxel at this position
+        const currentType = this.voxelEngine.getVoxel(x, y, z);
+        
+        // Only fill if there's an existing voxel (not air)
+        if (currentType === VoxelType.AIR) {
+            return;
+        }
+        
+        // Get the voxel type to use (may be mapped from custom color)
+        let voxelTypeToUse = this.currentVoxelType;
+        if (this.voxelPanel) {
+            const colorOrType = this.voxelPanel.getSelectedColorOrType();
+            if (colorOrType.isCustomColor) {
+                voxelTypeToUse = colorOrType.type;
+            }
+        }
+        
+        // Don't fill if it's already the same color
+        if (currentType === voxelTypeToUse) {
+            return;
+        }
+        
+        // Replace the voxel with the new color
+        this.voxelEngine.setVoxel(x, y, z, voxelTypeToUse);
+        this.voxelEngine.updateInstances();
+        
+        // Log the action
+        import('../ui/ActionLogger').then(({ ActionLogger }) => {
+            const logger = ActionLogger.getInstance();
+            logger.log(ActionLogger.actions.placeVoxel(1));
+        });
     }
 }

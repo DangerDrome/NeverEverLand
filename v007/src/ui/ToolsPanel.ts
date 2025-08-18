@@ -71,7 +71,7 @@ export class ToolsPanel {
             justify-content: center;
             gap: 6px;
             padding: 12px 16px;
-            background: transparent;
+            background: rgba(0, 0, 0, 0.2);
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
             color: rgba(255, 255, 255, 0.5);
             font-size: 12px;
@@ -94,6 +94,9 @@ export class ToolsPanel {
         // Add text to header
         const headerText = document.createElement('span');
         headerText.textContent = 'Tools';
+        headerText.style.cssText = `
+            font-size: 14px;
+        `;
         header.appendChild(headerText);
         
         this.element.appendChild(header);
@@ -145,12 +148,12 @@ export class ToolsPanel {
         this.toolsContainer = toolsContainer;
         
         // Create tool buttons first
+        this.createToolButton('selection', 'Selection Tool (S)', 'S');
         this.createToolButton('brush', 'Brush Tool (B)', 'B');
         this.createToolButton('eraser', 'Eraser Tool (E)', 'E');
         this.createToolButton('box', 'Box Tool (X)', 'X');
         this.createToolButton('line', 'Line Tool (L)', 'L');
         this.createToolButton('fill', 'Fill Tool (P)', 'P');
-        this.createToolButton('selection', 'Selection Tool (S)', 'S');
         
         // Add separator before voxel brush section
         const voxelSeparator = document.createElement('div');
@@ -292,7 +295,7 @@ export class ToolsPanel {
         
         // Create icon based on toggle
         const iconMap: Record<string, string> = {
-            wireframe: 'box',
+            wireframe: 'grid-2x2',
             tiltshift: 'aperture'
         };
         

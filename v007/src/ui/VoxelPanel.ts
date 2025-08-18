@@ -74,7 +74,7 @@ export class VoxelPanel {
             align-items: center;
             gap: 8px;
             padding: 12px 16px;
-            background: transparent;
+            background: rgba(0, 0, 0, 0.2);
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
             color: rgba(255, 255, 255, 0.5);
             font-size: 14px;
@@ -147,9 +147,9 @@ export class VoxelPanel {
         const content = document.createElement('div');
         content.style.cssText = `
             display: flex;
-            gap: 8px;
+            gap: 12px;
             align-items: center;
-            padding: 16px 20px;
+            padding: 24px 28px;
             white-space: nowrap;
         `;
         
@@ -544,7 +544,7 @@ export class VoxelPanel {
             align-items: center;
             justify-content: center;
         `;
-        edgeIcon.innerHTML = `<i data-lucide="box" style="width: 20px; height: 20px; stroke-width: 2;"></i>`;
+        edgeIcon.innerHTML = `<i data-lucide="grid-2x2" style="width: 20px; height: 20px; stroke-width: 2;"></i>`;
         edgeButton.appendChild(edgeIcon);
         
         edgeButton.addEventListener('click', () => {
