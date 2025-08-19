@@ -128,7 +128,7 @@ export const settings = {
             },
             shadow: {
                 // Shadow Map Quality
-                mapSize: 8192,         // Maximum resolution for ultra-smooth shadows
+                mapSize: 16384,         // Maximum resolution for ultra-smooth shadows
                 
                 // Shadow Camera Configuration
                 camera: {              
@@ -144,8 +144,8 @@ export const settings = {
                 // Shadow Bias Settings (fine-tune to prevent artifacts)
                 bias: 0.00001,         // Minimal bias for accurate shadows
                 normalBias: 0.01,     // Minimal normal bias
-                radius: 1.0,           // Slightly softer for smooth transitions
-                blurSamples: 16        // Maximum samples for silky smooth gradients
+                radius: 100000.0,           // Slightly softer for smooth transitions
+                blurSamples: 0        // Maximum samples for silky smooth gradients
             }
         }
     },

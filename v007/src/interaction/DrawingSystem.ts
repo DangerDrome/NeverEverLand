@@ -525,45 +525,16 @@ export class DrawingSystem {
                 offsetY = 0;
             }
             
-            // Use smooth mouse position if available, otherwise snap to grid
-            // Also use smooth position during shift-drag for ultra-tight tracking
-            if (hit && hit.point && (!this.isDrawing || this.isShiftDragging)) {
-                // Follow mouse cursor smoothly when not drawing or during shift-drag
-                const halfSize = this.brushSize * voxelSize / 2;
-                
-                // Align the preview center with the actual hit point
-                // But offset by half brush size to show where voxels will be placed
-                let smoothX = hit.point.x;
-                let smoothY = hit.point.y;
-                let smoothZ = hit.point.z;
-                
-                // Offset based on the face normal to position preview correctly
-                if (hit.normal) {
-                    // Move the preview half a voxel in the normal direction
-                    // so it appears on the surface
-                    smoothX += hit.normal.x * halfSize;
-                    smoothY += hit.normal.y * halfSize;
-                    smoothZ += hit.normal.z * halfSize;
-                }
-                
-                this.previewTargetPosition.set(smoothX, smoothY, smoothZ);
-                
-                // If preview was just made visible, instantly set position
-                if (!this.previewGroup.visible) {
-                    this.previewGroup.position.set(smoothX, smoothY, smoothZ);
-                }
-            } else {
-                // Grid-snapped position for drawing or when no hit point
-                const targetX = (pos.x - offsetXZ + this.brushSize / 2) * voxelSize;
-                const targetY = (pos.y - offsetY + this.brushSize / 2) * voxelSize;
-                const targetZ = (pos.z - offsetXZ + this.brushSize / 2) * voxelSize;
-                
-                this.previewTargetPosition.set(targetX, targetY, targetZ);
-                
-                // If preview was just made visible, instantly set position
-                if (!this.previewGroup.visible) {
-                    this.previewGroup.position.set(targetX, targetY, targetZ);
-                }
+            // Always use grid-snapped position for consistent preview behavior
+            const targetX = (pos.x - offsetXZ + this.brushSize / 2) * voxelSize;
+            const targetY = (pos.y - offsetY + this.brushSize / 2) * voxelSize;
+            const targetZ = (pos.z - offsetXZ + this.brushSize / 2) * voxelSize;
+            
+            this.previewTargetPosition.set(targetX, targetY, targetZ);
+            
+            // If preview was just made visible, instantly set position
+            if (!this.previewGroup.visible) {
+                this.previewGroup.position.set(targetX, targetY, targetZ);
             }
             
             // Scale preview to exact brush size
@@ -935,9 +906,9 @@ export class DrawingSystem {
      * Update method for smooth preview animation (called from main animate loop)
      */
     update(): void {
-        // Smoothly interpolate preview position
+        // Instantly snap preview to target position for grid-aligned behavior
         if (this.previewGroup.visible) {
-            this.previewGroup.position.lerp(this.previewTargetPosition, this.previewLerpFactor);
+            this.previewGroup.position.copy(this.previewTargetPosition);
         }
     }
     
@@ -1838,6 +1809,14 @@ export class DrawingSystem {
         
         const voxelSize = this.voxelEngine.getCurrentVoxelSize();
         
+        // Ensure the position is properly grid-snapped
+        // pos should already be in voxel coordinates, but let's make sure it's an integer
+        const snappedPos = {
+            x: Math.floor(pos.x),
+            y: Math.floor(pos.y),
+            z: Math.floor(pos.z)
+        };
+        
         // Get asset bounds to calculate center offset
         let minX = Infinity, minY = Infinity, minZ = Infinity;
         let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
@@ -1873,10 +1852,10 @@ export class DrawingSystem {
                 rotatedZ = temp;
             }
             
-            // Final position
-            const finalX = pos.x + Math.round(rotatedX + centerX);
-            const finalY = pos.y + vy;
-            const finalZ = pos.z + Math.round(rotatedZ + centerZ);
+            // Final position - ensure it's grid-aligned
+            const finalX = snappedPos.x + Math.round(rotatedX + centerX);
+            const finalY = snappedPos.y + vy;
+            const finalZ = snappedPos.z + Math.round(rotatedZ + centerZ);
             
             // Create preview mesh with ghost effect
             const geometry = new THREE.BoxGeometry(voxelSize, voxelSize, voxelSize);
@@ -1889,6 +1868,7 @@ export class DrawingSystem {
             });
             
             const mesh = new THREE.Mesh(geometry, material);
+            // Position mesh at the center of the voxel grid cell
             mesh.position.set(
                 (finalX + 0.5) * voxelSize,
                 (finalY + 0.5) * voxelSize,
