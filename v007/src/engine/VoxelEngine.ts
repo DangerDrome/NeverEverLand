@@ -29,9 +29,14 @@ export class VoxelEngine {
         this.scene = scene;
         this.voxelSize = voxelSize; // Current voxel size for the world
         
+        // Initialize undo/redo manager FIRST before creating any layers
+        this.undoRedoManager = new SnapshotUndoManager(this);
+        
         // Initialize with a default layer
         this.layers = [];
-        const defaultLayer = this.createLayer('Layer 1');
+        // Pass a specific ID to prevent snapshot during initialization
+        const defaultLayer = this.createLayer('Layer 1', 'layer_1');
+        this.layerIdCounter = 1; // Set counter after creating first layer
         this.activeLayerId = defaultLayer.id;
         
         // Voxel renderer handles all rendering
@@ -41,8 +46,6 @@ export class VoxelEngine {
         this.bakedWireframe = new BakedMeshWireframe();
         this.bakedWireframe.setVisible(showWireframe);
         
-        // Initialize undo/redo manager with snapshot approach
-        this.undoRedoManager = new SnapshotUndoManager(this);
         // Take initial snapshot after a short delay
         setTimeout(() => this.undoRedoManager.saveSnapshot(), 100);
     }
@@ -58,11 +61,25 @@ export class VoxelEngine {
     }
     
     // Layer management methods
-    createLayer(name?: string): VoxelLayer {
-        const id = `layer_${++this.layerIdCounter}`;
+    createLayer(name?: string, specificId?: string): VoxelLayer {
+        // Use specific ID if provided (for undo/redo), otherwise generate new one
+        const id = specificId || `layer_${++this.layerIdCounter}`;
+        
+        // Update layerIdCounter if we're using a specific ID to avoid conflicts
+        if (specificId) {
+            const match = specificId.match(/layer_(\d+)/);
+            if (match) {
+                const idNum = parseInt(match[1]);
+                if (idNum >= this.layerIdCounter) {
+                    this.layerIdCounter = idNum;
+                }
+            }
+        }
+        
         const layerName = name || `Layer ${this.layerIdCounter}`;
         const layer = new VoxelLayer(id, layerName);
         this.layers.push(layer);
+        
         return layer;
     }
     
@@ -111,6 +128,46 @@ export class VoxelEngine {
         return [...this.layers];
     }
     
+    // Layer property setters
+    setLayerVisibility(layerId: string, visible: boolean): boolean {
+        const layer = this.layers.find(l => l.id === layerId);
+        if (layer) {
+            layer.visible = visible;
+            this.updateBakedMeshVisibility();
+            this.updateInstances();
+            return true;
+        }
+        return false;
+    }
+    
+    setLayerName(layerId: string, name: string): boolean {
+        const layer = this.layers.find(l => l.id === layerId);
+        if (layer) {
+            layer.name = name;
+            return true;
+        }
+        return false;
+    }
+    
+    setLayerOpacity(layerId: string, opacity: number): boolean {
+        const layer = this.layers.find(l => l.id === layerId);
+        if (layer) {
+            layer.opacity = opacity;
+            this.updateInstances();
+            return true;
+        }
+        return false;
+    }
+    
+    setLayerLocked(layerId: string, locked: boolean): boolean {
+        const layer = this.layers.find(l => l.id === layerId);
+        if (layer) {
+            layer.locked = locked;
+            return true;
+        }
+        return false;
+    }
+    
     moveLayer(layerId: string, newIndex: number): boolean {
         const currentIndex = this.layers.findIndex(l => l.id === layerId);
         if (currentIndex === -1 || newIndex < 0 || newIndex >= this.layers.length) {
@@ -120,6 +177,7 @@ export class VoxelEngine {
         // Remove and reinsert at new position
         const [layer] = this.layers.splice(currentIndex, 1);
         this.layers.splice(newIndex, 0, layer);
+        
         return true;
     }
     
@@ -635,7 +693,9 @@ export class VoxelEngine {
         // Clear all layers but keep at least one
         this.layers = [];
         this.layerIdCounter = 0;
-        const defaultLayer = this.createLayer('Layer 1');
+        // Pass specific ID to prevent snapshot during clear
+        const defaultLayer = this.createLayer('Layer 1', 'layer_1');
+        this.layerIdCounter = 1;
         this.activeLayerId = defaultLayer.id;
         
         this.renderer.clear();
@@ -691,6 +751,10 @@ export class VoxelEngine {
     
     setSelectionCallback(callback: (selection: Array<{ x: number; y: number; z: number; type: VoxelType }>) => void): void {
         this.undoRedoManager.setSelectionCallback(callback);
+    }
+    
+    setLayerUICallback(callback: () => void): void {
+        this.undoRedoManager.setLayerUICallback(callback);
     }
     
     finalizePendingOperations(): void {

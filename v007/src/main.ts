@@ -725,6 +725,13 @@ class VoxelApp {
                     this.boxSelectionTool.restoreSelection(selection);
                 }
             });
+            
+            // Set up layer UI callback for undo/redo
+            this.voxelEngine.setLayerUICallback(() => {
+                if (this.layerPanel) {
+                    this.layerPanel.refresh();
+                }
+            });
         }
         
         // Setup event listeners
