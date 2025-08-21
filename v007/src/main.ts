@@ -1311,6 +1311,37 @@ class VoxelApp {
                         (this.drawingSystem as any).fillClickStart = { x: event.clientX, y: event.clientY };
                         if (this.controls) this.controls.enabled = false;
                     }
+                } else if (this.drawingSystem.toolMode === 'eyedropper') {
+                    // Eyedropper tool - pick color from voxel
+                    const hit = this.voxelEngine.raycast(this.raycaster);
+                    if (hit && hit.voxelPos) {
+                        // Get the voxel at this position
+                        const voxel = this.voxelEngine.getVoxel(hit.voxelPos.x, hit.voxelPos.y, hit.voxelPos.z);
+                        if (voxel) {
+                            // Get the color from the voxel type (voxel is a VoxelType enum value)
+                            const colorRegistry = ColorRegistry.getInstance();
+                            const colorHex = colorRegistry.getColor(voxel);
+                            if (colorHex) {
+                                // colorHex is already a hex string, ensure it has # prefix
+                                const hexColor = colorHex.startsWith('#') ? colorHex : '#' + colorHex;
+                                
+                                // Update the tools panel with the picked color
+                                if (this.toolsPanel) {
+                                    this.toolsPanel.updateColorFromEyedropper(hexColor);
+                                }
+                                
+                                // Log the action
+                                ActionLogger.getInstance().log(`Picked color: ${hexColor}`);
+                                
+                                // Switch back to the previous tool after picking
+                                const previousTool = this.drawingSystem.getPreviousToolMode();
+                                this.drawingSystem.setToolMode(previousTool);
+                                if (this.toolsPanel) {
+                                    this.toolsPanel.selectTool(previousTool);
+                                }
+                            }
+                        }
+                    }
                 } else if (this.drawingSystem.toolMode === 'box' || this.drawingSystem.toolMode === 'line') {
                     // Box and Line tools handle their own clicks
                     const hit = this.voxelEngine.raycast(this.raycaster);
@@ -1766,6 +1797,27 @@ class VoxelApp {
                     if (this.toolsPanel && this.selectionMode) {
                         this.toolsPanel.selectTool('selection');
                     }
+                }
+                break;
+            case 'i':
+            case 'I':
+                // Activate eyedropper tool
+                if (!event.ctrlKey && !event.metaKey) {
+                    // Exit selection mode when switching tools
+                    this.selectionMode = false;
+                    if (this.boxSelectionTool) {
+                        this.boxSelectionTool.clearSelection(false);
+                    }
+                    if (this.drawingSystem) {
+                        this.drawingSystem.setToolMode('eyedropper');
+                        this.drawingSystem.hidePreview();
+                        // Re-enable controls when switching tools
+                        if (this.controls) this.controls.enabled = true;
+                    }
+                    if (this.toolsPanel) {
+                        this.toolsPanel.selectTool('eyedropper');
+                    }
+                    console.log('Eyedropper tool selected');
                 }
                 break;
             case 'Delete':

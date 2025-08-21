@@ -12,6 +12,7 @@ export class DrawingSystem {
     currentVoxelType: VoxelType;
     brushSize: number;
     toolMode: string;
+    previousToolMode: string;  // Store the tool before switching to eyedropper
     isShiftDragging: boolean;
     boxStart: { x: number; y: number; z: number } | null;
     boxEnd: { x: number; y: number; z: number } | null;  // For box tool second click
@@ -54,6 +55,7 @@ export class DrawingSystem {
     lastUpdateHit: any | null;  // Store last hit for preview updates
     voxelPanel: any | null;  // Reference to VoxelPanel for color selection
     customColor: THREE.Color | null;  // Custom color for voxel painting
+    justStoppedDrawing: boolean = false;  // Flag to prevent immediate face highlight
     
     // Face highlight and normal visualization
     faceHighlight: THREE.Mesh | null;
@@ -75,7 +77,8 @@ export class DrawingSystem {
         this.drawMode = 'add'; // 'add' or 'remove'
         this.currentVoxelType = VoxelType.GRASS;
         this.brushSize = 1;
-        this.toolMode = 'brush'; // 'brush', 'eraser', 'box', 'line', 'fill'
+        this.toolMode = 'brush'; // 'brush', 'eraser', 'box', 'line', 'fill', 'eyedropper'
+        this.previousToolMode = 'brush'; // Default to brush
         this.isShiftDragging = false;
         
         // Tool state
@@ -464,8 +467,8 @@ export class DrawingSystem {
         }
         
         // Update face highlight and normal visualization for brush tool
-        // Only show when hovering, not when dragging
-        if (hit && this.toolMode === 'brush' && !this.isDrawing) {
+        // Only show when hovering, not when dragging, and not immediately after stopping drawing
+        if (hit && this.toolMode === 'brush' && !this.isDrawing && !this.justStoppedDrawing) {
             this.updateFaceHighlight(hit);
         } else {
             this.hideFaceHighlight();
@@ -835,6 +838,28 @@ export class DrawingSystem {
         }
         this.drawingSurface = null;
         
+        // Hide face highlight when stopping drawing to prevent red highlight on release
+        this.hideFaceHighlight();
+        
+        // Force hide preview to prevent red wireframe on release
+        this.previewGroup.visible = false;
+        if (this.previewEdges) {
+            this.previewEdges.visible = false;
+        }
+        if (this.eraserGlowMesh) {
+            this.eraserGlowMesh.visible = false;
+        }
+        
+        // Prevent face highlight from immediately appearing after release
+        this.justStoppedDrawing = true;
+        setTimeout(() => {
+            this.justStoppedDrawing = false;
+            // Re-enable preview for brush and eraser tools after delay
+            if (this.toolMode === 'brush' || this.toolMode === 'eraser') {
+                this.previewGroup.visible = true;
+            }
+        }, 100); // 100ms delay
+        
         // Clear grid timer and hide the constraint plane
         if (this.gridShowTimer) {
             clearTimeout(this.gridShowTimer);
@@ -979,6 +1004,10 @@ export class DrawingSystem {
     
     setBrushSize(size: number): void {
         this.brushSize = Math.max(1, Math.min(10, size));
+    }
+    
+    getPreviousToolMode(): string {
+        return this.previousToolMode;
     }
     
     setVoxelType(type: VoxelType): void {
@@ -1265,6 +1294,11 @@ export class DrawingSystem {
     
     // Tool mode setters
     setToolMode(mode: string): void {
+        // Store the previous tool before switching to eyedropper
+        if (mode === 'eyedropper' && this.toolMode !== 'eyedropper') {
+            this.previousToolMode = this.toolMode;
+        }
+        
         this.toolMode = mode;
         this.clearToolPreviews();
         this.boxStart = null;
@@ -1283,7 +1317,8 @@ export class DrawingSystem {
                 'line': 'Line',
                 'fill': 'Fill',
                 'asset': 'Asset',
-                'selection': 'Selection'
+                'selection': 'Selection',
+                'eyedropper': 'Eyedropper'
             };
             toolElement.textContent = toolNames[mode] || mode;
         }
@@ -2024,7 +2059,8 @@ export class DrawingSystem {
             'line': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><line x1="5" y1="19" x2="19" y2="5"/></svg>') 0 24, crosshair`,
             'fill': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 13h15"/><path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z"/></svg>') 24 24, crosshair`,
             'asset': 'grab',
-            'selection': 'crosshair'
+            'selection': 'crosshair',
+            'eyedropper': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>') 12 12, crosshair`
         };
         
         canvas.style.cursor = cursors[tool] || 'crosshair';

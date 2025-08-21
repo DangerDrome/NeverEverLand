@@ -154,6 +154,7 @@ export class ToolsPanel {
         this.createToolButton('box', 'Box Tool (X)', 'X');
         this.createToolButton('line', 'Line Tool (L)', 'L');
         this.createToolButton('fill', 'Fill Tool (P)', 'P');
+        this.createToolButton('eyedropper', 'Eyedropper Tool (I)', 'I');
         
         // Add separator before voxel brush section
         const voxelSeparator = document.createElement('div');
@@ -219,7 +220,8 @@ export class ToolsPanel {
             box: 'box',
             line: 'git-commit',
             fill: 'paint-bucket',
-            selection: 'square-dashed'
+            selection: 'square-dashed',
+            eyedropper: 'pipette'
         };
         
         const icon = document.createElement('span');
@@ -245,6 +247,10 @@ export class ToolsPanel {
                     this.drawingSystem.setToolMode('selection');
                     // Emit event to enable selection mode
                     window.dispatchEvent(new CustomEvent('enable-selection-mode'));
+                } else if (toolId === 'eyedropper') {
+                    // For eyedropper, set the tool mode
+                    window.dispatchEvent(new CustomEvent('disable-selection-mode'));
+                    this.drawingSystem.setToolMode('eyedropper');
                 } else {
                     // For other tools, disable selection mode if active
                     window.dispatchEvent(new CustomEvent('disable-selection-mode'));
@@ -579,6 +585,31 @@ export class ToolsPanel {
         const button = document.getElementById('toggle-tiltshift');
         if (button) {
             this.updateToggleButton(button, isActive);
+        }
+    }
+    
+    updateColorFromEyedropper(color: string): void {
+        // Update the color palette button with the picked color
+        const colorInfo: ColorInfo = { 
+            name: 'Picked Color', 
+            hex: color 
+        };
+        
+        // Get or create VoxelType for this color
+        const colorRegistry = ColorRegistry.getInstance();
+        const voxelType = colorRegistry.getOrCreateVoxelType(color);
+        if (voxelType) {
+            colorInfo.voxelType = voxelType;
+            this.selectedColor = colorInfo;
+            this.updateColorPaletteButtonWithColor(colorInfo);
+            
+            // Update the drawing system with the new voxel type
+            if (this.drawingSystem) {
+                this.drawingSystem.setVoxelType(voxelType);
+            }
+            
+            // Also update the color picker popover's selected color
+            this.colorPickerPopover.setSelectedColor(colorInfo);
         }
     }
     
