@@ -345,10 +345,7 @@ export const settings = {
         presetSizes: [1, 2, 4, 6, 8, 10], // Brush sizes (cubic: 1x1x1, 2x2x2, 4x4x4, etc.)
         defaultSizeIndex: 0,               // Start with single voxel (1x1x1)
         defaultSize: 1                     // Default brush size
-    },
-    
-    // Application version
-    version: '0.7.1'
+    }
 };
 
 class VoxelApp {
@@ -864,7 +861,7 @@ class VoxelApp {
             console.warn('Failed to load version info:', error);
             const versionElement = document.getElementById('app-version');
             if (versionElement) {
-                versionElement.textContent = settings.version || '0.7.0';
+                versionElement.textContent = '1.2.1'; // Fallback version
             }
         }
     }
@@ -1022,6 +1019,8 @@ class VoxelApp {
             } else if (event.buttons === 1) {
                 // Handle gizmo dragging
                 this.boxSelectionTool.handleGizmoDrag(this.raycaster);
+                // Ensure controls stay disabled during drag
+                if (this.controls) this.controls.enabled = false;
             } else if (event.buttons === 0 && this.boxSelectionTool.hasSelection()) {
                 // Update gizmo hover when not dragging
                 const gizmo = this.boxSelectionTool.getTransformGizmo();
@@ -1168,6 +1167,11 @@ class VoxelApp {
         
         // Skip preview updates during camera rotation
         if (!this.isRotating) {
+            // Check arrow hover first
+            if (this.drawingSystem) {
+                this.drawingSystem.checkArrowHover(this.raycaster);
+            }
+            
             if (isBoxHeightMode) {
                 // For box height adjustment, use unconstrained position
                 // Pass raycaster to help calculate Y position
@@ -1240,33 +1244,35 @@ class VoxelApp {
             }
             
             if (event.button === 0) {
-                // Try gizmo interaction first (pass shift key for duplication)
-                if (this.boxSelectionTool.handleGizmoMouseDown(this.raycaster, event.shiftKey)) {
-                    // Disable orbit controls during transformation
+                // First check if we're clicking on a voxel
+                const hit = this.voxelEngine!.raycast(this.raycaster);
+                
+                // First try gizmo interaction - it should have priority if clicking on gizmo handles
+                const gizmoHit = this.boxSelectionTool.handleGizmoMouseDown(this.raycaster, event.shiftKey);
+                
+                if (gizmoHit) {
+                    // Gizmo was clicked - disable orbit controls during transformation
                     if (this.controls) this.controls.enabled = false;
-                } else {
-                    // Try single or contiguous selection first
-                    const hit = this.voxelEngine!.raycast(this.raycaster);
-                    if (hit) {
-                        // Check if clicking on a voxel (not empty space)
-                        // Pass voxelPos for single/double click selection
-                        if (!this.boxSelectionTool.handleClick(hit.voxelPos, event.shiftKey)) {
-                            // No voxel clicked, start screen space selection
-                            this.boxSelectionTool.startScreenSpaceSelection(event.clientX, event.clientY);
-                            // Disable orbit controls during selection
-                            if (this.controls) this.controls.enabled = false;
-                        } else {
-                            // Single or contiguous selection handled
-                            // Keep controls enabled for now
+                    return;
+                }
+                
+                // If gizmo wasn't clicked, check if we're clicking on a voxel
+                if (hit && hit.voxelPos) {
+                    const voxelType = this.voxelEngine!.getVoxel(hit.voxelPos.x, hit.voxelPos.y, hit.voxelPos.z);
+                    if (voxelType !== VoxelType.AIR) {
+                        // There's a voxel here - handle selection
+                        if (this.boxSelectionTool.handleClick(hit.voxelPos, event.shiftKey)) {
+                            // Voxel selection handled
+                            return;
                         }
-                    } else {
-                        // No hit - clicked on empty space
-                        // Start screen space selection from mouse position
-                        this.boxSelectionTool.startScreenSpaceSelection(event.clientX, event.clientY);
-                        // Disable orbit controls during selection
-                        if (this.controls) this.controls.enabled = false;
                     }
                 }
+                
+                // If neither gizmo nor voxel was clicked, start box selection
+                // This handles clicking on empty space or air voxels
+                this.boxSelectionTool.startScreenSpaceSelection(event.clientX, event.clientY);
+                // Disable orbit controls during selection
+                if (this.controls) this.controls.enabled = false;
             }
             return;
         }

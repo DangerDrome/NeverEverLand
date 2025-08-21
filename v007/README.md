@@ -1,6 +1,8 @@
 # v007 - High Performance Voxel System
 
-A complete TypeScript-based voxel engine with instanced rendering, supporting up to 1M voxels at 60 FPS. Part of the NeverEverLand project evolution.
+**Version 1.2.1** | A complete TypeScript-based voxel engine with instanced rendering, supporting up to 1M voxels at 60 FPS. Part of the NeverEverLand project evolution.
+
+📋 **[View Changelog](CHANGELOG.md)** - See all version history and updates
 
 ## 🚀 Quick Start
 
@@ -34,6 +36,7 @@ A complete TypeScript-based voxel engine with instanced rendering, supporting up
 - **L**: Line tool
 - **P**: Fill tool
 - **S**: Selection tool
+- **I**: Eyedropper tool (pick color from voxel)
 - **W**: Toggle wireframe/edge display
 - **T**: Toggle tilt-shift effect
 - **Z**: Undo last action (Ctrl+Z also works)
@@ -54,7 +57,9 @@ A complete TypeScript-based voxel engine with instanced rendering, supporting up
 - **Fill**: Fill connected areas of the same type (paint bucket tool)
 - **Selection**: Box selection tool for copying/moving regions
 - **Eraser**: Remove voxels (E key or right-click drag)
+- **Eyedropper**: Pick colors from existing voxels (I key)
 - **Constraint Plane**: Hold for 300ms to see grid preview during drag operations
+- **Normal Lock**: Hover over preview arrow to highlight, locks drawing to that face normal
 - **Custom Colors**: All tools support custom colors from color picker
 
 ### Asset System
@@ -266,6 +271,18 @@ Each voxel type includes premade structures:
 - Ice Spike (2×4×2) - Pointed ice formation
 - Ice Platform (3×1×3) - Frozen surface
 
+## 📦 Version Information
+
+- **Current Version**: 1.2.1
+- **Release Date**: 2025-08-21
+- **[Full Changelog](CHANGELOG.md)**: Complete version history
+- **[Releases](https://github.com/YourUsername/NeverEverLand/releases)**: Download releases
+
+### Version Management
+- Version tracked in `/public/version.json`
+- Semantic versioning (MAJOR.MINOR.PATCH)
+- Changelog follows [Keep a Changelog](https://keepachangelog.com/) format
+
 ## 📊 Technical Details
 
 ### Architecture
@@ -324,7 +341,15 @@ npx tsc --noEmit
 - Disable browser extensions
 - Use Chrome/Firefox for best performance
 
-## 📝 Recent Updates
+## 📝 Recent Updates (v1.2.1)
+
+### Latest Features (v1.2.0 - v1.2.1)
+- **Eyedropper Tool**: Pick colors from existing voxels with the I key
+- **Normal Vector Visualization**: Yellow arrow with arrowhead shows when hovering
+- **Normal Lock Drawing**: Lock voxel placement to specific face normals
+- **Improved Selection Tool**: Fixed raycast blocking and interaction priority
+- **Transform Gizmo Enhancements**: Better visual feedback with updated colors
+- **Versioning System**: Centralized version management with CHANGELOG.md
 
 ### Layer Baking System (Performance Optimization)
 - **Face Culling Algorithm**: Only creates faces between solid voxels and empty space

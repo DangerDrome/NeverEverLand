@@ -1,7 +1,27 @@
 {
-  "version": "0.7.1",
+  "version": "1.2.1",
   "name": "Never Ever Land",
-  "build": "2024.01.15",
-  "engine": "Three.js r158",
-  "codename": "Voxel Thunder"
+  "build": "2025.08.21",
+  "engine": "Three.js r161",
+  "codename": "Voxel Thunder",
+  "changelog": {
+    "latest": {
+      "version": "1.2.1",
+      "date": "2025-08-21",
+      "highlights": [
+        "Improved selection tool reliability",
+        "Enhanced normal vector visualization",
+        "Fixed camera control issues"
+      ]
+    },
+    "previous": {
+      "version": "0.7.1",
+      "date": "2024-01-15",
+      "highlights": [
+        "Initial TypeScript voxel engine",
+        "VOX format support",
+        "Advanced editing tools"
+      ]
+    }
+  }
 }

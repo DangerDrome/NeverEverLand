@@ -1,6 +1,6 @@
 {
   "name": "v007-high-performance-voxel-system",
-  "version": "1.0.0",
+  "version": "1.2.1",
   "description": "High-performance voxel engine with instanced rendering, inspired by nimadez/voxel-builder",
   "type": "module",
   "scripts": {

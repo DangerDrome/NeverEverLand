@@ -60,6 +60,8 @@ export class DrawingSystem {
     // Face highlight and normal visualization
     faceHighlight: THREE.Mesh | null;
     normalArrow: THREE.ArrowHelper | null;
+    isHoveringArrow: boolean = false;
+    arrowBaseColor: number = 0xffffff;  // Store the base color for the arrow
     faceHighlightMaterial = new THREE.MeshBasicMaterial({
         color: 0xffffff,  // Will be updated based on axis
         transparent: true,
@@ -379,6 +381,11 @@ export class DrawingSystem {
         // Store as constraint plane for cleanup
         this.constraintPlane = gridGroup as any;
         
+        // Disable raycasting for the entire constraint plane group
+        gridGroup.traverse((child: any) => {
+            child.raycast = () => {};
+        });
+        
         // Set render order
         gridGroup.renderOrder = -1;
         
@@ -421,11 +428,13 @@ export class DrawingSystem {
         
         // Create the solid mesh
         this.previewMesh = new THREE.Mesh(geometry, this.previewMaterial);
+        this.previewMesh.raycast = () => {};  // Disable raycasting for preview
         this.previewGroup.add(this.previewMesh);
         
         // Create edge geometry for the outline
         const edges = new THREE.EdgesGeometry(geometry);
         this.previewEdges = new THREE.LineSegments(edges, this.edgeMaterial);
+        this.previewEdges.raycast = () => {};  // Disable raycasting for edges
         this.previewGroup.add(this.previewEdges);
         
         // Create eraser glow mesh (slightly larger cube)
@@ -436,9 +445,14 @@ export class DrawingSystem {
         );
         this.eraserGlowMesh = new THREE.Mesh(glowGeometry, this.eraserGlowMaterial);
         this.eraserGlowMesh.visible = false;
+        this.eraserGlowMesh.raycast = () => {};  // Disable raycasting for glow
         this.previewGroup.add(this.eraserGlowMesh);
         
         this.previewGroup.visible = false;
+        // Disable raycasting for the entire preview group
+        this.previewGroup.traverse((child: any) => {
+            child.raycast = () => {};
+        });
         this.voxelEngine.scene.add(this.previewGroup);
     }
     
@@ -1743,6 +1757,11 @@ export class DrawingSystem {
             (minZ + maxZ) * voxelSize / 2 + voxelSize * 0.5
         );
         
+        // Disable raycasting for all preview meshes
+        group.traverse((child: any) => {
+            child.raycast = () => {};
+        });
+        
         this.voxelEngine.scene.add(group);
         this.toolPreviewMeshes.push(group);
     }
@@ -1962,6 +1981,11 @@ export class DrawingSystem {
         glowMesh.position.copy(center);
         assetGroup.add(glowMesh);
         
+        // Disable raycasting for asset preview
+        assetGroup.traverse((child: any) => {
+            child.raycast = () => {};
+        });
+        
         this.voxelEngine.scene.add(assetGroup);
         this.toolPreviewMeshes.push(assetGroup);
     }
@@ -2097,6 +2121,7 @@ export class DrawingSystem {
         if (!this.faceHighlight) {
             const planeGeometry = new THREE.PlaneGeometry(voxelSize, voxelSize);
             this.faceHighlight = new THREE.Mesh(planeGeometry, this.faceHighlightMaterial);
+            this.faceHighlight.raycast = () => {};  // Disable raycasting for face highlight
             this.voxelEngine.scene.add(this.faceHighlight);
         }
         
@@ -2141,22 +2166,30 @@ export class DrawingSystem {
         if (!this.normalArrow) {
             const origin = new THREE.Vector3();
             const direction = new THREE.Vector3(0, 1, 0);
-            const length = voxelSize * 1.5;
+            const length = voxelSize * 1.0;
             const color = 0xffffff;  // Default white, will be updated based on axis
-            this.normalArrow = new THREE.ArrowHelper(direction, origin, length, color);
+            // Create arrow with explicit cone dimensions
+            const headLength = voxelSize * 0.3;
+            const headWidth = voxelSize * 0.2;
+            this.normalArrow = new THREE.ArrowHelper(direction, origin, length, color, headLength, headWidth);
             
             // Set arrow line and cone opacity
             const arrowLine = this.normalArrow.line as THREE.Line;
             const arrowCone = this.normalArrow.cone as THREE.Mesh;
             if (arrowLine.material instanceof THREE.LineBasicMaterial) {
                 arrowLine.material.transparent = true;
-                arrowLine.material.opacity = 0.5;
+                arrowLine.material.opacity = 1.0;  // Full opacity
                 arrowLine.material.linewidth = 3;
             }
             if (arrowCone.material instanceof THREE.MeshBasicMaterial) {
-                arrowCone.material.transparent = true;
-                arrowCone.material.opacity = 0.5;
+                arrowCone.material.transparent = false;  // No transparency
+                arrowCone.material.opacity = 1.0;  // Full opacity
+                arrowCone.material.side = THREE.DoubleSide;  // Render both sides for visibility at all angles
             }
+            
+            // Disable raycasting for arrow components so they don't block selection
+            arrowLine.raycast = () => {};
+            arrowCone.raycast = () => {};
             
             this.voxelEngine.scene.add(this.normalArrow);
         }
@@ -2171,23 +2204,43 @@ export class DrawingSystem {
             axisColor = 0xff0000;  // Red for Z axis
         }
         
+        // Store base color for hover effect
+        this.arrowBaseColor = axisColor;
+        
         // Update face highlight color to match axis
         this.faceHighlightMaterial.color.setHex(axisColor);
         
-        // Update arrow color
+        // ALWAYS update arrow colors to match the current axis (not just on creation)
         const arrowLine = this.normalArrow.line as THREE.Line;
         const arrowCone = this.normalArrow.cone as THREE.Mesh;
         if (arrowLine.material instanceof THREE.LineBasicMaterial) {
             arrowLine.material.color.setHex(axisColor);
+            arrowLine.material.opacity = 1.0;  // Full opacity
         }
         if (arrowCone.material instanceof THREE.MeshBasicMaterial) {
             arrowCone.material.color.setHex(axisColor);
+            arrowCone.material.opacity = 1.0;  // Full opacity
+            arrowCone.material.side = THREE.DoubleSide;  // Ensure both sides are always rendered
+            arrowCone.material.transparent = false;  // No transparency
         }
         
         // Position and orient the arrow with visible head
         this.normalArrow.position.copy(facePos);
         this.normalArrow.setDirection(hit.normal);
-        this.normalArrow.setLength(voxelSize * 0.8, voxelSize * 0.15, voxelSize * 0.18);
+        // Set arrow with FIXED absolute sizes for the cone
+        // Using absolute voxel size units instead of proportions
+        const arrowLength = voxelSize * 0.8;
+        const headLength = voxelSize * 0.2;  // Fixed cone height
+        const headWidth = voxelSize * 0.15;  // Fixed cone width
+        this.normalArrow.setLength(arrowLength, headLength, headWidth);
+        
+        // Make sure cone is visible (using arrowCone that's already declared above)
+        if (arrowCone) {
+            arrowCone.visible = true;
+            if (arrowCone.material instanceof THREE.MeshBasicMaterial) {
+                arrowCone.material.needsUpdate = true;
+            }
+        }
         this.normalArrow.visible = true;
     }
     
@@ -2198,6 +2251,13 @@ export class DrawingSystem {
         if (this.normalArrow) {
             this.normalArrow.visible = false;
         }
+        this.isHoveringArrow = false;
+    }
+    
+    checkArrowHover(raycaster: THREE.Raycaster): boolean {
+        // Just disable hover completely - arrow always shows in axis color
+        this.isHoveringArrow = false;
+        return false;
     }
     
     setCustomColor(color: THREE.Color): void {

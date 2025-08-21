@@ -670,6 +670,7 @@ export class BoxSelectionTool {
     handleGizmoMouseDown(raycaster: THREE.Raycaster, shiftKey: boolean = false): boolean {
         const hit = this.transformGizmo.onMouseHover(raycaster);
         if (hit) {
+            console.log('Gizmo clicked:', hit.axis, hit.operation);
             this.transformGizmo.startDrag(hit.axis, hit.operation, raycaster);
             this.transformMode = hit.operation === 'move' ? 'move' : 'rotate';
             this.transformOffset.set(0, 0, 0);
