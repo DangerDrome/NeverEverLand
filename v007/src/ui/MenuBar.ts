@@ -445,7 +445,7 @@ export class MenuBar {
                         ${html}
                     </div>
                     <div style="margin-top: 20px; text-align: center; color: rgba(255, 255, 255, 0.6);">
-                        Version ${settings.version} • Built with Three.js
+                        Version 1.2.1 • Built with Three.js
                     </div>
                 `;
                 
@@ -456,7 +456,7 @@ export class MenuBar {
                 <div style="text-align: center;">
                     <h2>Never Ever Land</h2>
                     <p>High-performance voxel engine with TypeScript</p>
-                    <p style="color: rgba(255, 255, 255, 0.6);">Version ${settings.version}</p>
+                    <p style="color: rgba(255, 255, 255, 0.6);">Version 1.2.1</p>
                 </div>
             `;
             await ModalDialog.alert({ title: 'About', message: content, html: true });
