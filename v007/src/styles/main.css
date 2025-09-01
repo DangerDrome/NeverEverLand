@@ -299,6 +299,48 @@ body {
     color: rgba(255, 255, 255, 0.9);
 }
 
+.menu-spacer {
+    flex: 1;
+}
+
+.run-mode-button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(80, 200, 120, 0.2);
+    border: 1px solid rgba(80, 200, 120, 0.4);
+    border-radius: 4px;
+    color: rgba(80, 200, 120, 0.9);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    outline: none;
+}
+
+.run-mode-button:hover {
+    background: rgba(80, 200, 120, 0.3);
+    border-color: rgba(80, 200, 120, 0.6);
+    color: rgba(100, 255, 140, 1);
+}
+
+.run-mode-button:active {
+    background: rgba(80, 200, 120, 0.4);
+}
+
+.run-mode-button.active {
+    background: rgba(200, 80, 80, 0.2);
+    border-color: rgba(200, 80, 80, 0.4);
+    color: rgba(255, 100, 100, 0.9);
+}
+
+.run-mode-button.active:hover {
+    background: rgba(200, 80, 80, 0.3);
+    border-color: rgba(200, 80, 80, 0.6);
+    color: rgba(255, 120, 120, 1);
+}
+
 /* Dropdown Menu Styling */
 .menu-dropdown {
     position: fixed;

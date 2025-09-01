@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pathfinding Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: monospace;
+            background: #1a1a1a;
+            color: #0f0;
+        }
+        h1 { color: #0f0; }
+        .controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.8);
+            padding: 15px;
+            border: 1px solid #0f0;
+            z-index: 1000;
+        }
+        button {
+            display: block;
+            margin: 5px 0;
+            padding: 5px 10px;
+            background: #000;
+            color: #0f0;
+            border: 1px solid #0f0;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0f0;
+            color: #000;
+        }
+        .info {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #0f0;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <h2>Pathfinding Test Controls</h2>
+        <button onclick="createSimpleObstacle()">Create Simple Obstacle</button>
+        <button onclick="createStairs()">Create Stairs</button>
+        <button onclick="createGap()">Create Gap to Jump</button>
+        <button onclick="createWall()">Create Wall</button>
+        <button onclick="clearVoxels()">Clear All Voxels</button>
+        <button onclick="createFloor()">Create Floor</button>
+        <div class="info">
+            <p>Instructions:</p>
+            <p>1. Press 'R' to enter Run Mode</p>
+            <p>2. Click to set pathfinding target</p>
+            <p>3. Watch player navigate obstacles</p>
+            <p>4. Space to jump manually</p>
+            <p>5. WASD to move manually</p>
+        </div>
+    </div>
+
+    <script type="module">
+        // Wait for the main game to load
+        setTimeout(() => {
+            const voxelEngine = window.gameEngine?.voxelEngine;
+            if (!voxelEngine) {
+                console.error('VoxelEngine not found! Make sure the game is loaded.');
+                return;
+            }
+
+            // Helper to set voxels
+            function setVoxel(x, y, z, type = 1) {
+                voxelEngine.setVoxel(x, y, z, type);
+            }
+
+            // Create a simple 1-block obstacle
+            window.createSimpleObstacle = function() {
+                console.log('Creating simple obstacle at (5, 0, 0)');
+                setVoxel(5, 0, 0, 2); // Red voxel
+                voxelEngine.updateChunks();
+            };
+
+            // Create stairs
+            window.createStairs = function() {
+                console.log('Creating stairs from (0,0,0) to (5,5,0)');
+                for (let i = 0; i <= 5; i++) {
+                    for (let y = 0; y <= i; y++) {
+                        setVoxel(i, y, 0, 3); // Green voxel
+                    }
+                }
+                voxelEngine.updateChunks();
+            };
+
+            // Create a gap that requires jumping
+            window.createGap = function() {
+                console.log('Creating gap from x=2 to x=4');
+                // Create platforms
+                for (let x = -2; x <= 1; x++) {
+                    setVoxel(x, 0, 0, 4); // Blue voxel
+                }
+                for (let x = 5; x <= 8; x++) {
+                    setVoxel(x, 0, 0, 4); // Blue voxel
+                }
+                voxelEngine.updateChunks();
+            };
+
+            // Create a wall to jump over
+            window.createWall = function() {
+                console.log('Creating 2-high wall at x=3');
+                for (let y = 0; y <= 1; y++) {
+                    for (let z = -3; z <= 3; z++) {
+                        setVoxel(3, y, z, 5); // Purple voxel
+                    }
+                }
+                voxelEngine.updateChunks();
+            };
+
+            // Clear all voxels
+            window.clearVoxels = function() {
+                console.log('Clearing all voxels');
+                // Clear a reasonable area
+                for (let x = -20; x <= 20; x++) {
+                    for (let y = 0; y <= 10; y++) {
+                        for (let z = -20; z <= 20; z++) {
+                            if (voxelEngine.getVoxel(x, y, z) !== 0) {
+                                setVoxel(x, y, z, 0);
+                            }
+                        }
+                    }
+                }
+                voxelEngine.updateChunks();
+            };
+
+            // Create a floor
+            window.createFloor = function() {
+                console.log('Creating floor');
+                for (let x = -10; x <= 10; x++) {
+                    for (let z = -10; z <= 10; z++) {
+                        setVoxel(x, 0, z, 6); // Gray voxel
+                    }
+                }
+                voxelEngine.updateChunks();
+            };
+
+            console.log('Pathfinding test controls loaded!');
+            console.log('VoxelEngine ready:', voxelEngine);
+        }, 2000);
+    </script>
+</body>
+</html>

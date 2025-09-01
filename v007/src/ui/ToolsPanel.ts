@@ -148,6 +148,7 @@ export class ToolsPanel {
         this.toolsContainer = toolsContainer;
         
         // Create tool buttons first
+        this.createToolButton('pointer', 'Pointer Tool (V)', 'V');
         this.createToolButton('selection', 'Selection Tool (S)', 'S');
         this.createToolButton('brush', 'Brush Tool (B)', 'B');
         this.createToolButton('eraser', 'Eraser Tool (E)', 'E');
@@ -215,6 +216,7 @@ export class ToolsPanel {
         
         // Create icon based on tool
         const iconMap: Record<string, string> = {
+            pointer: 'pointer',
             brush: 'pencil',
             eraser: 'eraser',
             box: 'box',
@@ -241,8 +243,14 @@ export class ToolsPanel {
                 // Set the active button first
                 this.setActiveToolButton(button);
                 
-                // Handle selection tool separately
-                if (toolId === 'selection') {
+                // Handle different tools
+                if (toolId === 'pointer') {
+                    // Pointer tool - no drawing mode, just for interaction
+                    window.dispatchEvent(new CustomEvent('disable-selection-mode'));
+                    // Set a special 'none' mode to disable drawing
+                    this.drawingSystem.setToolMode('none');
+                    // The cursor will be updated by DrawingSystem.updateCursor()
+                } else if (toolId === 'selection') {
                     // Set tool mode to selection
                     this.drawingSystem.setToolMode('selection');
                     // Emit event to enable selection mode
@@ -660,5 +668,19 @@ export class ToolsPanel {
         });
         
         this.toolsContainer!.appendChild(button);
+    }
+    
+    // Public method to programmatically select the pointer tool
+    public selectPointerTool(): void {
+        const pointerButton = document.getElementById('tool-pointer');
+        if (pointerButton && this.drawingSystem) {
+            this.setActiveToolButton(pointerButton);
+            // Set drawing system to 'none' mode for pointer tool
+            this.drawingSystem.setToolMode('none');
+            // The cursor will be updated by DrawingSystem.updateCursor()
+            // Disable selection mode
+            window.dispatchEvent(new CustomEvent('disable-selection-mode'));
+            ActionLogger.getInstance().log(ActionLogger.actions.selectTool('pointer'));
+        }
     }
 }

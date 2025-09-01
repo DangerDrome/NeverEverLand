@@ -32,6 +32,7 @@ import { testBoundaryFix } from './debug/TestBoundaryFix';
 import { ActionLogger } from './ui/ActionLogger';
 import { testAllFaces } from './debug/TestAllFaces';
 import { ColorRegistry } from './engine/ColorRegistry';
+import { RunMode } from './modes/RunMode';
 
 // =====================================
 // settings - Customize your experience
@@ -362,6 +363,7 @@ class VoxelApp {
     private voxelPanel: VoxelPanel | null;
     private layerPanel: LayerPanel | null;
     private toolsPanel: ToolsPanel | null;
+    private runMode: RunMode | null;
     private fileManager: FileManager | null;
     private boxSelectionTool: BoxSelectionTool | null;
     private menuBar: MenuBar | null;
@@ -397,6 +399,7 @@ class VoxelApp {
         this.voxelPanel = null;
         this.layerPanel = null;
         this.toolsPanel = null;
+        this.runMode = null;
         this.fileManager = null;
         this.boxSelectionTool = null;
         this.menuBar = null;
@@ -673,6 +676,19 @@ class VoxelApp {
         this.toolsPanel.setDrawingSystem(this.drawingSystem);
         this.toolsPanel.setVoxelEngine(this.voxelEngine);
         
+        // Create run mode manager
+        this.runMode = new RunMode();
+        this.runMode.setDependencies(
+            this.voxelPanel,
+            this.layerPanel,
+            this.toolsPanel,
+            this.controls!,
+            this.camera!,
+            this.scene,
+            this.voxelEngine,
+            this.drawingSystem
+        );
+        
         // Connect asset manager to drawing system
         this.drawingSystem.setAssetManager(this.voxelPanel.getAssetManager());
         
@@ -886,6 +902,7 @@ class VoxelApp {
         
         // Keyboard events
         window.addEventListener('keydown', (e) => this.onKeyDown(e));
+        window.addEventListener('keyup', (e) => this.onKeyUp(e));
         
         // Custom events from MenuBar
         window.addEventListener('resetCamera', () => {
@@ -1215,8 +1232,22 @@ class VoxelApp {
         }
     }
     
+    onKeyUp(event: KeyboardEvent) {
+        // Handle run mode keyboard input
+        if (this.runMode && this.runMode.handleKeyUp(event)) {
+            return; // Event was handled by run mode
+        }
+    }
+    
     onMouseDown(event: MouseEvent) {
         // Don't register interaction for simple clicks
+        
+        // Handle run mode mouse input
+        if (this.runMode && this.camera) {
+            if (this.runMode.handleMouseClick(event, this.raycaster, this.camera)) {
+                return; // Event was handled by run mode
+            }
+        }
         
         // Track middle mouse button
         if (event.button === 1) {
@@ -1516,6 +1547,20 @@ class VoxelApp {
     
     onKeyDown(event: KeyboardEvent) {
         this.registerInteraction();
+        
+        // Handle run mode keyboard input first
+        if (this.runMode && this.runMode.handleKeyDown(event)) {
+            return; // Event was handled by run mode
+        }
+        
+        // Handle Shift+R to toggle run mode
+        if (event.shiftKey && event.key === 'R') {
+            event.preventDefault();
+            if (this.runMode) {
+                this.runMode.toggle();
+            }
+            return;
+        }
         
         // Check for Ctrl+Z (undo) and Ctrl+Y (redo)
         if (event.ctrlKey || event.metaKey) {
@@ -2263,6 +2308,14 @@ class VoxelApp {
     animate() {
         requestAnimationFrame(() => this.animate());
         
+        // Calculate delta time
+        const deltaTime = 1 / 60; // Assume 60 FPS for now
+        
+        // Update run mode if active
+        if (this.runMode) {
+            this.runMode.update(deltaTime);
+        }
+        
         // Update controls
         if (this.controls) {
             this.controls.update();
@@ -2439,8 +2492,8 @@ class VoxelApp {
             }
         }
         
-        // Update and render direction indicator
-        if (this.directionIndicator && this.camera) {
+        // Update and render direction indicator (only in edit mode)
+        if (this.directionIndicator && this.camera && (!this.runMode || !this.runMode.isActive())) {
             this.directionIndicator.update(this.camera);
             this.directionIndicator.render();
         }

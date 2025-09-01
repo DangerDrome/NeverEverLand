@@ -463,8 +463,8 @@ export class DrawingSystem {
         }
         
         
-        // Hide preview if in selection mode
-        if (this.toolMode === 'selection') {
+        // Hide preview if in selection mode or none mode (pointer tool)
+        if (this.toolMode === 'selection' || this.toolMode === 'none') {
             this.previewGroup.visible = false;
             this.clearToolPreviews();
             this.hideFaceHighlight();
@@ -942,6 +942,19 @@ export class DrawingSystem {
     }
     
     /**
+     * Enable or disable the drawing system
+     */
+    setEnabled(enabled: boolean): void {
+        if (!enabled) {
+            this.stopDrawing();
+            this.hidePreview();
+            this.clearConstraintPlane();
+        } else {
+            this.showPreview();
+        }
+    }
+    
+    /**
      * Update method for smooth preview animation (called from main animate loop)
      */
     update(): void {
@@ -1311,6 +1324,19 @@ export class DrawingSystem {
         // Store the previous tool before switching to eyedropper
         if (mode === 'eyedropper' && this.toolMode !== 'eyedropper') {
             this.previousToolMode = this.toolMode;
+        }
+        
+        // Handle 'none' mode for pointer tool
+        if (mode === 'none') {
+            this.toolMode = 'none';
+            this.clearToolPreviews();
+            this.hidePreview();
+            this.boxStart = null;
+            this.boxEnd = null;
+            this.boxState = 'idle';
+            // Update cursor for pointer tool
+            this.updateCursor(mode);
+            return;
         }
         
         this.toolMode = mode;
@@ -2077,6 +2103,7 @@ export class DrawingSystem {
         
         // Create cursor styles based on tool - hotspot at bottom-left (0 24) except fill tool
         const cursors: { [key: string]: string } = {
+            'none': 'pointer',  // Pointer tool uses pointer cursor
             'brush': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M17 3l4 4L7.5 20.5L2 22l1.5-5.5L17 3z"/></svg>') 0 24, crosshair`,
             'eraser': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>') 0 24, crosshair`,
             'box': `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>') 0 24, crosshair`,

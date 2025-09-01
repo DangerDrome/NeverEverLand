@@ -36,7 +36,9 @@
       "Bash(/home/danger/Documents/GitHub/NeverEverLand/v007/scripts/test-watch.sh:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(tree:*)",
+      "WebSearch"
     ],
     "deny": []
   }
